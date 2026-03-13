@@ -1,0 +1,41 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: monitor-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/avc
+    username: ${DB_USER:postgres}
+    password: ${DB_PASS:blackstar}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    distribution:
+      percentiles-histogram:
+        ai.request.latency: true
+      percentiles:
+        ai.request.latency: 0.5, 0.95, 0.99
+
+logging:
+  level:
+    com.huah.ai.platform.monitor: INFO

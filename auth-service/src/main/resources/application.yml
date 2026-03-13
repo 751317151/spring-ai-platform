@@ -1,0 +1,29 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: auth-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/avc
+    username: ${DB_USER:postgres}
+    password: ${DB_PASS:blackstar}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: 6379
+
+jwt:
+  secret: ${JWT_SECRET:enterprise-ai-platform-secret-key-minimum-256-bits!!}
+  expiration-ms: 86400000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

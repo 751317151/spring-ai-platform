@@ -1,0 +1,185 @@
+version: '3.9'
+
+services:
+  # ======== 基础设施 ========
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: enterprise-ai-postgres
+    environment:
+      POSTGRES_DB: enterprise_ai
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: enterprise-ai-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+
+  # ======== 可选：本地大模型（Ollama）========
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: enterprise-ai-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    profiles:
+      - local-model
+
+  # ======== 监控体系 ========
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: enterprise-ai-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=15d'
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: enterprise-ai-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_USERS_ALLOW_SIGN_UP: false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+
+  # ======== 应用服务 ========
+
+  gateway-service:
+    build:
+      context: ./gateway-service
+      dockerfile: Dockerfile
+    container_name: enterprise-ai-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      QWEN_API_KEY: ${QWEN_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      JWT_SECRET: ${JWT_SECRET:-enterprise-ai-platform-very-long-secret-key}
+      SPRING_DATA_REDIS_HOST: redis
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  rag-service:
+    build:
+      context: ./rag-service
+      dockerfile: Dockerfile
+    container_name: enterprise-ai-rag
+    ports:
+      - "8081:8081"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      DB_USER: postgres
+      DB_PASS: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/enterprise_ai
+      SPRING_DATA_REDIS_HOST: redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  agent-service:
+    build:
+      context: ./agent-service
+      dockerfile: Dockerfile
+    container_name: enterprise-ai-agent
+    ports:
+      - "8082:8082"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.deepseek.com}
+      AI_MODEL: ${AI_MODEL:-deepseek-chat}
+      DB_USER: postgres
+      DB_PASS: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/enterprise_ai
+      SPRING_DATA_REDIS_HOST: redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: enterprise-ai-auth
+    ports:
+      - "8083:8083"
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-enterprise-ai-platform-very-long-secret-key}
+      DB_USER: postgres
+      DB_PASS: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/enterprise_ai
+      SPRING_DATA_REDIS_HOST: redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  monitor-service:
+    build:
+      context: ./monitor-service
+      dockerfile: Dockerfile
+    container_name: enterprise-ai-monitor
+    ports:
+      - "8084:8084"
+    environment:
+      DB_USER: postgres
+      DB_PASS: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/enterprise_ai
+      SPRING_DATA_REDIS_HOST: redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  redis_data:
+  ollama_data:
+  prometheus_data:
+  grafana_data:

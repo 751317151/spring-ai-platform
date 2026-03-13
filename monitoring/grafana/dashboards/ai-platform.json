@@ -1,0 +1,73 @@
+{
+  "__inputs": [{"name": "DS_PROMETHEUS", "label": "Prometheus", "type": "datasource", "pluginId": "prometheus"}],
+  "__requires": [{"type": "grafana", "id": "grafana", "version": "10.0.0"}],
+  "title": "Enterprise AI Platform",
+  "uid": "enterprise-ai-main",
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-3h", "to": "now"},
+  "panels": [
+    {
+      "id": 1, "title": "AI 请求总量", "type": "stat",
+      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+      "targets": [{"expr": "sum(ai_requests_total_total)", "legendFormat": "总请求数"}],
+      "options": {"colorMode": "background", "graphMode": "area"}
+    },
+    {
+      "id": 2, "title": "当前错误率", "type": "stat",
+      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+      "targets": [{"expr": "rate(ai_requests_errors_total[5m]) / rate(ai_requests_total_total[5m]) * 100", "legendFormat": "错误率 %"}],
+      "options": {"colorMode": "background"},
+      "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 3, "color": "yellow"}, {"value": 5, "color": "red"}]}}}
+    },
+    {
+      "id": 3, "title": "P95 响应延迟 (ms)", "type": "stat",
+      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+      "targets": [{"expr": "histogram_quantile(0.95, rate(ai_request_latency_seconds_bucket[5m])) * 1000", "legendFormat": "P95"}],
+      "options": {"colorMode": "background"},
+      "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 2000, "color": "yellow"}, {"value": 5000, "color": "red"}]}}}
+    },
+    {
+      "id": 4, "title": "当前并发请求", "type": "stat",
+      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
+      "targets": [{"expr": "ai_requests_active", "legendFormat": "活跃请求"}],
+      "options": {"colorMode": "background"}
+    },
+    {
+      "id": 5, "title": "请求量趋势", "type": "timeseries",
+      "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+      "targets": [
+        {"expr": "rate(ai_requests_total_total[1m]) * 60", "legendFormat": "请求/分钟"},
+        {"expr": "rate(ai_requests_errors_total[1m]) * 60", "legendFormat": "错误/分钟"}
+      ]
+    },
+    {
+      "id": 6, "title": "响应延迟分布", "type": "timeseries",
+      "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8},
+      "targets": [
+        {"expr": "histogram_quantile(0.50, rate(ai_request_latency_seconds_bucket[5m])) * 1000", "legendFormat": "P50"},
+        {"expr": "histogram_quantile(0.95, rate(ai_request_latency_seconds_bucket[5m])) * 1000", "legendFormat": "P95"},
+        {"expr": "histogram_quantile(0.99, rate(ai_request_latency_seconds_bucket[5m])) * 1000", "legendFormat": "P99"}
+      ]
+    },
+    {
+      "id": 7, "title": "各 Agent 请求分布", "type": "piechart",
+      "gridPos": {"x": 0, "y": 12, "w": 8, "h": 8},
+      "targets": [{"expr": "sum by (agent) (rate(ai_request_latency_seconds_count[5m]))", "legendFormat": "{{agent}}"}]
+    },
+    {
+      "id": 8, "title": "Token 消耗趋势", "type": "timeseries",
+      "gridPos": {"x": 8, "y": 12, "w": 16, "h": 8},
+      "targets": [
+        {"expr": "rate(ai_tokens_prompt_total[5m]) * 60", "legendFormat": "Prompt Token/分钟"},
+        {"expr": "rate(ai_tokens_completion_total[5m]) * 60", "legendFormat": "Completion Token/分钟"}
+      ]
+    },
+    {
+      "id": 9, "title": "服务健康状态", "type": "table",
+      "gridPos": {"x": 0, "y": 20, "w": 24, "h": 6},
+      "targets": [{"expr": "up{job=~\".*-service\"}", "legendFormat": "{{job}}", "instant": true}],
+      "transformations": [{"id": "organize", "options": {}}]
+    }
+  ]
+}

@@ -1,0 +1,138 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway-service
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  # 关闭各 AI starter 的自动 ChatModel 注册，避免多 starter 并存时 bean 名称冲突
+  # gateway-service 通过 ModelGatewayService 按需手动构建 ChatModel
+  ai:
+    openai:
+      chat:
+        enabled: false
+      api-key: "placeholder"        # starter 需要此字段，但不会自动创建 ChatModel
+    anthropic:
+      chat:
+        enabled: false
+      api-key: "placeholder"
+    ollama:
+      chat:
+        enabled: false
+      base-url: http://localhost:11434
+
+
+# ======== AI 多模型注册表 ========
+ai:
+  models:
+    default-model: deepseek-chat
+    load-balance-strategy: round-robin  # round-robin | weighted | least-latency
+
+    # 场景路由规则
+    scene-routes:
+      code: [deepseek-chat, gpt-4o]             # 代码场景优先 DeepSeek
+      analysis: [gpt-4o, claude-3-5-sonnet]     # 分析场景优先 GPT-4o
+      document: [qwen-plus, gpt-4o-mini]        # 文档场景
+      default: [deepseek-chat, qwen-plus]
+
+    # 模型注册表
+    registry:
+      # OpenAI GPT-4o
+      - id: gpt-4o
+        name: gpt-4o
+        provider: openai
+        api-key: ${OPENAI_API_KEY:sk-xxx}
+        base-url: https://api.openai.com
+        enabled: true
+        weight: 2
+        capabilities: [chat, code, analysis]
+        rpm-limit: 60
+
+      # OpenAI GPT-4o-mini
+      - id: gpt-4o-mini
+        name: gpt-4o-mini
+        provider: openai
+        api-key: ${OPENAI_API_KEY:sk-xxx}
+        base-url: https://api.openai.com
+        enabled: true
+        weight: 3
+        capabilities: [chat]
+        rpm-limit: 500
+
+      # DeepSeek（OpenAI 协议兼容）
+      - id: deepseek-chat
+        name: deepseek-chat
+        provider: deepseek
+        api-key: ${DEEPSEEK_API_KEY:sk-xxx}
+        base-url: https://api.deepseek.com
+        enabled: true
+        weight: 3
+        capabilities: [chat, code]
+        rpm-limit: 60
+
+      # 通义千问（OpenAI 协议兼容）
+      - id: qwen-plus
+        name: qwen-plus
+        provider: qwen
+        api-key: ${QWEN_API_KEY:sk-xxx}
+        base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+        enabled: true
+        weight: 2
+        capabilities: [chat, document]
+        rpm-limit: 60
+
+      # Anthropic Claude
+      - id: claude-3-5-sonnet
+        name: claude-3-5-sonnet-20241022
+        provider: anthropic
+        api-key: ${ANTHROPIC_API_KEY:sk-ant-xxx}
+        enabled: true
+        weight: 2
+        capabilities: [chat, analysis, code]
+        rpm-limit: 50
+
+      # Ollama 本地 Llama3（私有化部署）
+      - id: llama3-local
+        name: llama3.1:8b
+        provider: ollama
+        base-url: http://localhost:11434
+        enabled: false
+        weight: 1
+        capabilities: [chat]
+        rpm-limit: 999
+
+# ======== Resilience4j 熔断配置 ========
+resilience4j:
+  circuitbreaker:
+    instances:
+      aiGateway:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+  ratelimiter:
+    instances:
+      aiGateway:
+        limit-for-period: 100
+        limit-refresh-period: 1s
+        timeout-duration: 0
+
+# ======== JWT 配置 ========
+jwt:
+  secret: ${JWT_SECRET:enterprise-ai-platform-secret-key-minimum-256-bits!!}
+  expiration-ms: 86400000  # 24h
+
+# ======== Actuator ========
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
