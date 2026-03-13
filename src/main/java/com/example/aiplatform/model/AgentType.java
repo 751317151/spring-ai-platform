@@ -1,0 +1,11 @@
+package com.example.aiplatform.model;
+
+public enum AgentType {
+    RND_ASSISTANT,
+    QUALITY_ASSISTANT,
+    SALES_ASSISTANT,
+    COMPLIANCE_ASSISTANT,
+    SUPPLY_CHAIN_ASSISTANT,
+    HR_ADMIN_ASSISTANT,
+    FINANCE_ANALYSIS_ASSISTANT
+}
