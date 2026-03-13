@@ -1262,23 +1262,65 @@
         document.getElementById('send-btn').disabled = true;
         addThinking();
         try {
-            let response;
+            let response = '';
             try {
-                const endpoint = currentAgent === 'multi'
-                    ? SERVICES.agent + '/agent/multi/execute'
-                    : SERVICES.agent + '/agent/' + currentAgent + '/chat';
-                const body = currentAgent === 'multi' ? {task:msg} : {message:msg};
-                const data = await apiCall(endpoint, {
-                    method:'POST',
-                    headers:{'X-User-Id':currentUserId,'X-Session-Id':'session-'+currentAgent},
-                    body:JSON.stringify(body)
-                });
-                response = (data.data !== undefined ? data.data : data.message) || '已收到您的消息';
+                if (currentAgent === 'multi') {
+                    const data = await apiCall(SERVICES.agent + '/agent/multi/execute', {
+                        method:'POST',
+                        headers:{'X-User-Id':currentUserId,'X-Session-Id':'session-'+currentAgent},
+                        body:JSON.stringify({task:msg})
+                    });
+                    response = (data.data !== undefined ? data.data : data.message) || '已收到您的消息';
+                    removeThinking();
+                    addMessage('ai', response);
+                } else {
+                    const endpoint = SERVICES.agent + '/agent/' + currentAgent + '/chat/stream';
+                    const res = await fetch(endpoint, {
+                        method:'POST',
+                        headers:{
+                            'Content-Type':'application/json',
+                            'X-User-Id':currentUserId,
+                            'X-Session-Id':'session-'+currentAgent,
+                            ...(authToken ? {'Authorization':'Bearer ' + authToken} : {})
+                        },
+                        body:JSON.stringify({message:msg})
+                    });
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    removeThinking();
+                    const aiMsg = addMessage('ai', '');
+                    const bubble = aiMsg.querySelector('.msg-bubble');
+                    const reader = res.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+                    while (true) {
+                        const {done, value} = await reader.read();
+                        if (done) break;
+                        buffer += decoder.decode(value, {stream: true});
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop();
+                        for (const line of lines) {
+                            if (!line.startsWith('data:')) continue;
+                            const jsonStr = line.substring(5).trim();
+                            if (!jsonStr) continue;
+                            try {
+                                const event = JSON.parse(jsonStr);
+                                if (event.done) break;
+                                if (event.chunk) {
+                                    response += event.chunk;
+                                    bubble.innerHTML = response.replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
+                                    const msgs = document.getElementById('chat-messages');
+                                    msgs.scrollTop = msgs.scrollHeight;
+                                }
+                            } catch(pe) {}
+                        }
+                    }
+                    if (!response) response = '已收到您的消息';
+                }
             } catch(e) {
                 response = await mockAgentResponse(currentAgent, msg);
+                removeThinking();
+                addMessage('ai', response);
             }
-            removeThinking();
-            addMessage('ai', response);
             chatHistory.push({role:'assistant',content:response});
         } catch(e) {
             removeThinking();

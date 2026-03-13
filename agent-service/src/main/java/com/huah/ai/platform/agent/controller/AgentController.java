@@ -3,22 +3,18 @@ package com.huah.ai.platform.agent.controller;
 import com.huah.ai.platform.agent.multi.MultiAgentOrchestrator;
 import com.huah.ai.platform.agent.service.*;
 import com.huah.ai.platform.common.dto.Result;
-import com.huah.ai.platform.agent.service.FinanceAssistantAgent;
-import com.huah.ai.platform.agent.service.HrAssistantAgent;
-import com.huah.ai.platform.agent.service.QcAssistantAgent;
-import com.huah.ai.platform.agent.service.RdAssistantAgent;
-import com.huah.ai.platform.agent.service.SalesAssistantAgent;
-import com.huah.ai.platform.agent.service.SupplyChainAgent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import reactor.core.publisher.Flux;
 
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Agent 统一入口控制器
@@ -49,43 +45,105 @@ public class AgentController {
 
         String message = body.get("message");
         if (message == null || message.isBlank()) return Result.fail(400, "message 不能为空");
-        return Result.ok(routeToAgent(agentType, userId, sessionId, message));
+
+        log.info("[Chat] 收到请求 agent={}, userId={}, sessionId={}, messageLength={}",
+                agentType, userId, sessionId, message.length());
+        log.info("[Chat] 用户输入 agent={}, userId={}, message={}",
+                agentType, userId, truncate(message, 500));
+
+        long startTime = System.currentTimeMillis();
+        try {
+            String response = routeToAgent(agentType, userId, sessionId, message);
+            long latency = System.currentTimeMillis() - startTime;
+            log.info("[Chat] 模型输出 agent={}, userId={}, latency={}ms, responseLength={}, response={}",
+                    agentType, userId, latency,
+                    response != null ? response.length() : 0,
+                    truncate(response, 500));
+            return Result.ok(response);
+        } catch (Exception e) {
+            long latency = System.currentTimeMillis() - startTime;
+            log.error("[Chat] 调用失败 agent={}, userId={}, latency={}ms, error={}",
+                    agentType, userId, latency, e.getMessage(), e);
+            throw e;
+        }
     }
 
     /** 流式对话（SSE）- 所有 Agent 支持 */
     @PostMapping(value = "/{agentType}/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chatStream(
-            @PathVariable String agentType,
+            @PathVariable(name = "agentType") String agentType,
             @RequestBody Map<String, String> body,
             @RequestHeader(value = "X-User-Id", defaultValue = "anonymous") String userId,
             @RequestHeader(value = "X-Session-Id", defaultValue = "default") String sessionId) {
 
-        SseEmitter emitter = new SseEmitter(120_000L);
+        SseEmitter emitter = new SseEmitter(180_000L);
         String message = body.get("message");
+
+        log.info("[Stream] 收到请求 agent={}, userId={}, sessionId={}, messageLength={}",
+                agentType, userId, sessionId, message != null ? message.length() : 0);
+        log.info("[Stream] 用户输入 agent={}, userId={}, message={}",
+                agentType, userId, truncate(message, 500));
+
+        if (message == null || message.isBlank()) {
+            log.warn("[Stream] 消息为空, agent={}, userId={}", agentType, userId);
+            sendChunk(emitter, "message 不能为空");
+            sendDone(emitter);
+            return emitter;
+        }
+
+        long startTime = System.currentTimeMillis();
+        AtomicInteger chunkCount = new AtomicInteger(0);
+        StringBuilder fullResponse = new StringBuilder();
 
         executor.submit(() -> {
             try {
-                if ("rd".equals(agentType)) {
-                    // rd Agent 使用原生 Reactor 流
-                    rdAssistant.chatStream(userId, sessionId, message)
-                            .doOnNext(chunk -> sendChunk(emitter, chunk))
-                            .doOnComplete(() -> sendDone(emitter))
-                            .doOnError(emitter::completeWithError)
-                            .subscribe();
-                } else {
-                    // 其他 Agent 同步调用后逐块推送，模拟流式体验
-                    String fullResponse = routeToAgent(agentType, userId, sessionId, message);
-                    for (int i = 0; i < fullResponse.length(); i += 6) {
-                        sendChunk(emitter, fullResponse.substring(i, Math.min(i + 6, fullResponse.length())));
-                        Thread.sleep(15);
-                    }
+                if ("multi".equals(agentType)) {
+                    log.info("[Stream] Multi-Agent 任务, 使用同步回退, userId={}", userId);
+                    String resp = multiAgentOrchestrator.executeComplexTask(userId, sessionId, message);
+                    sendChunk(emitter, resp);
+                    chunkCount.incrementAndGet();
+                    long latency = System.currentTimeMillis() - startTime;
+                    log.info("[Stream] 模型输出 agent=multi, userId={}, latency={}ms, responseLength={}, response={}",
+                            userId, latency, resp != null ? resp.length() : 0, truncate(resp, 500));
                     sendDone(emitter);
+                } else {
+                    Flux<String> flux = routeToAgentStream(agentType, userId, sessionId, message);
+                    flux.doOnNext(chunk -> {
+                                chunkCount.incrementAndGet();
+                                fullResponse.append(chunk);
+                                sendChunk(emitter, chunk);
+                            })
+                            .doOnComplete(() -> {
+                                long latency = System.currentTimeMillis() - startTime;
+                                String resp = fullResponse.toString();
+                                log.info("[Stream] 模型输出 agent={}, userId={}, latency={}ms, chunks={}, responseLength={}, response={}",
+                                        agentType, userId, latency, chunkCount.get(),
+                                        resp.length(), truncate(resp, 500));
+                                sendDone(emitter);
+                            })
+                            .doOnError(e -> {
+                                long latency = System.currentTimeMillis() - startTime;
+                                log.error("[Stream] 流式异常 agent={}, userId={}, latency={}ms, chunks={}, partialResponse={}, error={}",
+                                        agentType, userId, latency, chunkCount.get(),
+                                        truncate(fullResponse.toString(), 200), e.getMessage(), e);
+                                emitter.completeWithError(e);
+                            })
+                            .subscribe();
                 }
             } catch (Exception e) {
-                log.error("流式异常: {}", e.getMessage());
+                long latency = System.currentTimeMillis() - startTime;
+                log.error("[Stream] 执行异常 agent={}, userId={}, latency={}ms, error={}",
+                        agentType, userId, latency, e.getMessage(), e);
                 emitter.completeWithError(e);
             }
         });
+
+        emitter.onTimeout(() -> {
+            long latency = System.currentTimeMillis() - startTime;
+            log.warn("[Stream] 连接超时 agent={}, userId={}, latency={}ms, chunks={}",
+                    agentType, userId, latency, chunkCount.get());
+        });
+
         return emitter;
     }
 
@@ -97,7 +155,24 @@ public class AgentController {
             @RequestHeader(value = "X-Session-Id", defaultValue = "default") String sessionId) {
         String task = body.get("task");
         if (task == null || task.isBlank()) return Result.fail(400, "task 不能为空");
-        return Result.ok(multiAgentOrchestrator.executeComplexTask(userId, sessionId, task));
+
+        log.info("[Multi] 收到任务 userId={}, taskLength={}", userId, task.length());
+        log.info("[Multi] 用户输入 userId={}, task={}", userId, truncate(task, 500));
+        long startTime = System.currentTimeMillis();
+        try {
+            String result = multiAgentOrchestrator.executeComplexTask(userId, sessionId, task);
+            long latency = System.currentTimeMillis() - startTime;
+            log.info("[Multi] 模型输出 userId={}, latency={}ms, responseLength={}, response={}",
+                    userId, latency,
+                    result != null ? result.length() : 0,
+                    truncate(result, 500));
+            return Result.ok(result);
+        } catch (Exception e) {
+            long latency = System.currentTimeMillis() - startTime;
+            log.error("[Multi] 任务失败 userId={}, latency={}ms, error={}",
+                    userId, latency, e.getMessage(), e);
+            throw e;
+        }
     }
 
     private String routeToAgent(String type, String userId, String sessionId, String msg) {
@@ -113,6 +188,18 @@ public class AgentController {
         };
     }
 
+    private Flux<String> routeToAgentStream(String type, String userId, String sessionId, String msg) {
+        return switch (type) {
+            case "rd"           -> rdAssistant.chatStream(userId, sessionId, msg);
+            case "sales"        -> salesAssistant.chatStream(userId, sessionId, msg);
+            case "hr"           -> hrAssistant.chatStream(userId, sessionId, msg);
+            case "finance"      -> financeAssistant.chatStream(userId, sessionId, msg);
+            case "supply-chain" -> supplyChainAgent.chatStream(userId, sessionId, msg);
+            case "qc"           -> qcAssistant.chatStream(userId, sessionId, msg);
+            default             -> throw new IllegalArgumentException("未知 Agent: " + type);
+        };
+    }
+
     private void sendChunk(SseEmitter emitter, String chunk) {
         try { emitter.send(SseEmitter.event().data(Map.of("chunk", chunk, "done", false))); }
         catch (IOException e) { emitter.completeWithError(e); }
@@ -121,5 +208,10 @@ public class AgentController {
     private void sendDone(SseEmitter emitter) {
         try { emitter.send(SseEmitter.event().data(Map.of("chunk", "", "done", true))); emitter.complete(); }
         catch (IOException e) { emitter.completeWithError(e); }
+    }
+
+    private static String truncate(String text, int maxLen) {
+        if (text == null) return "null";
+        return text.length() <= maxLen ? text : text.substring(0, maxLen) + "...(truncated, total=" + text.length() + ")";
     }
 }

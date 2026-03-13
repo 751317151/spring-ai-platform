@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
@@ -66,6 +67,7 @@ public class MultiAgentOrchestrator {
 
         return chatClientBuilder
                 .defaultAdvisors(
+                    new SimpleLoggerAdvisor(),
                     MessageChatMemoryAdvisor.builder(
                         memoryService.getOrCreateMemory(sessionId + "-executor")
                     ).build()

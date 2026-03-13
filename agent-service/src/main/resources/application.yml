@@ -37,5 +37,5 @@ management:
 
 logging:
   level:
-    com.huah.ai.platform.agent: INFO
-    org.springframework.ai: DEBUG
+    org.springframework.ai: debug
+    com.huah.ai.platform.agent: debug

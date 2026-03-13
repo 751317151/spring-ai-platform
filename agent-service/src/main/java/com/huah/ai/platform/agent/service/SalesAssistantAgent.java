@@ -4,7 +4,9 @@ import com.huah.ai.platform.agent.memory.ConversationMemoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 
 /**
  * 销售报价助手
@@ -28,11 +30,22 @@ public class SalesAssistantAgent {
     public String chat(String userId, String sessionId, String message) {
         return chatClientBuilder
                 .defaultSystem(SYSTEM)
-                .defaultAdvisors(MessageChatMemoryAdvisor.builder(memoryService.getOrCreateMemory(sessionId)).build())
+                .defaultAdvisors(new SimpleLoggerAdvisor(), MessageChatMemoryAdvisor.builder(memoryService.getOrCreateMemory(sessionId)).build())
                 .build()
                 .prompt()
                 .system(s -> s.param("userId", userId))
                 .user(message)
                 .call().content();
+    }
+
+    public Flux<String> chatStream(String userId, String sessionId, String message) {
+        return chatClientBuilder
+                .defaultSystem(SYSTEM)
+                .defaultAdvisors(new SimpleLoggerAdvisor(), MessageChatMemoryAdvisor.builder(memoryService.getOrCreateMemory(sessionId)).build())
+                .build()
+                .prompt()
+                .system(s -> s.param("userId", userId))
+                .user(message)
+                .stream().content();
     }
 }

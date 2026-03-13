@@ -3,6 +3,7 @@ package com.huah.ai.platform.rag.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor;
@@ -47,7 +48,7 @@ public class RagService {
         Advisor ragAdvisor = buildRagAdvisor(knowledgeBaseId, topK);
 
         ChatClient client = chatClientBuilder
-                .defaultAdvisors(ragAdvisor)
+                .defaultAdvisors(new SimpleLoggerAdvisor(), ragAdvisor)
                 .build();
 
         return client.prompt()
@@ -64,7 +65,7 @@ public class RagService {
         Advisor ragAdvisor = buildRagAdvisor(knowledgeBaseId, topK);
 
         ChatClient client = chatClientBuilder
-                .defaultAdvisors(ragAdvisor)
+                .defaultAdvisors(new SimpleLoggerAdvisor(), ragAdvisor)
                 .build();
 
         return client.prompt()
@@ -82,7 +83,7 @@ public class RagService {
         Advisor ragAdvisor = buildRagAdvisor(knowledgeBaseId, topK);
 
         var promptBuilder = chatClientBuilder
-                .defaultAdvisors(ragAdvisor)
+                .defaultAdvisors(new SimpleLoggerAdvisor(), ragAdvisor)
                 .build()
                 .prompt()
                 .system(RAG_SYSTEM_PROMPT);
