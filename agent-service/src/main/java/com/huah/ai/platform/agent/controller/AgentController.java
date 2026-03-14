@@ -21,7 +21,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
@@ -32,8 +31,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.springframework.ai.chat.memory.ChatMemory.CONVERSATION_ID;
 
 /**
  * Agent 统一入口控制器
@@ -56,7 +53,7 @@ public class AgentController {
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     @Autowired
-    private ChatClient chatClient;
+    private ChatClient rdChatClient;
 
     /** 普通对话（所有 Agent 统一入口） */
     @PostMapping("/{agentType}/chat")
@@ -285,15 +282,4 @@ public class AgentController {
         return text.length() <= maxLen ? text : text.substring(0, maxLen) + "...(truncated, total=" + text.length() + ")";
     }
 
-    @RequestMapping(value="/test", produces = "text/html;charset=utf-8")
-    public Flux<String> chat(
-            @RequestParam("prompt") String prompt,
-            @RequestParam("chatId") String chatId,
-            @RequestParam("userId") String userId){
-        return chatClient.prompt()
-                .user(prompt)
-                .advisors(a -> a.param(CONVERSATION_ID, chatId))
-                .stream()
-                .content();
-    }
 }

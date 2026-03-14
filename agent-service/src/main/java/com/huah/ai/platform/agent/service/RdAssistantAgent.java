@@ -1,12 +1,8 @@
 package com.huah.ai.platform.agent.service;
 
-import com.huah.ai.platform.agent.memory.ConversationMemoryService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
-import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
-import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -18,38 +14,16 @@ import static org.springframework.ai.chat.memory.ChatMemory.CONVERSATION_ID;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class RdAssistantAgent {
 
-    private final ChatClient.Builder chatClientBuilder;
-    private final ConversationMemoryService memoryService;
+    private final ChatClient chatClient;
 
-    private static final String SYSTEM_PROMPT = """
-            你是企业研发部门的智能助手，专注于以下领域：
-            1. 代码审查与优化建议
-            2. 技术文档查询和解答
-            3. 缺陷(Bug)分析和修复建议
-            4. 技术选型分析对比
-            5. API接口设计建议
-            6. 性能优化方案
-            
-            你可以使用以下工具：
-            - queryJira: 查询 Jira 缺陷系统
-            - queryConfluence: 查询 Confluence 技术文档
-            - querySonar: 查询 SonarQube 代码质量报告
-            - getGitHistory: 获取 Git 提交历史
-            
-            回答要技术准确、简洁，提供可操作的建议。
-            当前用户: {userId}
-            """;
+    public RdAssistantAgent(@Qualifier("rdChatClient") ChatClient chatClient) {
+        this.chatClient = chatClient;
+    }
 
     public String chat(String userId, String sessionId, String message) {
-        ChatMemory memory = memoryService.getOrCreateMemory(sessionId);
-
-        return chatClientBuilder
-                .defaultSystem(SYSTEM_PROMPT)
-                .defaultAdvisors(new SimpleLoggerAdvisor(), MessageChatMemoryAdvisor.builder(memory).build())
-                .build()
+        return chatClient
                 .prompt()
                 .system(s -> s.param("userId", userId))
                 .user(message)
@@ -59,12 +33,7 @@ public class RdAssistantAgent {
     }
 
     public Flux<String> chatStream(String userId, String sessionId, String message) {
-        ChatMemory memory = memoryService.getOrCreateMemory(sessionId);
-
-        return chatClientBuilder
-                .defaultSystem(SYSTEM_PROMPT)
-                .defaultAdvisors(new SimpleLoggerAdvisor(), MessageChatMemoryAdvisor.builder(memory).build())
-                .build()
+        return chatClient
                 .prompt()
                 .system(s -> s.param("userId", userId))
                 .user(message)
