@@ -1,6 +1,8 @@
 package com.huah.ai.platform.rag.model;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -9,14 +11,13 @@ import java.time.LocalDateTime;
  * 文档元数据实体
  */
 @Data
-@Entity
-@Table(name = "document_meta")
+@TableName("document_meta")
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class DocumentMeta {
 
-    @Id
+    @TableId(type = IdType.ASSIGN_UUID)
     private String id;
 
     private String filename;

@@ -9,10 +9,6 @@ spring:
     username: ${DB_USER:postgres}
     password: ${DB_PASS:blackstar}
     driver-class-name: org.postgresql.Driver
-  jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: false
   data:
     redis:
       host: ${REDIS_HOST:localhost}

@@ -1,6 +1,7 @@
 package com.huah.ai.platform.gateway.controller;
 
 import com.huah.ai.platform.common.dto.Result;
+import com.huah.ai.platform.gateway.config.ModelRegistryConfig;
 import com.huah.ai.platform.gateway.model.ChatRequest;
 import com.huah.ai.platform.gateway.model.ChatResponse;
 import com.huah.ai.platform.gateway.service.ModelGatewayService;
@@ -18,6 +19,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -34,6 +36,7 @@ import java.util.concurrent.Executors;
 public class GatewayController {
 
     private final ModelGatewayService gatewayService;
+    private final ModelRegistryConfig registryConfig;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     /**
@@ -127,14 +130,52 @@ public class GatewayController {
     }
 
     /**
-     * 获取模型列表
+     * 获取模型列表（注册表 + 运行时统计）
      */
     @GetMapping("/models")
     public Result<Map<String, Object>> listModels() {
-        return Result.ok(Map.of(
-                "stats", gatewayService.getAllStats(),
-                "count", gatewayService.getAllStats().size()
-        ));
+        Map<String, Object> result = new HashMap<>();
+
+        // 模型注册信息
+        List<Map<String, Object>> models = new ArrayList<>();
+        if (registryConfig.getRegistry() != null) {
+            var statsMap = gatewayService.getAllStats();
+            for (ModelRegistryConfig.ModelDefinition def : registryConfig.getRegistry()) {
+                Map<String, Object> m = new HashMap<>();
+                m.put("id", def.getId());
+                m.put("name", def.getName());
+                m.put("provider", def.getProvider());
+                m.put("enabled", def.isEnabled());
+                m.put("weight", def.getWeight());
+                m.put("capabilities", def.getCapabilities());
+                m.put("rpmLimit", def.getRpmLimit());
+
+                var stats = statsMap.get(def.getId());
+                if (stats != null) {
+                    m.put("totalCalls", stats.getTotalCalls().get());
+                    m.put("successCalls", stats.getSuccessCalls().get());
+                    m.put("avgLatencyMs", Math.round(stats.getAvgLatencyMs()));
+                    m.put("successRate", Math.round(stats.getSuccessRate() * 1000) / 10.0);
+                } else {
+                    m.put("totalCalls", 0);
+                    m.put("successCalls", 0);
+                    m.put("avgLatencyMs", 0);
+                    m.put("successRate", 100.0);
+                }
+                models.add(m);
+            }
+        }
+        result.put("models", models);
+        result.put("count", models.size());
+
+        // 场景路由规则
+        result.put("sceneRoutes", registryConfig.getSceneRoutes() != null
+                ? registryConfig.getSceneRoutes() : Map.of());
+
+        // 负载均衡策略
+        result.put("loadBalanceStrategy", registryConfig.getLoadBalanceStrategy());
+
+        return Result.ok(result);
     }
 
     /**

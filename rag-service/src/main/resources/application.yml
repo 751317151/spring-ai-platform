@@ -9,13 +9,6 @@ spring:
     username: ${DB_USER:postgres}
     password: ${DB_PASS:blackstar}
     driver-class-name: org.postgresql.Driver
-  jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: false
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
   data:
     redis:
       host: localhost
@@ -24,16 +17,23 @@ spring:
   # Spring AI 配置
   ai:
     openai:
-      api-key: ${OPENAI_API_KEY:sk-xxx}
-      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+      api-key: ${aliQwen_api}
+      base-url: ${LLM_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
       chat:
         options:
-          model: gpt-4o-mini
-          temperature: 0.3
+          model: ${LLM_MODEL:qwen3-vl-plus-2025-12-19}
+          temperature: 0.7
+          max-tokens: 4096
       embedding:
         options:
-          model: text-embedding-3-small
-
+          model: qwen3-vl-embedding
+    ollama:
+      base-url: http://localhost:11434     # Ollama 服务地址
+      embedding:
+        options:
+          model: bge-m3
+    model:
+      embedding: ollama
     # PGVector 向量库
     vectorstore:
       pgvector:

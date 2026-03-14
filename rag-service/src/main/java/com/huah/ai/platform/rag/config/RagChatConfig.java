@@ -2,6 +2,7 @@ package com.huah.ai.platform.rag.config;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -17,7 +18,7 @@ public class RagChatConfig {
      * chatModel 由 spring-ai-openai-spring-boot-starter 自动配置注入
      */
     @Bean
-    public ChatClient.Builder chatClientBuilder(ChatModel chatModel) {
+    public ChatClient.Builder chatClientBuilder(@Qualifier("openAiChatModel") ChatModel chatModel) {
         return ChatClient.builder(chatModel);
     }
 }

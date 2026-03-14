@@ -1,10 +1,10 @@
 package com.huah.ai.platform.rag.service;
 
 import com.huah.ai.platform.common.exception.BizException;
+import com.huah.ai.platform.rag.mapper.DocumentMetaMapper;
+import com.huah.ai.platform.rag.mapper.KnowledgeBaseMapper;
 import com.huah.ai.platform.rag.model.DocumentMeta;
 import com.huah.ai.platform.rag.model.KnowledgeBase;
-import com.huah.ai.platform.rag.repository.DocumentMetaRepository;
-import com.huah.ai.platform.rag.repository.KnowledgeBaseRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -20,22 +20,26 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DocumentMetaService {
 
-    private final DocumentMetaRepository docRepo;
-    private final KnowledgeBaseRepository kbRepo;
+    private final DocumentMetaMapper docMapper;
+    private final KnowledgeBaseMapper kbMapper;
 
     // ===== 知识库 =====
 
     public KnowledgeBase getKnowledgeBase(String id) {
-        return kbRepo.findById(id)
-                .orElseThrow(() -> new BizException("知识库不存在: " + id));
+        KnowledgeBase kb = kbMapper.selectById(id);
+        if (kb == null) {
+            throw new BizException("知识库不存在: " + id);
+        }
+        return kb;
     }
 
     public List<KnowledgeBase> listKnowledgeBases() {
-        return kbRepo.findAll();
+        return kbMapper.selectList(null);
     }
 
     public KnowledgeBase createKnowledgeBase(KnowledgeBase kb) {
-        return kbRepo.save(kb);
+        kbMapper.insert(kb);
+        return kb;
     }
 
     public KnowledgeBase updateKnowledgeBase(String id, KnowledgeBase update) {
@@ -46,16 +50,17 @@ public class DocumentMetaService {
         if (update.getChunkSize() > 0) kb.setChunkSize(update.getChunkSize());
         if (update.getChunkOverlap() >= 0) kb.setChunkOverlap(update.getChunkOverlap());
         if (update.getStatus() != null) kb.setStatus(update.getStatus());
-        return kbRepo.save(kb);
+        kbMapper.updateById(kb);
+        return kb;
     }
 
     public void deleteKnowledgeBase(String id) {
         KnowledgeBase kb = getKnowledgeBase(id);
-        List<DocumentMeta> docs = docRepo.findByKnowledgeBaseId(id);
+        List<DocumentMeta> docs = docMapper.selectByKnowledgeBaseId(id);
         if (!docs.isEmpty()) {
             throw new BizException("知识库下还有 " + docs.size() + " 个文档，请先删除文档");
         }
-        kbRepo.delete(kb);
+        kbMapper.deleteById(kb.getId());
     }
 
     // ===== 文档元数据 =====
@@ -63,21 +68,22 @@ public class DocumentMetaService {
     public DocumentMeta saveDocumentMeta(DocumentMeta meta) {
         meta.setIndexedAt(LocalDateTime.now());
         meta.setStatus("INDEXED");
-        DocumentMeta saved = docRepo.save(meta);
+        docMapper.insert(meta);
         // 更新知识库统计
-        kbRepo.findById(meta.getKnowledgeBaseId()).ifPresent(kb -> {
+        KnowledgeBase kb = kbMapper.selectById(meta.getKnowledgeBaseId());
+        if (kb != null) {
             kb.setDocumentCount(kb.getDocumentCount() + 1);
             kb.setTotalChunks(kb.getTotalChunks() + meta.getChunkCount());
-            kbRepo.save(kb);
-        });
-        return saved;
+            kbMapper.updateById(kb);
+        }
+        return meta;
     }
 
     public List<DocumentMeta> listDocuments(String kbId) {
-        return docRepo.findByKnowledgeBaseId(kbId);
+        return docMapper.selectByKnowledgeBaseId(kbId);
     }
 
     public void deleteDocument(String docId) {
-        docRepo.deleteById(docId);
+        docMapper.deleteById(docId);
     }
 }

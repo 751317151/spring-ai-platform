@@ -819,149 +819,25 @@
                         <div style="font-size:12px;color:var(--text3);margin-top:2px">统一管理所有 AI 模型，支持路由、负载均衡、熔断降级</div>
                     </div>
                     <div style="display:flex;gap:8px">
-                        <select class="form-select" style="padding:6px 12px;font-size:12px;width:auto">
-                            <option>负载均衡: 轮询</option>
-                            <option>负载均衡: 加权</option>
-                            <option>负载均衡: 最低延迟</option>
+                        <select id="gw-lb-strategy" class="form-select" style="padding:6px 12px;font-size:12px;width:auto">
+                            <option value="round-robin">负载均衡: 轮询</option>
+                            <option value="weighted">负载均衡: 加权</option>
+                            <option value="least-latency">负载均衡: 最低延迟</option>
                         </select>
                         <button class="btn btn-primary btn-sm" onclick="showToast('配置已保存')">保存配置</button>
                     </div>
                 </div>
 
-                <div class="model-grid">
-                    <div class="model-card online">
-                        <div class="model-card-head">
-                            <div>
-                                <div class="model-name">DeepSeek Chat</div>
-                                <div class="model-provider">DeepSeek · OpenAI 兼容协议</div>
-                            </div>
-                            <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-                                <span class="pill green">在线</span>
-                                <span class="tag">权重: 3</span>
-                            </div>
-                        </div>
-                        <div class="model-stats">
-                            <div class="model-stat"><div class="model-stat-val">620</div><div class="model-stat-label">avg ms</div></div>
-                            <div class="model-stat"><div class="model-stat-val">99.8%</div><div class="model-stat-label">成功率</div></div>
-                            <div class="model-stat"><div class="model-stat-val">12,841</div><div class="model-stat-label">今日调用</div></div>
-                        </div>
-                        <div style="margin-top:10px;display:flex;gap:6px">
-                            <span class="pill blue">chat</span><span class="pill blue">code</span>
-                        </div>
-                    </div>
-
-                    <div class="model-card online">
-                        <div class="model-card-head">
-                            <div>
-                                <div class="model-name">GPT-4o Mini</div>
-                                <div class="model-provider">OpenAI · 官方协议</div>
-                            </div>
-                            <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-                                <span class="pill green">在线</span>
-                                <span class="tag">权重: 3</span>
-                            </div>
-                        </div>
-                        <div class="model-stats">
-                            <div class="model-stat"><div class="model-stat-val">980</div><div class="model-stat-label">avg ms</div></div>
-                            <div class="model-stat"><div class="model-stat-val">99.5%</div><div class="model-stat-label">成功率</div></div>
-                            <div class="model-stat"><div class="model-stat-val">8,923</div><div class="model-stat-label">今日调用</div></div>
-                        </div>
-                        <div style="margin-top:10px;display:flex;gap:6px">
-                            <span class="pill blue">chat</span>
-                        </div>
-                    </div>
-
-                    <div class="model-card online">
-                        <div class="model-card-head">
-                            <div>
-                                <div class="model-name">通义千问 Plus</div>
-                                <div class="model-provider">阿里云 · OpenAI 兼容协议</div>
-                            </div>
-                            <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-                                <span class="pill green">在线</span>
-                                <span class="tag">权重: 2</span>
-                            </div>
-                        </div>
-                        <div class="model-stats">
-                            <div class="model-stat"><div class="model-stat-val">720</div><div class="model-stat-label">avg ms</div></div>
-                            <div class="model-stat"><div class="model-stat-val">99.1%</div><div class="model-stat-label">成功率</div></div>
-                            <div class="model-stat"><div class="model-stat-val">4,211</div><div class="model-stat-label">今日调用</div></div>
-                        </div>
-                        <div style="margin-top:10px;display:flex;gap:6px">
-                            <span class="pill blue">chat</span><span class="pill blue">document</span>
-                        </div>
-                    </div>
-
-                    <div class="model-card online">
-                        <div class="model-card-head">
-                            <div>
-                                <div class="model-name">GPT-4o</div>
-                                <div class="model-provider">OpenAI · 官方协议</div>
-                            </div>
-                            <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-                                <span class="pill amber">限流</span>
-                                <span class="tag">权重: 2</span>
-                            </div>
-                        </div>
-                        <div class="model-stats">
-                            <div class="model-stat"><div class="model-stat-val">1840</div><div class="model-stat-label">avg ms</div></div>
-                            <div class="model-stat"><div class="model-stat-val">97.2%</div><div class="model-stat-label">成功率</div></div>
-                            <div class="model-stat"><div class="model-stat-val">1,892</div><div class="model-stat-label">今日调用</div></div>
-                        </div>
-                        <div style="margin-top:10px;display:flex;gap:6px">
-                            <span class="pill blue">chat</span><span class="pill blue">code</span><span class="pill blue">analysis</span>
-                        </div>
-                    </div>
-
-                    <div class="model-card online">
-                        <div class="model-card-head">
-                            <div>
-                                <div class="model-name">Claude 3.5 Sonnet</div>
-                                <div class="model-provider">Anthropic · 官方协议</div>
-                            </div>
-                            <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-                                <span class="pill green">在线</span>
-                                <span class="tag">权重: 2</span>
-                            </div>
-                        </div>
-                        <div class="model-stats">
-                            <div class="model-stat"><div class="model-stat-val">1210</div><div class="model-stat-label">avg ms</div></div>
-                            <div class="model-stat"><div class="model-stat-val">99.4%</div><div class="model-stat-label">成功率</div></div>
-                            <div class="model-stat"><div class="model-stat-val">892</div><div class="model-stat-label">今日调用</div></div>
-                        </div>
-                        <div style="margin-top:10px;display:flex;gap:6px">
-                            <span class="pill blue">analysis</span><span class="pill blue">writing</span>
-                        </div>
-                    </div>
-
-                    <div class="model-card offline">
-                        <div class="model-card-head">
-                            <div>
-                                <div class="model-name">Llama 3.1 8B</div>
-                                <div class="model-provider">Ollama · 私有化本地部署</div>
-                            </div>
-                            <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-                                <span class="pill red">离线</span>
-                                <span class="tag">权重: 1</span>
-                            </div>
-                        </div>
-                        <div class="model-stats">
-                            <div class="model-stat"><div class="model-stat-val">—</div><div class="model-stat-label">avg ms</div></div>
-                            <div class="model-stat"><div class="model-stat-val">—</div><div class="model-stat-label">成功率</div></div>
-                            <div class="model-stat"><div class="model-stat-val">0</div><div class="model-stat-label">今日调用</div></div>
-                        </div>
-                    </div>
+                <div class="model-grid" id="gw-model-grid">
+                    <!-- dynamically populated by loadGatewayData() -->
                 </div>
 
                 <div class="card" style="margin-top:16px">
                     <div class="card-title">场景路由规则</div>
                     <table>
                         <thead><tr><th>场景</th><th>优先模型</th><th>降级模型</th><th>操作</th></tr></thead>
-                        <tbody>
-                        <tr><td>代码 (code)</td><td><span class="mono">deepseek-chat</span></td><td><span class="mono">gpt-4o</span></td><td><button class="btn btn-ghost btn-sm" onclick="showToast('路由规则已更新')">编辑</button></td></tr>
-                        <tr><td>分析 (analysis)</td><td><span class="mono">gpt-4o</span></td><td><span class="mono">claude-3-5-sonnet</span></td><td><button class="btn btn-ghost btn-sm" onclick="showToast('路由规则已更新')">编辑</button></td></tr>
-                        <tr><td>文档 (document)</td><td><span class="mono">qwen-plus</span></td><td><span class="mono">gpt-4o-mini</span></td><td><button class="btn btn-ghost btn-sm" onclick="showToast('路由规则已更新')">编辑</button></td></tr>
-                        <tr><td>默认 (default)</td><td><span class="mono">deepseek-chat</span></td><td><span class="mono">qwen-plus</span></td><td><button class="btn btn-ghost btn-sm" onclick="showToast('路由规则已更新')">编辑</button></td></tr>
+                        <tbody id="gw-routes-body">
+                            <!-- dynamically populated by loadGatewayData() -->
                         </tbody>
                     </table>
                 </div>
@@ -972,23 +848,23 @@
                 <div class="metrics-grid" style="grid-template-columns:repeat(4,1fr)">
                     <div class="metric-card blue">
                         <div class="metric-label">P95 延迟</div>
-                        <div class="metric-value">1,240<span style="font-size:14px">ms</span></div>
-                        <div class="metric-sub">P99: 2,840ms</div>
+                        <div class="metric-value" id="mon-p95">—<span style="font-size:14px">ms</span></div>
+                        <div class="metric-sub" id="mon-p99-sub">P99: —ms</div>
                     </div>
                     <div class="metric-card green">
                         <div class="metric-label">错误率</div>
-                        <div class="metric-value">0.8<span style="font-size:14px">%</span></div>
-                        <div class="metric-sub">今日: 228 次错误</div>
+                        <div class="metric-value" id="mon-error-rate">—<span style="font-size:14px">%</span></div>
+                        <div class="metric-sub" id="mon-error-sub">今日: — 次错误</div>
                     </div>
                     <div class="metric-card amber">
                         <div class="metric-label">活跃会话</div>
-                        <div class="metric-value" id="active-sessions">47</div>
-                        <div class="metric-sub">峰值: 312</div>
+                        <div class="metric-value" id="active-sessions">—</div>
+                        <div class="metric-sub" id="mon-requests-sub">总请求: —</div>
                     </div>
                     <div class="metric-card purple">
-                        <div class="metric-label">Token 余额</div>
-                        <div class="metric-value">82<span style="font-size:14px">%</span></div>
-                        <div class="metric-sub">预计剩余 8 天</div>
+                        <div class="metric-label">Token 消耗</div>
+                        <div class="metric-value" id="mon-tokens">—</div>
+                        <div class="metric-sub" id="mon-tokens-sub">Prompt + Completion</div>
                     </div>
                 </div>
 
@@ -1011,40 +887,16 @@
                     <div class="card">
                         <div class="card-title">Token 消耗（按用户 Top 10）</div>
                         <table>
-                            <thead><tr><th>用户</th><th>部门</th><th>今日 Token</th><th>配额使用</th></tr></thead>
-                            <tbody>
-                            <tr><td>张三</td><td>研发中心</td><td><span class="mono">48,291</span></td><td><span class="pill green">24%</span></td></tr>
-                            <tr><td>李四</td><td>销售部</td><td><span class="mono">42,118</span></td><td><span class="pill green">42%</span></td></tr>
-                            <tr><td>王五</td><td>研发中心</td><td><span class="mono">38,844</span></td><td><span class="pill amber">39%</span></td></tr>
-                            <tr><td>赵六</td><td>财务部</td><td><span class="mono">31,002</span></td><td><span class="pill green">62%</span></td></tr>
-                            <tr><td>钱七</td><td>HR部</td><td><span class="mono">28,991</span></td><td><span class="pill green">58%</span></td></tr>
+                            <thead><tr><th>用户</th><th>Agent</th><th>调用次数</th><th>平均延迟</th></tr></thead>
+                            <tbody id="mon-top-users-body">
+                                <tr><td colspan="4" style="text-align:center;color:var(--text3)">加载中...</td></tr>
                             </tbody>
                         </table>
                     </div>
                     <div class="card">
                         <div class="card-title">告警事件</div>
-                        <div style="display:flex;flex-direction:column;gap:8px">
-                            <div style="padding:10px 12px;background:var(--amber-dim);border:1px solid rgba(245,166,35,0.2);border-radius:var(--r);font-size:12px">
-                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-                                    <span style="color:var(--amber);font-weight:500">⚠ 限流告警</span>
-                                    <span style="color:var(--text3);font-size:10px">14:31:02</span>
-                                </div>
-                                <div style="color:var(--text2)">GPT-4o 触发 RPM 限制 (60/min)，已自动切换至降级模型</div>
-                            </div>
-                            <div style="padding:10px 12px;background:var(--green-dim);border:1px solid rgba(61,214,140,0.2);border-radius:var(--r);font-size:12px">
-                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-                                    <span style="color:var(--green);font-weight:500">✓ 熔断恢复</span>
-                                    <span style="color:var(--text3);font-size:10px">13:58:44</span>
-                                </div>
-                                <div style="color:var(--text2)">aiGateway 熔断器恢复 CLOSED 状态，服务正常</div>
-                            </div>
-                            <div style="padding:10px 12px;background:var(--red-dim);border:1px solid rgba(240,96,96,0.2);border-radius:var(--r);font-size:12px">
-                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-                                    <span style="color:var(--red);font-weight:500">✗ Token超限</span>
-                                    <span style="color:var(--text3);font-size:10px">13:22:15</span>
-                                </div>
-                                <div style="color:var(--text2)">用户 EMP042 今日 Token 消耗超出配额 100,000，已拦截请求</div>
-                            </div>
+                        <div id="mon-alerts-container" style="display:flex;flex-direction:column;gap:8px">
+                            <div style="padding:10px 12px;font-size:12px;color:var(--text3);text-align:center">加载中...</div>
                         </div>
                     </div>
                 </div>
@@ -1054,19 +906,15 @@
             <div class="page" id="page-users">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
                     <div style="font-size:15px;font-weight:500;color:var(--text)">权限管理</div>
-                    <button class="btn btn-primary btn-sm" onclick="showToast('新用户已添加')">+ 新增用户</button>
+                    <button class="btn btn-primary btn-sm" onclick="showAddUserModal()">+ 新增用户</button>
                 </div>
 
                 <div class="card" style="margin-bottom:16px">
                     <div class="card-title">Bot 权限配置</div>
                     <table>
                         <thead><tr><th>Bot</th><th>允许角色</th><th>数据范围</th><th>操作权限</th><th>日 Token 限额</th><th>状态</th></tr></thead>
-                        <tbody>
-                        <tr><td>研发助手</td><td><span class="pill blue">ADMIN</span> <span class="pill blue">RD</span></td><td>部门级</td><td>读/写</td><td><span class="mono">200,000</span></td><td><span class="pill green">启用</span></td></tr>
-                        <tr><td>销售助手</td><td><span class="pill blue">ADMIN</span> <span class="pill blue">SALES</span></td><td>部门级</td><td>读/写</td><td><span class="mono">100,000</span></td><td><span class="pill green">启用</span></td></tr>
-                        <tr><td>HR 助手</td><td><span class="pill blue">ADMIN</span> <span class="pill blue">HR</span></td><td>个人级</td><td>读/写</td><td><span class="mono">50,000</span></td><td><span class="pill green">启用</span></td></tr>
-                        <tr><td>财务助手</td><td><span class="pill blue">ADMIN</span> <span class="pill blue">FINANCE</span></td><td>部门级</td><td>只读</td><td><span class="mono">50,000</span></td><td><span class="pill green">启用</span></td></tr>
-                        <tr><td>供应链助手</td><td><span class="pill blue">ADMIN</span> <span class="pill blue">RD</span></td><td>部门级</td><td>读/写</td><td><span class="mono">80,000</span></td><td><span class="pill green">启用</span></td></tr>
+                        <tbody id="users-permissions-body">
+                            <tr><td colspan="6" style="text-align:center;color:var(--text3)">加载中...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -1074,44 +922,9 @@
                 <div class="card">
                     <div class="card-title">用户列表</div>
                     <table>
-                        <thead><tr><th>用户</th><th>工号</th><th>部门</th><th>角色</th><th>今日 Token</th><th>上次登录</th><th>操作</th></tr></thead>
-                        <tbody>
-                        <tr>
-                            <td><div style="display:flex;align-items:center;gap:8px"><div class="avatar" style="width:24px;height:24px;font-size:10px">张</div> 张三</div></td>
-                            <td><span class="mono">EMP001</span></td>
-                            <td>研发中心</td>
-                            <td><span class="pill blue">RD</span></td>
-                            <td><span class="mono">48,291</span></td>
-                            <td>14:32</td>
-                            <td><button class="btn btn-ghost btn-sm" onclick="showToast('权限已更新')">编辑</button></td>
-                        </tr>
-                        <tr>
-                            <td><div style="display:flex;align-items:center;gap:8px"><div class="avatar" style="width:24px;height:24px;font-size:10px">李</div> 李四</div></td>
-                            <td><span class="mono">EMP002</span></td>
-                            <td>销售部</td>
-                            <td><span class="pill green">SALES</span></td>
-                            <td><span class="mono">42,118</span></td>
-                            <td>14:31</td>
-                            <td><button class="btn btn-ghost btn-sm" onclick="showToast('权限已更新')">编辑</button></td>
-                        </tr>
-                        <tr>
-                            <td><div style="display:flex;align-items:center;gap:8px"><div class="avatar" style="width:24px;height:24px;font-size:10px">王</div> 王五</div></td>
-                            <td><span class="mono">EMP003</span></td>
-                            <td>研发中心</td>
-                            <td><span class="pill blue">RD</span></td>
-                            <td><span class="mono">38,844</span></td>
-                            <td>14:28</td>
-                            <td><button class="btn btn-ghost btn-sm" onclick="showToast('权限已更新')">编辑</button></td>
-                        </tr>
-                        <tr>
-                            <td><div style="display:flex;align-items:center;gap:8px"><div class="avatar" style="width:24px;height:24px;font-size:10px">赵</div> 赵六</div></td>
-                            <td><span class="mono">EMP004</span></td>
-                            <td>财务部</td>
-                            <td><span class="pill amber">FINANCE</span></td>
-                            <td><span class="mono">31,002</span></td>
-                            <td>13:55</td>
-                            <td><button class="btn btn-ghost btn-sm" onclick="showToast('权限已更新')">编辑</button></td>
-                        </tr>
+                        <thead><tr><th>用户</th><th>工号</th><th>部门</th><th>角色</th><th>状态</th><th>上次登录</th><th>操作</th></tr></thead>
+                        <tbody id="users-list-body">
+                            <tr><td colspan="7" style="text-align:center;color:var(--text3)">加载中...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -1120,6 +933,22 @@
         </div><!-- /content -->
     </div><!-- /main -->
 </div><!-- /app -->
+
+<div id="user-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);padding:24px;width:400px;max-width:90vw">
+        <div style="font-size:14px;font-weight:500;color:var(--text);margin-bottom:16px" id="user-modal-title">新增用户</div>
+        <input type="hidden" id="user-modal-id">
+        <div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">用户名</label><input class="form-input" id="user-modal-username" placeholder="username" style="width:100%"></div>
+        <div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">密码</label><input class="form-input" id="user-modal-password" type="password" placeholder="password" style="width:100%"></div>
+        <div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">工号</label><input class="form-input" id="user-modal-empid" placeholder="EMP001" style="width:100%"></div>
+        <div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">部门</label><input class="form-input" id="user-modal-dept" placeholder="研发中心" style="width:100%"></div>
+        <div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">角色 (逗号分隔)</label><input class="form-input" id="user-modal-roles" placeholder="ROLE_RD,ROLE_USER" style="width:100%"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+            <button class="btn btn-ghost btn-sm" onclick="closeUserModal()">取消</button>
+            <button class="btn btn-primary btn-sm" onclick="saveUser()">保存</button>
+        </div>
+    </div>
+</div>
 
 <div id="toast"></div>
 
@@ -1157,6 +986,7 @@
     }
     function apiGet(url) { return apiCall(url); }
     function apiPost(url, body) { return apiCall(url, {method:'POST', body:JSON.stringify(body)}); }
+    function apiPut(url, body) { return apiCall(url, {method:'PUT', body:JSON.stringify(body)}); }
 
     // ===== AUTH =====
     async function doLogin() {
@@ -1198,6 +1028,8 @@
         event.currentTarget.classList.add('active');
         document.getElementById('breadcrumb-cur').textContent = pageLabels[page] || page;
         if (page === 'monitor') { setTimeout(initMonitorCharts, 100); loadMonitorData(); }
+        if (page === 'gateway') { loadGatewayData(); }
+        if (page === 'users') { loadUsersData(); }
     }
 
     // ===== CHARTS =====
@@ -1220,20 +1052,345 @@
         const el2 = document.getElementById('error-chart');
         if (!el1 || el1._chart) return;
         const hrs = Array.from({length:24},function(_,i){return i+':00';});
-        el1._chart = new Chart(el1.getContext('2d'), {type:'bar', data:{labels:hrs, datasets:[{label:'P50',data:Array.from({length:24},function(){return Math.floor(Math.random()*300+400);}),backgroundColor:'rgba(79,142,247,0.7)',borderRadius:2,barThickness:8},{label:'P95',data:Array.from({length:24},function(){return Math.floor(Math.random()*600+800);}),backgroundColor:'rgba(245,166,35,0.6)',borderRadius:2,barThickness:8}]}, options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{boxWidth:10,padding:10}}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(255,255,255,0.04)'}}}}});
-        el2._chart = new Chart(el2.getContext('2d'), {type:'line', data:{labels:hrs, datasets:[{label:'错误率%',data:Array.from({length:24},function(){return +(Math.random()*2).toFixed(2);}),borderColor:'#f06060',borderWidth:1.5,fill:true,backgroundColor:'rgba(240,96,96,0.1)',tension:0.4,pointRadius:0}]}, options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(255,255,255,0.04)'},min:0,max:5}}}});
+        var emptyData = Array.from({length:24},function(){return 0;});
+        el1._chart = new Chart(el1.getContext('2d'), {type:'bar', data:{labels:hrs, datasets:[{label:'P50',data:emptyData.slice(),backgroundColor:'rgba(79,142,247,0.7)',borderRadius:2,barThickness:8},{label:'P95',data:emptyData.slice(),backgroundColor:'rgba(245,166,35,0.6)',borderRadius:2,barThickness:8}]}, options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{boxWidth:10,padding:10}}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(255,255,255,0.04)'}}}}});
+        el2._chart = new Chart(el2.getContext('2d'), {type:'line', data:{labels:hrs, datasets:[{label:'错误率%',data:emptyData.slice(),borderColor:'#f06060',borderWidth:1.5,fill:true,backgroundColor:'rgba(240,96,96,0.1)',tension:0.4,pointRadius:0}]}, options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(255,255,255,0.04)'},min:0}}}});
     }
 
     // ===== MONITOR DATA =====
     async function loadMonitorData() {
+        var promises = [
+            apiGet(SERVICES.monitor + '/monitor/overview').catch(function() { return null; }),
+            apiGet(SERVICES.monitor + '/monitor/token-top-users').catch(function() { return null; }),
+            apiGet(SERVICES.monitor + '/monitor/alerts').catch(function() { return null; }),
+            apiGet(SERVICES.monitor + '/monitor/hourly-stats').catch(function() { return null; })
+        ];
+        var results = await Promise.all(promises);
+        var overviewResp = results[0], topUsersResp = results[1], alertsResp = results[2], hourlyResp = results[3];
+
+        // Overview metrics
+        if (overviewResp) {
+            var d = overviewResp.data || overviewResp;
+            var p95El = document.getElementById('mon-p95');
+            var p99Sub = document.getElementById('mon-p99-sub');
+            var errEl = document.getElementById('mon-error-rate');
+            var errSub = document.getElementById('mon-error-sub');
+            var activeEl = document.getElementById('active-sessions');
+            var reqSub = document.getElementById('mon-requests-sub');
+            var tokEl = document.getElementById('mon-tokens');
+            var tokSub = document.getElementById('mon-tokens-sub');
+            if (p95El) p95El.innerHTML = (d.p95LatencyMs || 0) + '<span style="font-size:14px">ms</span>';
+            if (p99Sub) p99Sub.textContent = 'P99: ' + (d.p99LatencyMs || 0) + 'ms';
+            var errorRate = d.successRate != null ? ((1 - d.successRate) * 100).toFixed(1) : '0.0';
+            if (errEl) errEl.innerHTML = errorRate + '<span style="font-size:14px">%</span>';
+            if (errSub) errSub.textContent = '今日: ' + (Math.round(d.errorRequests) || 0) + ' 次错误';
+            if (activeEl) activeEl.textContent = Math.round(d.activeRequests) || 0;
+            if (reqSub) reqSub.textContent = '总请求: ' + (Math.round(d.totalRequests) || 0).toLocaleString();
+            var totalTokens = d.totalTokens || 0;
+            if (tokEl) tokEl.textContent = totalTokens > 1000000 ? (totalTokens/1000000).toFixed(1) + 'M' : totalTokens > 1000 ? (totalTokens/1000).toFixed(1) + 'K' : totalTokens;
+            if (tokSub) tokSub.textContent = 'Prompt: ' + (Math.round(d.totalPromptTokens) || 0).toLocaleString() + ' + Completion: ' + (Math.round(d.totalCompletionTokens) || 0).toLocaleString();
+            // Also update dashboard cards
+            var dmReq = document.getElementById('m-requests');
+            var dmTok = document.getElementById('m-tokens');
+            var dmLat = document.getElementById('m-latency');
+            var dmSuc = document.getElementById('m-success');
+            if (dmReq) dmReq.textContent = (Math.round(d.totalRequests) || 0).toLocaleString();
+            if (dmTok) dmTok.textContent = totalTokens > 1000000 ? (totalTokens/1000000).toFixed(1)+'M' : totalTokens > 1000 ? (totalTokens/1000).toFixed(1)+'K' : totalTokens;
+            if (dmLat && d.avgLatencyMs) dmLat.innerHTML = Math.round(d.avgLatencyMs) + '<span style="font-size:14px">ms</span>';
+            if (dmSuc && d.successRate != null) dmSuc.innerHTML = (d.successRate*100).toFixed(1) + '<span style="font-size:14px">%</span>';
+        }
+
+        // Top users table
+        if (topUsersResp) {
+            var users = topUsersResp.data || [];
+            var tbody = document.getElementById('mon-top-users-body');
+            if (tbody) {
+                if (users.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text3)">暂无数据</td></tr>';
+                } else {
+                    tbody.innerHTML = '';
+                    users.forEach(function(u) {
+                        var tr = document.createElement('tr');
+                        tr.innerHTML = '<td>' + (u.user_id || '-') + '</td>' +
+                            '<td>' + (u.agent_type || '-') + '</td>' +
+                            '<td><span class="mono">' + (u.calls || 0) + '</span></td>' +
+                            '<td><span class="mono">' + Math.round(u.avg_latency || 0) + 'ms</span></td>';
+                        tbody.appendChild(tr);
+                    });
+                }
+            }
+        }
+
+        // Alerts
+        if (alertsResp) {
+            var alertData = alertsResp.data || {};
+            var alerts = alertData.alerts || [];
+            var container = document.getElementById('mon-alerts-container');
+            if (container) {
+                if (alerts.length === 0) {
+                    container.innerHTML = '<div style="padding:10px 12px;font-size:12px;color:var(--text3);text-align:center">暂无告警</div>';
+                } else {
+                    container.innerHTML = '';
+                    var levelConfig = {
+                        'ERROR': {color:'var(--red)',bg:'var(--red-dim)',border:'rgba(240,96,96,0.2)',icon:'✗'},
+                        'WARNING': {color:'var(--amber)',bg:'var(--amber-dim)',border:'rgba(245,166,35,0.2)',icon:'⚠'},
+                        'INFO': {color:'var(--green)',bg:'var(--green-dim)',border:'rgba(61,214,140,0.2)',icon:'✓'}
+                    };
+                    alerts.forEach(function(a) {
+                        var cfg = levelConfig[a.level] || levelConfig['WARNING'];
+                        var time = a.time ? new Date(a.time).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
+                        var div = document.createElement('div');
+                        div.style.cssText = 'padding:10px 12px;background:'+cfg.bg+';border:1px solid '+cfg.border+';border-radius:var(--r);font-size:12px';
+                        div.innerHTML = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
+                            '<span style="color:'+cfg.color+';font-weight:500">'+cfg.icon+' '+a.type+'</span>' +
+                            '<span style="color:var(--text3);font-size:10px">'+time+'</span></div>' +
+                            '<div style="color:var(--text2)">'+a.message+'</div>';
+                        container.appendChild(div);
+                    });
+                }
+            }
+        }
+
+        // Hourly chart data
+        if (hourlyResp) {
+            var hourlyData = hourlyResp.data || [];
+            var p50 = Array.from({length:24},function(){return 0;});
+            var p95 = Array.from({length:24},function(){return 0;});
+            var errRate = Array.from({length:24},function(){return 0;});
+            hourlyData.forEach(function(row) {
+                var h = row.hour;
+                if (h >= 0 && h < 24) {
+                    p50[h] = Math.round(row.p50 || 0);
+                    p95[h] = Math.round(row.p95 || 0);
+                    var total = row.total || 0;
+                    var errors = row.errors || 0;
+                    errRate[h] = total > 0 ? +(errors * 100 / total).toFixed(2) : 0;
+                }
+            });
+            var el1 = document.getElementById('latency-chart');
+            var el2 = document.getElementById('error-chart');
+            if (el1 && el1._chart) {
+                el1._chart.data.datasets[0].data = p50;
+                el1._chart.data.datasets[1].data = p95;
+                el1._chart.update();
+            }
+            if (el2 && el2._chart) {
+                el2._chart.data.datasets[0].data = errRate;
+                el2._chart.update();
+            }
+        }
+    }
+
+    // ===== GATEWAY DATA =====
+    var providerLabels = {openai:'OpenAI',deepseek:'DeepSeek',qwen:'阿里云 通义千问',anthropic:'Anthropic',ollama:'Ollama 本地',zhipu:'智谱',moonshot:'Moonshot'};
+    async function loadGatewayData() {
         try {
-            const data = await apiGet(SERVICES.monitor + '/monitor/overview');
-            const d = data.data || data;
-            if (d.totalRequests) document.getElementById('m-requests').textContent = d.totalRequests.toLocaleString();
-            if (d.totalTokens) document.getElementById('m-tokens').textContent = (d.totalTokens/1000000).toFixed(1)+'M';
-            if (d.avgLatencyMs) document.getElementById('m-latency').innerHTML = d.avgLatencyMs + '<span style="font-size:14px">ms</span>';
-            if (d.successRate) document.getElementById('m-success').innerHTML = (d.successRate*100).toFixed(1) + '<span style="font-size:14px">%</span>';
-        } catch(e) { /* keep mock dashboard data */ }
+            var resp = await apiGet(SERVICES.gateway + '/chat/models');
+            var d = resp.data || resp;
+            var models = d.models || [];
+            var sceneRoutes = d.sceneRoutes || {};
+            var strategy = d.loadBalanceStrategy || 'round-robin';
+
+            // Set load balance dropdown
+            var sel = document.getElementById('gw-lb-strategy');
+            if (sel) sel.value = strategy;
+
+            // Render model cards
+            var grid = document.getElementById('gw-model-grid');
+            if (grid) {
+                grid.innerHTML = '';
+                models.forEach(function(m) {
+                    var isOnline = m.enabled;
+                    var statusPill = isOnline ? '<span class="pill green">在线</span>' : '<span class="pill red">离线</span>';
+                    var capsHtml = (m.capabilities || []).map(function(c){return '<span class="pill blue">'+c+'</span>';}).join('');
+                    var avgMs = isOnline ? (m.avgLatencyMs || 0) : '—';
+                    var rate = isOnline ? (m.successRate || 100) + '%' : '—';
+                    var calls = (m.totalCalls || 0).toLocaleString();
+                    var providerLabel = providerLabels[m.provider] || m.provider;
+
+                    var card = document.createElement('div');
+                    card.className = 'model-card ' + (isOnline ? 'online' : 'offline');
+                    card.innerHTML =
+                        '<div class="model-card-head"><div>' +
+                            '<div class="model-name">' + (m.name || m.id) + '</div>' +
+                            '<div class="model-provider">' + providerLabel + '</div>' +
+                        '</div><div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">' +
+                            statusPill +
+                            '<span class="tag">权重: ' + (m.weight || 1) + '</span>' +
+                        '</div></div>' +
+                        '<div class="model-stats">' +
+                            '<div class="model-stat"><div class="model-stat-val">' + avgMs + '</div><div class="model-stat-label">avg ms</div></div>' +
+                            '<div class="model-stat"><div class="model-stat-val">' + rate + '</div><div class="model-stat-label">成功率</div></div>' +
+                            '<div class="model-stat"><div class="model-stat-val">' + calls + '</div><div class="model-stat-label">总调用</div></div>' +
+                        '</div>' +
+                        (capsHtml ? '<div style="margin-top:10px;display:flex;gap:6px">' + capsHtml + '</div>' : '');
+                    grid.appendChild(card);
+                });
+            }
+
+            // Render scene routing table
+            var routesBody = document.getElementById('gw-routes-body');
+            if (routesBody) {
+                routesBody.innerHTML = '';
+                var sceneLabels = {code:'代码 (code)',analysis:'分析 (analysis)',document:'文档 (document)','default':'默认 (default)'};
+                Object.keys(sceneRoutes).forEach(function(scene) {
+                    var modelList = sceneRoutes[scene] || [];
+                    var primary = modelList[0] || '-';
+                    var fallback = modelList.length > 1 ? modelList.slice(1).join(', ') : '-';
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = '<td>' + (sceneLabels[scene] || scene) + '</td>' +
+                        '<td><span class="mono">' + primary + '</span></td>' +
+                        '<td><span class="mono">' + fallback + '</span></td>' +
+                        '<td><button class="btn btn-ghost btn-sm" onclick="showToast(\'路由规则已更新\')">编辑</button></td>';
+                    routesBody.appendChild(tr);
+                });
+            }
+        } catch(e) { /* keep empty state on failure */ }
+    }
+
+    // ===== USERS/PERMISSIONS DATA =====
+    var botLabels = {rd:'研发助手',sales:'销售助手',hr:'HR 助手',finance:'财务助手','supply-chain':'供应链助手',qc:'质控助手',multi:'多 Agent 协作'};
+    var scopeLabels = {ALL:'全部',DEPARTMENT:'部门级',SELF:'个人级'};
+    var roleColors = {'ROLE_ADMIN':'red','ROLE_RD':'blue','ROLE_SALES':'green','ROLE_HR':'purple','ROLE_FINANCE':'amber','ROLE_USER':'teal'};
+
+    async function loadUsersData() {
+        var promises = [
+            apiGet(SERVICES.auth + '/auth/users').catch(function() { return null; }),
+            apiGet(SERVICES.auth + '/auth/permissions').catch(function() { return null; })
+        ];
+        var results = await Promise.all(promises);
+        var usersResp = results[0], permsResp = results[1];
+
+        if (usersResp) {
+            var users = usersResp.data || [];
+            renderUserList(users);
+        }
+        if (permsResp) {
+            var perms = permsResp.data || [];
+            renderBotPermissions(perms);
+        }
+    }
+
+    function renderUserList(users) {
+        var tbody = document.getElementById('users-list-body');
+        if (!tbody) return;
+        if (users.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text3)">暂无用户数据</td></tr>';
+            return;
+        }
+        tbody.innerHTML = '';
+        users.forEach(function(u) {
+            var firstChar = (u.username || '?').charAt(0).toUpperCase();
+            var rolesArr = (u.roles || 'ROLE_USER').split(',');
+            var primaryRole = rolesArr[0].trim();
+            var roleLabel = primaryRole.replace('ROLE_', '');
+            var color = roleColors[primaryRole] || 'blue';
+            var lastLogin = u.lastLoginAt
+                ? new Date(u.lastLoginAt).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})
+                : '-';
+            var statusPill = u.enabled !== false ? '<span class="pill green">启用</span>' : '<span class="pill red">禁用</span>';
+
+            var tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td><div style="display:flex;align-items:center;gap:8px">' +
+                    '<div class="avatar" style="width:24px;height:24px;font-size:10px">' + firstChar + '</div> ' +
+                    u.username + '</div></td>' +
+                '<td><span class="mono">' + (u.employeeId || '-') + '</span></td>' +
+                '<td>' + (u.department || '-') + '</td>' +
+                '<td><span class="pill ' + color + '">' + roleLabel + '</span></td>' +
+                '<td>' + statusPill + '</td>' +
+                '<td>' + lastLogin + '</td>' +
+                '<td><button class="btn btn-ghost btn-sm" onclick="editUser(\'' + u.id + '\')">编辑</button></td>';
+            tbody.appendChild(tr);
+        });
+    }
+
+    function renderBotPermissions(perms) {
+        var tbody = document.getElementById('users-permissions-body');
+        if (!tbody) return;
+        if (perms.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text3)">暂无权限数据</td></tr>';
+            return;
+        }
+        tbody.innerHTML = '';
+        perms.forEach(function(p) {
+            var roles = (p.allowedRoles || '').split(',').map(function(r) {
+                var label = r.trim().replace('ROLE_', '');
+                return label ? '<span class="pill blue">' + label + '</span>' : '';
+            }).join(' ');
+            var tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td>' + (botLabels[p.botType] || p.botType) + '</td>' +
+                '<td>' + roles + '</td>' +
+                '<td>' + (scopeLabels[p.dataScope] || p.dataScope || '-') + '</td>' +
+                '<td>' + (p.allowedOperations || '-') + '</td>' +
+                '<td><span class="mono">' + (p.dailyTokenLimit || 0).toLocaleString() + '</span></td>' +
+                '<td><span class="pill ' + (p.enabled !== false ? 'green' : 'red') + '">' + (p.enabled !== false ? '启用' : '禁用') + '</span></td>';
+            tbody.appendChild(tr);
+        });
+    }
+
+    // User modal
+    function showAddUserModal() {
+        document.getElementById('user-modal-title').textContent = '新增用户';
+        document.getElementById('user-modal-id').value = '';
+        document.getElementById('user-modal-username').value = '';
+        document.getElementById('user-modal-password').value = '';
+        document.getElementById('user-modal-empid').value = '';
+        document.getElementById('user-modal-dept').value = '';
+        document.getElementById('user-modal-roles').value = 'ROLE_USER';
+        document.getElementById('user-modal').style.display = 'flex';
+    }
+
+    function editUser(userId) {
+        apiGet(SERVICES.auth + '/auth/users/' + userId).then(function(resp) {
+            var u = resp.data || resp;
+            document.getElementById('user-modal-title').textContent = '编辑用户';
+            document.getElementById('user-modal-id').value = u.id || '';
+            document.getElementById('user-modal-username').value = u.username || '';
+            document.getElementById('user-modal-password').value = '';
+            document.getElementById('user-modal-empid').value = u.employeeId || '';
+            document.getElementById('user-modal-dept').value = u.department || '';
+            document.getElementById('user-modal-roles').value = u.roles || '';
+            document.getElementById('user-modal').style.display = 'flex';
+        }).catch(function() {
+            showToast('获取用户信息失败');
+        });
+    }
+
+    function closeUserModal() {
+        document.getElementById('user-modal').style.display = 'none';
+    }
+
+    async function saveUser() {
+        var id = document.getElementById('user-modal-id').value;
+        var body = {
+            username: document.getElementById('user-modal-username').value.trim(),
+            employeeId: document.getElementById('user-modal-empid').value.trim(),
+            department: document.getElementById('user-modal-dept').value.trim(),
+            roles: document.getElementById('user-modal-roles').value.trim()
+        };
+        var password = document.getElementById('user-modal-password').value.trim();
+        if (password) body.password = password;
+
+        try {
+            if (id) {
+                await apiPut(SERVICES.auth + '/auth/users/' + id, body);
+                showToast('用户已更新');
+            } else {
+                if (!body.username || !password) {
+                    showToast('用户名和密码不能为空');
+                    return;
+                }
+                body.password = password;
+                await apiPost(SERVICES.auth + '/auth/users', body);
+                showToast('用户已创建');
+            }
+            closeUserModal();
+            loadUsersData();
+        } catch(e) {
+            showToast('操作失败: ' + e.message);
+        }
     }
 
     // ===== CHAT =====
@@ -1622,14 +1779,15 @@
 
     // ===== REALTIME =====
     function startRealtimeUpdates() {
-        setInterval(function(){
-            const el = document.getElementById('m-requests');
-            if (!el) return;
-            const cur = parseInt(el.textContent.replace(/,/g,''))||28000;
-            el.textContent = (cur+Math.floor(Math.random()*15-3)).toLocaleString();
-            const s = document.getElementById('active-sessions');
-            if (s) s.textContent = Math.floor(Math.random()*50+30);
-        }, 3000);
+        monitorInterval = setInterval(function(){
+            apiGet(SERVICES.monitor + '/monitor/overview').then(function(resp) {
+                var d = resp.data || resp;
+                var el = document.getElementById('m-requests');
+                if (el && d.totalRequests != null) el.textContent = Math.round(d.totalRequests).toLocaleString();
+                var s = document.getElementById('active-sessions');
+                if (s && d.activeRequests != null) s.textContent = Math.round(d.activeRequests);
+            }).catch(function() {});
+        }, 5000);
     }
 
     // ===== TOAST =====

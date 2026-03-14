@@ -1,5 +1,7 @@
 package com.huah.ai.platform.agent.controller;
 
+import com.huah.ai.platform.agent.audit.AiAuditLog;
+import com.huah.ai.platform.agent.audit.AiAuditLogMapper;
 import com.huah.ai.platform.agent.memory.ConversationMemoryService;
 import com.huah.ai.platform.agent.multi.MultiAgentOrchestrator;
 import com.huah.ai.platform.agent.service.FinanceAssistantAgent;
@@ -26,8 +28,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -50,6 +54,7 @@ public class AgentController {
     private final QcAssistantAgent qcAssistant;
     private final MultiAgentOrchestrator multiAgentOrchestrator;
     private final ConversationMemoryService memoryService;
+    private final AiAuditLogMapper auditLogMapper;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     @Autowired
@@ -142,6 +147,7 @@ public class AgentController {
 
                     long latency = System.currentTimeMillis() - startTime;
                     log.info("[Stream] Multi-Agent 完成 userId={}, latency={}ms", userId, latency);
+                    saveAuditLog(userId, sessionId, "multi", message, truncate(finalResult, 500), latency, true, null);
                     sendDone(emitter);
                 } else {
                     Flux<String> flux = routeToAgentStream(agentType, userId, sessionId, message);
@@ -156,6 +162,7 @@ public class AgentController {
                                 log.info("[Stream] 模型输出 agent={}, userId={}, latency={}ms, chunks={}, responseLength={}, response={}",
                                         agentType, userId, latency, chunkCount.get(),
                                         resp.length(), truncate(resp, 500));
+                                saveAuditLog(userId, sessionId, agentType, message, resp, latency, true, null);
                                 sendDone(emitter);
                             })
                             .doOnError(e -> {
@@ -163,6 +170,7 @@ public class AgentController {
                                 log.error("[Stream] 流式异常 agent={}, userId={}, latency={}ms, chunks={}, partialResponse={}, error={}",
                                         agentType, userId, latency, chunkCount.get(),
                                         truncate(fullResponse.toString(), 200), e.getMessage(), e);
+                                saveAuditLog(userId, sessionId, agentType, message, null, latency, false, e.getMessage());
                                 memoryService.rollbackLastUserMessage(sessionId);
                                 sendChunk(emitter, "\n\n[AI 服务异常，请稍后重试]");
                                 sendDone(emitter);
@@ -287,6 +295,45 @@ public class AgentController {
     private static String truncate(String text, int maxLen) {
         if (text == null) return "null";
         return text.length() <= maxLen ? text : text.substring(0, maxLen) + "...(truncated, total=" + text.length() + ")";
+    }
+
+    private void saveAuditLog(String userId, String sessionId, String agentType,
+                              String userMessage, String aiResponse, long latencyMs,
+                              boolean success, String errorMessage) {
+        try {
+            int promptTokens = estimateTokens(userMessage);
+            int completionTokens = estimateTokens(aiResponse);
+            auditLogMapper.insert(AiAuditLog.builder()
+                    .id(UUID.randomUUID().toString())
+                    .userId(userId)
+                    .sessionId(sessionId)
+                    .agentType(agentType)
+                    .userMessage(userMessage != null && userMessage.length() > 500 ? userMessage.substring(0, 500) : userMessage)
+                    .aiResponse(aiResponse != null && aiResponse.length() > 500 ? aiResponse.substring(0, 500) : aiResponse)
+                    .promptTokens(promptTokens)
+                    .completionTokens(completionTokens)
+                    .latencyMs(latencyMs)
+                    .success(success)
+                    .errorMessage(errorMessage)
+                    .createdAt(LocalDateTime.now())
+                    .build());
+        } catch (Exception e) {
+            log.warn("审计日志写入失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 估算 token 数（中文约 2 token/字，英文约 0.75 token/word，取平均 1.3 token/char）
+     */
+    private static int estimateTokens(String text) {
+        if (text == null || text.isEmpty()) return 0;
+        int cjkCount = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c >= 0x4E00 && c <= 0x9FFF) cjkCount++;
+        }
+        int nonCjk = text.length() - cjkCount;
+        return (int) (cjkCount * 1.5 + nonCjk * 0.4);
     }
 
 }

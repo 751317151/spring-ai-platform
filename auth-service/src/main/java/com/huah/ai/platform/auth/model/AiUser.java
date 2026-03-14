@@ -1,6 +1,8 @@
 package com.huah.ai.platform.auth.model;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
 import java.time.LocalDateTime;
 
@@ -8,20 +10,15 @@ import java.time.LocalDateTime;
  * AI 平台用户实体
  */
 @Data
-@Entity
-@Table(name = "ai_users", indexes = {
-    @Index(name = "idx_users_username", columnList = "username")
-})
+@TableName("ai_users")
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class AiUser {
-    @Id
+    @TableId(type = IdType.ASSIGN_UUID)
     private String id;
 
-    @Column(unique = true, nullable = false)
     private String username;
-
     private String passwordHash;
     private String department;
     private String employeeId;

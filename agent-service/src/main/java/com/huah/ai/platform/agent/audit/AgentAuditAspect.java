@@ -15,9 +15,6 @@ import java.util.UUID;
  *
  * 切点：所有 agent service 的 .chat() 方法
  * 记录：调用方、入参摘要、响应摘要、延迟、是否成功
- *
- * 注意：必须与切点目标类在同一 Spring 容器内才能生效。
- * 将此 AOP 放在 agent-service 而非 monitor-service，避免跨进程 AOP 失效问题。
  */
 @Slf4j
 @Aspect
@@ -25,11 +22,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AgentAuditAspect {
 
-    private final AgentAuditLogRepository auditRepo;
+    private final AiAuditLogMapper auditLogMapper;
 
-    /**
-     * 拦截所有 Agent Service 的 chat(userId, sessionId, message) 方法
-     */
     @Around("execution(* com.huah.ai.platform.agent.service.*.chat(String, String, String))")
     public Object auditChat(ProceedingJoinPoint pjp) throws Throwable {
         long start = System.currentTimeMillis();
@@ -53,20 +47,21 @@ public class AgentAuditAspect {
         } finally {
             long latency = System.currentTimeMillis() - start;
             try {
-                auditRepo.save(AiAuditLog.builder()
+                auditLogMapper.insert(AiAuditLog.builder()
                         .id(UUID.randomUUID().toString())
                         .userId(userId)
                         .sessionId(sessionId)
                         .agentType(agentType)
                         .userMessage(userMsg)
                         .aiResponse(response != null ? truncate(response, 500) : null)
+                        .promptTokens(estimateTokens(userMsg))
+                        .completionTokens(estimateTokens(response))
                         .latencyMs(latency)
                         .success(success)
                         .errorMessage(errorMsg)
                         .createdAt(LocalDateTime.now())
                         .build());
             } catch (Exception ex) {
-                // 审计失败不影响主流程
                 log.warn("审计日志写入失败: {}", ex.getMessage());
             }
         }
@@ -75,5 +70,16 @@ public class AgentAuditAspect {
     private String truncate(String s, int maxLen) {
         if (s == null) return null;
         return s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
+    }
+
+    private static int estimateTokens(String text) {
+        if (text == null || text.isEmpty()) return 0;
+        int cjkCount = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c >= 0x4E00 && c <= 0x9FFF) cjkCount++;
+        }
+        int nonCjk = text.length() - cjkCount;
+        return (int) (cjkCount * 1.5 + nonCjk * 0.4);
     }
 }

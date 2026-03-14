@@ -1,7 +1,9 @@
 package com.huah.ai.platform.auth.controller;
 
+import com.huah.ai.platform.auth.mapper.AiUserMapper;
+import com.huah.ai.platform.auth.mapper.BotPermissionMapper;
 import com.huah.ai.platform.auth.model.AiUser;
-import com.huah.ai.platform.auth.repository.AiUserRepository;
+import com.huah.ai.platform.auth.model.BotPermission;
 import com.huah.ai.platform.common.dto.Result;
 import com.huah.ai.platform.common.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
@@ -11,12 +13,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 认证接口 — JWT 登录 / 登出 / 刷新 / 验证
+ * 认证接口 -- JWT 登录 / 登出 / 刷新 / 验证
  */
 @Slf4j
 @RestController
@@ -27,12 +30,13 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
     private final StringRedisTemplate redisTemplate;
-    private final AiUserRepository userRepository;
+    private final AiUserMapper userMapper;
+    private final BotPermissionMapper botPermissionMapper;
 
     private static final String TOKEN_BLACKLIST_PREFIX = "ai:token:blacklist:";
 
     /**
-     * 登录 — 支持数据库用户 + 演示 fallback（admin/admin123）
+     * 登录 -- 支持数据库用户 + 演示 fallback（admin/admin123）
      */
     @PostMapping("/login")
     public Result<Map<String, Object>> login(@RequestBody Map<String, String> body) {
@@ -44,7 +48,7 @@ public class AuthController {
         }
 
         // 1. 尝试从数据库查询用户
-        AiUser user = userRepository.findByUsernameAndEnabledTrue(username).orElse(null);
+        AiUser user = userMapper.selectByUsernameAndEnabled(username);
 
         String roles;
         String department;
@@ -62,9 +66,9 @@ public class AuthController {
 
             // 更新最后登录时间
             user.setLastLoginAt(LocalDateTime.now());
-            userRepository.save(user);
+            userMapper.updateById(user);
         } else {
-            // 演示 fallback — admin/admin123 直接通过
+            // 演示 fallback -- admin/admin123 直接通过
             if ("admin".equals(username) && "admin123".equals(password)) {
                 roles = "ROLE_ADMIN,ROLE_RD,ROLE_SALES,ROLE_HR,ROLE_USER";
                 department = "系统管理";
@@ -98,7 +102,7 @@ public class AuthController {
     }
 
     /**
-     * 登出 — Token 加入 Redis 黑名单
+     * 登出 -- Token 加入 Redis 黑名单
      */
     @PostMapping("/logout")
     public Result<Void> logout(
@@ -175,8 +179,8 @@ public class AuthController {
         String[] depts = {"系统管理", "研发中心", "销售部", "人力资源部", "财务部"};
 
         for (int i = 0; i < users.length; i++) {
-            if (userRepository.findByUsername(users[i]).isEmpty()) {
-                userRepository.save(AiUser.builder()
+            if (userMapper.selectByUsername(users[i]) == null) {
+                userMapper.insert(AiUser.builder()
                         .id(UUID.randomUUID().toString())
                         .username(users[i])
                         .passwordHash(passwordEncoder.encode("admin123"))
@@ -187,5 +191,125 @@ public class AuthController {
             }
         }
         return Result.ok("演示用户初始化完成");
+    }
+
+    // ===== User Management =====
+
+    /**
+     * 获取所有用户列表
+     */
+    @GetMapping("/users")
+    public Result<List<AiUser>> listUsers() {
+        List<AiUser> users = userMapper.selectList(null);
+        users.forEach(u -> u.setPasswordHash(null));
+        return Result.ok(users);
+    }
+
+    /**
+     * 获取单个用户
+     */
+    @GetMapping("/users/{id}")
+    public Result<AiUser> getUser(@PathVariable(name = "id") String id) {
+        AiUser user = userMapper.selectById(id);
+        if (user == null) {
+            return Result.fail(404, "用户不存在");
+        }
+        user.setPasswordHash(null);
+        return Result.ok(user);
+    }
+
+    /**
+     * 创建用户
+     */
+    @PostMapping("/users")
+    public Result<AiUser> createUser(@RequestBody Map<String, String> body) {
+        String username = body.get("username");
+        String password = body.get("password");
+        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+            return Result.fail(400, "用户名和密码不能为空");
+        }
+        if (userMapper.selectByUsername(username) != null) {
+            return Result.fail(400, "用户名已存在");
+        }
+        AiUser user = AiUser.builder()
+                .id(UUID.randomUUID().toString())
+                .username(username)
+                .passwordHash(passwordEncoder.encode(password))
+                .department(body.getOrDefault("department", ""))
+                .employeeId(body.getOrDefault("employeeId", ""))
+                .roles(body.getOrDefault("roles", "ROLE_USER"))
+                .build();
+        userMapper.insert(user);
+        user.setPasswordHash(null);
+        log.info("创建用户: username={}", username);
+        return Result.ok(user);
+    }
+
+    /**
+     * 更新用户
+     */
+    @PutMapping("/users/{id}")
+    public Result<AiUser> updateUser(@PathVariable(name = "id") String id, @RequestBody Map<String, String> body) {
+        AiUser user = userMapper.selectById(id);
+        if (user == null) {
+            return Result.fail(404, "用户不存在");
+        }
+        if (body.containsKey("department")) user.setDepartment(body.get("department"));
+        if (body.containsKey("employeeId")) user.setEmployeeId(body.get("employeeId"));
+        if (body.containsKey("roles")) user.setRoles(body.get("roles"));
+        if (body.containsKey("enabled")) user.setEnabled(Boolean.parseBoolean(body.get("enabled")));
+        String password = body.get("password");
+        if (password != null && !password.isBlank()) {
+            user.setPasswordHash(passwordEncoder.encode(password));
+        }
+        userMapper.updateById(user);
+        user.setPasswordHash(null);
+        log.info("更新用户: id={}, username={}", id, user.getUsername());
+        return Result.ok(user);
+    }
+
+    /**
+     * 禁用用户（软删除）
+     */
+    @DeleteMapping("/users/{id}")
+    public Result<Void> deleteUser(@PathVariable(name = "id") String id) {
+        AiUser user = userMapper.selectById(id);
+        if (user == null) {
+            return Result.fail(404, "用户不存在");
+        }
+        user.setEnabled(false);
+        userMapper.updateById(user);
+        log.info("禁用用户: id={}, username={}", id, user.getUsername());
+        return Result.ok();
+    }
+
+    // ===== Bot Permission Management =====
+
+    /**
+     * 获取所有 Bot 权限配置
+     */
+    @GetMapping("/permissions")
+    public Result<List<BotPermission>> listPermissions() {
+        return Result.ok(botPermissionMapper.selectList(null));
+    }
+
+    /**
+     * 更新 Bot 权限配置
+     */
+    @PutMapping("/permissions/{id}")
+    public Result<BotPermission> updatePermission(@PathVariable(name = "id") String id, @RequestBody Map<String, Object> body) {
+        BotPermission perm = botPermissionMapper.selectById(id);
+        if (perm == null) {
+            return Result.fail(404, "权限配置不存在");
+        }
+        if (body.containsKey("allowedRoles")) perm.setAllowedRoles((String) body.get("allowedRoles"));
+        if (body.containsKey("allowedDepartments")) perm.setAllowedDepartments((String) body.get("allowedDepartments"));
+        if (body.containsKey("dataScope")) perm.setDataScope((String) body.get("dataScope"));
+        if (body.containsKey("allowedOperations")) perm.setAllowedOperations((String) body.get("allowedOperations"));
+        if (body.containsKey("dailyTokenLimit")) perm.setDailyTokenLimit(((Number) body.get("dailyTokenLimit")).intValue());
+        if (body.containsKey("enabled")) perm.setEnabled((Boolean) body.get("enabled"));
+        botPermissionMapper.updateById(perm);
+        log.info("更新 Bot 权限: id={}, botType={}", id, perm.getBotType());
+        return Result.ok(perm);
     }
 }

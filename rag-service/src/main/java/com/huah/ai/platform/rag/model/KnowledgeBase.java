@@ -1,6 +1,8 @@
 package com.huah.ai.platform.rag.model;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -9,19 +11,16 @@ import java.time.LocalDateTime;
  * 知识库实体
  */
 @Data
-@Entity
-@Table(name = "knowledge_bases")
+@TableName("knowledge_bases")
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class KnowledgeBase {
 
-    @Id
+    @TableId(type = IdType.ASSIGN_ID)
     private String id;
 
-    @Column(nullable = false)
     private String name;
-
     private String description;
 
     /** 所属部门/业务线 */
