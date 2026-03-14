@@ -4,6 +4,7 @@ import com.huah.ai.platform.agent.audit.AiAuditLog;
 import com.huah.ai.platform.agent.audit.AiAuditLogMapper;
 import com.huah.ai.platform.agent.memory.ConversationMemoryService;
 import com.huah.ai.platform.agent.multi.MultiAgentOrchestrator;
+import com.huah.ai.platform.agent.service.AgentChatResult;
 import com.huah.ai.platform.agent.service.FinanceAssistantAgent;
 import com.huah.ai.platform.agent.service.HrAssistantAgent;
 import com.huah.ai.platform.agent.service.QcAssistantAgent;
@@ -13,8 +14,7 @@ import com.huah.ai.platform.agent.service.SupplyChainAgent;
 import com.huah.ai.platform.common.dto.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -57,9 +57,6 @@ public class AgentController {
     private final AiAuditLogMapper auditLogMapper;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
-    @Autowired
-    private ChatClient rdChatClient;
-
     /** 普通对话（所有 Agent 统一入口） */
     @PostMapping("/{agentType}/chat")
     public Result<String> chat(
@@ -78,13 +75,14 @@ public class AgentController {
 
         long startTime = System.currentTimeMillis();
         try {
-            String response = routeToAgent(agentType, userId, sessionId, message);
+            AgentChatResult result = routeToAgent(agentType, userId, sessionId, message);
             long latency = System.currentTimeMillis() - startTime;
-            log.info("[Chat] 模型输出 agent={}, userId={}, latency={}ms, responseLength={}, response={}",
+            log.info("[Chat] 模型输出 agent={}, userId={}, latency={}ms, responseLength={}, promptTokens={}, completionTokens={}, response={}",
                     agentType, userId, latency,
-                    response != null ? response.length() : 0,
-                    truncate(response, 500));
-            return Result.ok(response);
+                    result.getContent() != null ? result.getContent().length() : 0,
+                    result.getPromptTokens(), result.getCompletionTokens(),
+                    truncate(result.getContent(), 500));
+            return Result.ok(result.getContent());
         } catch (Exception e) {
             long latency = System.currentTimeMillis() - startTime;
             log.error("[Chat] 调用失败 agent={}, userId={}, latency={}ms, error={}",
@@ -120,6 +118,8 @@ public class AgentController {
         long startTime = System.currentTimeMillis();
         AtomicInteger chunkCount = new AtomicInteger(0);
         StringBuilder fullResponse = new StringBuilder();
+        AtomicInteger totalPromptTokens = new AtomicInteger(0);
+        AtomicInteger totalCompletionTokens = new AtomicInteger(0);
 
         executor.submit(() -> {
             try {
@@ -142,27 +142,44 @@ public class AgentController {
                     String finalResult = multiAgentOrchestrator.critique(message, executionResult, internalId + "-critic");
                     sendChunk(emitter, finalResult);
 
-                    // 保存用户输入和最终结果到主会话，供前端查询历史
                     memoryService.saveExchange(sessionId, message, finalResult);
 
                     long latency = System.currentTimeMillis() - startTime;
                     log.info("[Stream] Multi-Agent 完成 userId={}, latency={}ms", userId, latency);
-                    saveAuditLog(userId, sessionId, "multi", message, truncate(finalResult, 500), latency, true, null);
+                    saveAuditLog(userId, sessionId, "multi", message, truncate(finalResult, 500), latency, true, null, 0, 0);
                     sendDone(emitter);
                 } else {
-                    Flux<String> flux = routeToAgentStream(agentType, userId, sessionId, message);
-                    flux.doOnNext(chunk -> {
+                    Flux<ChatResponse> flux = routeToAgentStream(agentType, userId, sessionId, message);
+                    flux.doOnNext(chatResponse -> {
                                 chunkCount.incrementAndGet();
+                                String chunk = "";
+                                if (chatResponse.getResult() != null && chatResponse.getResult().getOutput() != null) {
+                                    chunk = chatResponse.getResult().getOutput().getText();
+                                    if (chunk == null) chunk = "";
+                                }
                                 fullResponse.append(chunk);
                                 sendChunk(emitter, chunk);
+
+                                // 累计 token 用量（最后一个 chunk 通常包含完整 usage）
+                                if (chatResponse.getMetadata() != null && chatResponse.getMetadata().getUsage() != null) {
+                                    var usage = chatResponse.getMetadata().getUsage();
+                                    if (usage.getPromptTokens() > 0) {
+                                        totalPromptTokens.set((int) usage.getPromptTokens());
+                                    }
+                                    if (usage.getCompletionTokens() > 0) {
+                                        totalCompletionTokens.set((int) usage.getCompletionTokens());
+                                    }
+                                }
                             })
                             .doOnComplete(() -> {
                                 long latency = System.currentTimeMillis() - startTime;
                                 String resp = fullResponse.toString();
-                                log.info("[Stream] 模型输出 agent={}, userId={}, latency={}ms, chunks={}, responseLength={}, response={}",
+                                log.info("[Stream] 模型输出 agent={}, userId={}, latency={}ms, chunks={}, responseLength={}, promptTokens={}, completionTokens={}, response={}",
                                         agentType, userId, latency, chunkCount.get(),
-                                        resp.length(), truncate(resp, 500));
-                                saveAuditLog(userId, sessionId, agentType, message, resp, latency, true, null);
+                                        resp.length(), totalPromptTokens.get(), totalCompletionTokens.get(),
+                                        truncate(resp, 500));
+                                saveAuditLog(userId, sessionId, agentType, message, resp, latency, true, null,
+                                        totalPromptTokens.get(), totalCompletionTokens.get());
                                 sendDone(emitter);
                             })
                             .doOnError(e -> {
@@ -170,7 +187,7 @@ public class AgentController {
                                 log.error("[Stream] 流式异常 agent={}, userId={}, latency={}ms, chunks={}, partialResponse={}, error={}",
                                         agentType, userId, latency, chunkCount.get(),
                                         truncate(fullResponse.toString(), 200), e.getMessage(), e);
-                                saveAuditLog(userId, sessionId, agentType, message, null, latency, false, e.getMessage());
+                                saveAuditLog(userId, sessionId, agentType, message, null, latency, false, e.getMessage(), 0, 0);
                                 memoryService.rollbackLastUserMessage(sessionId);
                                 sendChunk(emitter, "\n\n[AI 服务异常，请稍后重试]");
                                 sendDone(emitter);
@@ -257,7 +274,7 @@ public class AgentController {
         return Result.ok(memoryService.listSessions(prefix));
     }
 
-    private String routeToAgent(String type, String userId, String sessionId, String msg) {
+    private AgentChatResult routeToAgent(String type, String userId, String sessionId, String msg) {
         return switch (type) {
             case "rd"           -> rdAssistant.chat(userId, sessionId, msg);
             case "sales"        -> salesAssistant.chat(userId, sessionId, msg);
@@ -265,12 +282,15 @@ public class AgentController {
             case "finance"      -> financeAssistant.chat(userId, sessionId, msg);
             case "supply-chain" -> supplyChainAgent.chat(userId, sessionId, msg);
             case "qc"           -> qcAssistant.chat(userId, sessionId, msg);
-            case "multi"        -> multiAgentOrchestrator.executeComplexTask(userId, sessionId, msg);
+            case "multi"        -> {
+                String content = multiAgentOrchestrator.executeComplexTask(userId, sessionId, msg);
+                yield new AgentChatResult(content, 0, 0);
+            }
             default             -> throw new IllegalArgumentException("未知 Agent: " + type);
         };
     }
 
-    private Flux<String> routeToAgentStream(String type, String userId, String sessionId, String msg) {
+    private Flux<ChatResponse> routeToAgentStream(String type, String userId, String sessionId, String msg) {
         return switch (type) {
             case "rd"           -> rdAssistant.chatStream(userId, sessionId, msg);
             case "sales"        -> salesAssistant.chatStream(userId, sessionId, msg);
@@ -299,10 +319,9 @@ public class AgentController {
 
     private void saveAuditLog(String userId, String sessionId, String agentType,
                               String userMessage, String aiResponse, long latencyMs,
-                              boolean success, String errorMessage) {
+                              boolean success, String errorMessage,
+                              int promptTokens, int completionTokens) {
         try {
-            int promptTokens = estimateTokens(userMessage);
-            int completionTokens = estimateTokens(aiResponse);
             auditLogMapper.insert(AiAuditLog.builder()
                     .id(UUID.randomUUID().toString())
                     .userId(userId)
@@ -320,20 +339,6 @@ public class AgentController {
         } catch (Exception e) {
             log.warn("审计日志写入失败: {}", e.getMessage());
         }
-    }
-
-    /**
-     * 估算 token 数（中文约 2 token/字，英文约 0.75 token/word，取平均 1.3 token/char）
-     */
-    private static int estimateTokens(String text) {
-        if (text == null || text.isEmpty()) return 0;
-        int cjkCount = 0;
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c >= 0x4E00 && c <= 0x9FFF) cjkCount++;
-        }
-        int nonCjk = text.length() - cjkCount;
-        return (int) (cjkCount * 1.5 + nonCjk * 0.4);
     }
 
 }

@@ -1,5 +1,6 @@
 package com.huah.ai.platform.agent.audit;
 
+import com.huah.ai.platform.agent.service.AgentChatResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -14,7 +15,7 @@ import java.util.UUID;
  * AI 调用审计 AOP 拦截器
  *
  * 切点：所有 agent service 的 .chat() 方法
- * 记录：调用方、入参摘要、响应摘要、延迟、是否成功
+ * 记录：调用方、入参摘要、响应摘要、延迟、是否成功、精确 token 用量
  */
 @Slf4j
 @Aspect
@@ -35,11 +36,11 @@ public class AgentAuditAspect {
 
         boolean success = true;
         String errorMsg = null;
-        String response = null;
+        AgentChatResult chatResult = null;
 
         try {
-            response = (String) pjp.proceed();
-            return response;
+            chatResult = (AgentChatResult) pjp.proceed();
+            return chatResult;
         } catch (Throwable e) {
             success = false;
             errorMsg = e.getMessage();
@@ -47,15 +48,19 @@ public class AgentAuditAspect {
         } finally {
             long latency = System.currentTimeMillis() - start;
             try {
+                String responseText = chatResult != null ? chatResult.getContent() : null;
+                int promptTokens = chatResult != null ? chatResult.getPromptTokens() : 0;
+                int completionTokens = chatResult != null ? chatResult.getCompletionTokens() : 0;
+
                 auditLogMapper.insert(AiAuditLog.builder()
                         .id(UUID.randomUUID().toString())
                         .userId(userId)
                         .sessionId(sessionId)
                         .agentType(agentType)
                         .userMessage(userMsg)
-                        .aiResponse(response != null ? truncate(response, 500) : null)
-                        .promptTokens(estimateTokens(userMsg))
-                        .completionTokens(estimateTokens(response))
+                        .aiResponse(responseText != null ? truncate(responseText, 500) : null)
+                        .promptTokens(promptTokens)
+                        .completionTokens(completionTokens)
                         .latencyMs(latency)
                         .success(success)
                         .errorMessage(errorMsg)
@@ -70,16 +75,5 @@ public class AgentAuditAspect {
     private String truncate(String s, int maxLen) {
         if (s == null) return null;
         return s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
-    }
-
-    private static int estimateTokens(String text) {
-        if (text == null || text.isEmpty()) return 0;
-        int cjkCount = 0;
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c >= 0x4E00 && c <= 0x9FFF) cjkCount++;
-        }
-        int nonCjk = text.length() - cjkCount;
-        return (int) (cjkCount * 1.5 + nonCjk * 0.4);
     }
 }
