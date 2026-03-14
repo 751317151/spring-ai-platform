@@ -84,7 +84,8 @@ public class AgentController {
             long latency = System.currentTimeMillis() - startTime;
             log.error("[Chat] 调用失败 agent={}, userId={}, latency={}ms, error={}",
                     agentType, userId, latency, e.getMessage(), e);
-            throw e;
+            memoryService.rollbackLastUserMessage(sessionId);
+            return Result.fail(500, "AI 服务暂时不可用，请稍后重试");
         }
     }
 
@@ -162,7 +163,9 @@ public class AgentController {
                                 log.error("[Stream] 流式异常 agent={}, userId={}, latency={}ms, chunks={}, partialResponse={}, error={}",
                                         agentType, userId, latency, chunkCount.get(),
                                         truncate(fullResponse.toString(), 200), e.getMessage(), e);
-                                emitter.completeWithError(e);
+                                memoryService.rollbackLastUserMessage(sessionId);
+                                sendChunk(emitter, "\n\n[AI 服务异常，请稍后重试]");
+                                sendDone(emitter);
                             })
                             .subscribe();
                 }
@@ -170,7 +173,11 @@ public class AgentController {
                 long latency = System.currentTimeMillis() - startTime;
                 log.error("[Stream] 执行异常 agent={}, userId={}, latency={}ms, error={}",
                         agentType, userId, latency, e.getMessage(), e);
-                emitter.completeWithError(e);
+                if (!"multi".equals(agentType)) {
+                    memoryService.rollbackLastUserMessage(sessionId);
+                }
+                sendChunk(emitter, "\n\n[AI 服务异常，请稍后重试]");
+                sendDone(emitter);
             }
         });
 

@@ -66,6 +66,24 @@ public class ConversationMemoryService {
     }
 
     /**
+     * 回滚会话中最后一条无回复的用户消息
+     * 当大模型调用失败时，Advisor 已将 user message 持久化但没有 assistant 回复，
+     * 需要移除这条孤立的 user message，避免刷新后出现无答案的问题。
+     */
+    public void rollbackLastUserMessage(String sessionId) {
+        List<Message> messages = chatMemoryRepository.findByConversationId(sessionId);
+        if (messages.isEmpty()) return;
+
+        Message last = messages.get(messages.size() - 1);
+        if (last.getMessageType() == MessageType.USER) {
+            List<Message> trimmed = new ArrayList<>(messages.subList(0, messages.size() - 1));
+            chatMemoryRepository.saveAll(sessionId, trimmed);
+            log.info("回滚孤立用户消息: sessionId={}, removedMessage={}",
+                    sessionId, last.getText().length() > 50 ? last.getText().substring(0, 50) + "..." : last.getText());
+        }
+    }
+
+    /**
      * 手动保存一轮对话到指定会话（用于 Multi-Agent 等非 Advisor 场景）
      */
     public void saveExchange(String sessionId, String userMessage, String aiResponse) {
