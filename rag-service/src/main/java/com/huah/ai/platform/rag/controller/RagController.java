@@ -2,9 +2,11 @@ package com.huah.ai.platform.rag.controller;
 
 import com.huah.ai.platform.common.dto.Result;
 import com.huah.ai.platform.rag.model.DocumentMeta;
+import com.huah.ai.platform.rag.model.KnowledgeBase;
 import com.huah.ai.platform.rag.model.RagQueryRequest;
 import com.huah.ai.platform.rag.model.RagQueryResponse;
 import com.huah.ai.platform.rag.service.DocumentIngestionService;
+import com.huah.ai.platform.rag.service.DocumentMetaService;
 import com.huah.ai.platform.rag.service.RagService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +33,7 @@ public class RagController {
 
     private final RagService ragService;
     private final DocumentIngestionService ingestionService;
+    private final DocumentMetaService metaService;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     // ============ 知识库问答 ============
@@ -98,6 +101,34 @@ public class RagController {
             @RequestParam String knowledgeBaseId,
             @RequestParam(defaultValue = "5") int topK) {
         return Result.ok(ragService.search(query, knowledgeBaseId, topK));
+    }
+
+    // ============ 知识库管理 ============
+
+    @PostMapping("/knowledge-bases")
+    public Result<KnowledgeBase> createKnowledgeBase(@RequestBody KnowledgeBase kb) {
+        return Result.ok(metaService.createKnowledgeBase(kb));
+    }
+
+    @GetMapping("/knowledge-bases")
+    public Result<List<KnowledgeBase>> listKnowledgeBases() {
+        return Result.ok(metaService.listKnowledgeBases());
+    }
+
+    @GetMapping("/knowledge-bases/{id}")
+    public Result<KnowledgeBase> getKnowledgeBase(@PathVariable String id) {
+        return Result.ok(metaService.getKnowledgeBase(id));
+    }
+
+    @PutMapping("/knowledge-bases/{id}")
+    public Result<KnowledgeBase> updateKnowledgeBase(@PathVariable String id, @RequestBody KnowledgeBase kb) {
+        return Result.ok(metaService.updateKnowledgeBase(id, kb));
+    }
+
+    @DeleteMapping("/knowledge-bases/{id}")
+    public Result<Void> deleteKnowledgeBase(@PathVariable String id) {
+        metaService.deleteKnowledgeBase(id);
+        return Result.ok(null);
     }
 
     // ============ 文档管理 ============
