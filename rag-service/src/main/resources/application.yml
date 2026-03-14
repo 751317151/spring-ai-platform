@@ -48,7 +48,19 @@ spring:
     multipart:
       max-file-size: 50MB
       max-request-size: 100MB
+
+# S3 文件存储配置
+storage:
+  s3:
+    endpoint: ${S3_ENDPOINT:http://localhost:9000}
+    region: ${S3_REGION:us-east-1}
+    bucket: ${S3_BUCKET:blackstar}
+    access-key: ${S3_ACCESS_KEY:CtqsQz02BLuHIt555PMjoM4d}
+    secret-key: ${S3_SECRET_KEY:mltBO0bOnAXxXKvPCtFh4obvSrqavJz}
+    presigned-url-expiry: 3600
+
 logging:
   level:
     org.springframework.ai: debug
     com.huah.ai.platform.rag: debug
+    org.springframework.jdbc: debug

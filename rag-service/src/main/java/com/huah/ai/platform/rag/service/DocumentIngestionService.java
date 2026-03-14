@@ -34,6 +34,7 @@ public class DocumentIngestionService {
 
     private final VectorStore vectorStore;
     private final DocumentMetaService metaService;
+    private final FileStorageService fileStorageService;
     private final ExcelDocumentParser excelParser;
     private final StructuredDocumentParser structuredParser;
 
@@ -42,17 +43,26 @@ public class DocumentIngestionService {
      */
     public DocumentMeta ingestDocument(MultipartFile file, String knowledgeBaseId, String uploadedBy) {
         String filename = file.getOriginalFilename();
-        log.info("开始入库文档: {}, 知识库: {}", filename, knowledgeBaseId);
+        String docId = UUID.randomUUID().toString();
+        log.info("开始入库文档: {}, 知识库: {}, docId: {}", filename, knowledgeBaseId, docId);
 
         // 1. 验证知识库存在
         KnowledgeBase kb = metaService.getKnowledgeBase(knowledgeBaseId);
 
-        // 2. 解析文档
+        // 2. 上传原始文件到 S3
+        String storageKey = knowledgeBaseId + "/" + docId + "/" + filename;
+        String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
+        try {
+            fileStorageService.upload(storageKey, file.getInputStream(), file.getSize(), contentType);
+        } catch (IOException e) {
+            throw new BizException("读取上传文件失败: " + e.getMessage());
+        }
+
+        // 3. 解析文档
         List<Document> documents = parseDocument(file);
         log.info("文档解析完成: {}, 共 {} 段", filename, documents.size());
 
-        // 3. 添加元数据
-        String docId = UUID.randomUUID().toString();
+        // 4. 添加元数据
         documents.forEach(doc -> doc.getMetadata().putAll(Map.of(
                 "doc_id", docId,
                 "kb_id", knowledgeBaseId,
@@ -61,24 +71,27 @@ public class DocumentIngestionService {
                 "file_type", getFileExtension(filename)
         )));
 
-        // 4. 切片
+        // 5. 切片
         TokenTextSplitter splitter = new TokenTextSplitter(
-                kb.getChunkSize(),     // chunk大小
-                kb.getChunkOverlap(),  // 重叠
+                kb.getChunkSize(),
+                kb.getChunkOverlap(),
                 5, 10000, true
         );
         List<Document> chunks = splitter.apply(documents);
         log.info("文档切片完成: {}, 共 {} 个chunk", filename, chunks.size());
 
-        // 5. 向量化存储
+        // 6. 向量化存储
         vectorStore.add(chunks);
         log.info("文档向量化完成: {}", filename);
 
-        // 6. 保存元数据
+        // 7. 保存元数据
         DocumentMeta meta = DocumentMeta.builder()
                 .id(docId)
                 .filename(filename)
                 .knowledgeBaseId(knowledgeBaseId)
+                .fileSize(file.getSize())
+                .storagePath(storageKey)
+                .contentType(contentType)
                 .chunkCount(chunks.size())
                 .uploadedBy(uploadedBy)
                 .status("INDEXED")

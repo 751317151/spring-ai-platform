@@ -7,6 +7,7 @@ import com.huah.ai.platform.rag.model.DocumentMeta;
 import com.huah.ai.platform.rag.model.KnowledgeBase;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -22,6 +23,8 @@ public class DocumentMetaService {
 
     private final DocumentMetaMapper docMapper;
     private final KnowledgeBaseMapper kbMapper;
+    private final FileStorageService fileStorageService;
+    private final JdbcTemplate jdbcTemplate;
 
     // ===== 知识库 =====
 
@@ -65,6 +68,14 @@ public class DocumentMetaService {
 
     // ===== 文档元数据 =====
 
+    public DocumentMeta getDocument(String docId) {
+        DocumentMeta doc = docMapper.selectById(docId);
+        if (doc == null) {
+            throw new BizException("文档不存在: " + docId);
+        }
+        return doc;
+    }
+
     public DocumentMeta saveDocumentMeta(DocumentMeta meta) {
         meta.setIndexedAt(LocalDateTime.now());
         meta.setStatus("INDEXED");
@@ -84,6 +95,31 @@ public class DocumentMetaService {
     }
 
     public void deleteDocument(String docId) {
+        DocumentMeta doc = getDocument(docId);
+
+        // 1. 删除 S3 文件
+        if (doc.getStoragePath() != null) {
+            fileStorageService.delete(doc.getStoragePath());
+        }
+
+        // 2. 删除向量数据（按 doc_id 元数据过滤）
+        try {
+            jdbcTemplate.update("DELETE FROM vector_store WHERE metadata->>'doc_id' = ?", docId);
+            log.info("向量数据删除完成: docId={}", docId);
+        } catch (Exception e) {
+            log.error("向量数据删除失败: docId={}, error={}", docId, e.getMessage());
+        }
+
+        // 3. 扣减知识库计数
+        KnowledgeBase kb = kbMapper.selectById(doc.getKnowledgeBaseId());
+        if (kb != null) {
+            kb.setDocumentCount(Math.max(0, kb.getDocumentCount() - 1));
+            kb.setTotalChunks(Math.max(0, kb.getTotalChunks() - doc.getChunkCount()));
+            kbMapper.updateById(kb);
+        }
+
+        // 4. 删除元数据
         docMapper.deleteById(docId);
+        log.info("文档删除完成: id={}, file={}", docId, doc.getFilename());
     }
 }

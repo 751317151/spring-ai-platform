@@ -27,8 +27,11 @@ public class DocumentMeta {
     /** 文件大小（bytes）*/
     private Long fileSize;
 
-    /** 原始存储路径（MinIO/OSS等） */
+    /** 原始存储路径（S3 key） */
     private String storagePath;
+
+    /** 文件MIME类型 */
+    private String contentType;
 
     private int chunkCount;
 

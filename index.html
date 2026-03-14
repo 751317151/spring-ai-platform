@@ -348,6 +348,23 @@
             background: var(--surface3); color: var(--text3); font-family: var(--mono);
         }
 
+        /* ===== DOCUMENT LIST ===== */
+        .doc-section { margin-top: 16px; }
+        .doc-section .card-title { display: flex; align-items: center; justify-content: space-between; }
+        .doc-table { width: 100%; border-collapse: collapse; }
+        .doc-table th { text-align: left; font-size: 11px; color: var(--text3); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+        .doc-table td { font-size: 12px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+        .doc-table tr:hover { background: var(--surface2); }
+        .doc-table .doc-filename { color: var(--text); font-family: var(--mono); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .doc-table .doc-size { color: var(--text3); }
+        .doc-table .doc-date { color: var(--text3); font-size: 11px; }
+        .doc-actions { display: flex; gap: 4px; }
+        .doc-actions button { padding: 3px 8px; font-size: 10px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface2); color: var(--text2); cursor: pointer; transition: all var(--transition); }
+        .doc-actions button:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+        .doc-actions button.del:hover { border-color: var(--red); color: var(--red); background: var(--red-dim); }
+        .doc-empty { text-align: center; padding: 24px; font-size: 12px; color: var(--text3); }
+        .doc-count-badge { font-size: 11px; color: var(--text3); font-weight: 400; }
+
         /* ===== MONITOR ===== */
         .chart-container { position: relative; height: 180px; width: 100%; }
         canvas.chart { width: 100% !important; height: 100% !important; }
@@ -723,43 +740,8 @@
 
             <!-- ===== RAG ===== -->
             <div class="page" id="page-rag">
-                <div class="kb-grid">
-                    <div class="kb-card selected" onclick="selectKb(this,'kb-general')">
-                        <div class="kb-card-head">
-                            <span class="kb-icon">📚</span>
-                            <span class="kb-status active">在线</span>
-                        </div>
-                        <div class="kb-name">企业通用知识库</div>
-                        <div class="kb-desc">制度流程、HR政策、行政规范等通用文档</div>
-                        <div class="kb-meta">
-                            <span>📄 142 文档</span>
-                            <span>🧩 8,924 块</span>
-                        </div>
-                    </div>
-                    <div class="kb-card" onclick="selectKb(this,'kb-rd')">
-                        <div class="kb-card-head">
-                            <span class="kb-icon">⚙️</span>
-                            <span class="kb-status active">在线</span>
-                        </div>
-                        <div class="kb-name">研发知识库</div>
-                        <div class="kb-desc">技术规范、API文档、架构设计、开发指南</div>
-                        <div class="kb-meta">
-                            <span>📄 89 文档</span>
-                            <span>🧩 5,211 块</span>
-                        </div>
-                    </div>
-                    <div class="kb-card" onclick="selectKb(this,'kb-sales')">
-                        <div class="kb-card-head">
-                            <span class="kb-icon">💰</span>
-                            <span class="kb-status active">在线</span>
-                        </div>
-                        <div class="kb-name">销售知识库</div>
-                        <div class="kb-desc">产品手册、报价规则、竞品分析、案例库</div>
-                        <div class="kb-meta">
-                            <span>📄 63 文档</span>
-                            <span>🧩 3,456 块</span>
-                        </div>
-                    </div>
+                <div class="kb-grid" id="kb-grid">
+                    <!-- dynamically populated by loadKnowledgeBases() -->
                 </div>
 
                 <div class="grid-2">
@@ -800,6 +782,29 @@
                             <div class="source-chips" id="rag-sources"></div>
                         </div>
                     </div>
+                </div>
+
+                <div class="card doc-section">
+                    <div class="card-title">
+                        <span>文档列表 <span class="doc-count-badge" id="doc-count-badge"></span></span>
+                        <button class="btn btn-ghost btn-sm" onclick="loadDocuments()">刷新</button>
+                    </div>
+                    <table class="doc-table">
+                        <thead>
+                            <tr>
+                                <th>文件名</th>
+                                <th>大小</th>
+                                <th>分块数</th>
+                                <th>上传人</th>
+                                <th>上传时间</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="doc-table-body">
+                            <tr><td colspan="7" class="doc-empty">请先选择知识库</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
@@ -957,8 +962,8 @@
 
     // ===== STATE =====
     let currentAgent = 'rd';
-    let currentKb = 'kb-general';
-    let currentKbName = '企业通用知识库';
+    let currentKb = 'kb-001';
+    let currentKbName = '';
     let chatHistory = [];
     let isThinking = false;
     let authToken = null;
@@ -1023,6 +1028,7 @@
         if (page === 'monitor') { setTimeout(initMonitorCharts, 100); loadMonitorData(); }
         if (page === 'gateway') { loadGatewayData(); }
         if (page === 'users') { loadUsersData(); }
+        if (page === 'rag') { loadKnowledgeBases(); }
     }
 
     // ===== CHARTS =====
@@ -1759,12 +1765,159 @@
     }
 
     // ===== RAG =====
+    const kbIcons = {'kb-001':'📚','kb-002':'⚙️','kb-003':'💰'};
+    let kbList = [];
+
+    async function loadKnowledgeBases() {
+        var grid = document.getElementById('kb-grid');
+        try {
+            var resp = await apiGet(SERVICES.rag + '/rag/knowledge-bases');
+            var list = resp.data || resp || [];
+            kbList = list;
+            if (!list.length) {
+                grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text3);font-size:12px;padding:24px">暂无知识库，请先通过 API 创建</div>';
+                return;
+            }
+            grid.innerHTML = '';
+            list.forEach(function(kb, idx) {
+                var icon = kbIcons[kb.id] || '📂';
+                var isSelected = kb.id === currentKb;
+                var statusClass = kb.status === 'ACTIVE' ? 'active' : '';
+                var statusText = kb.status === 'ACTIVE' ? '在线' : '离线';
+                var card = document.createElement('div');
+                card.className = 'kb-card' + (isSelected ? ' selected' : '');
+                card.onclick = function() { selectKb(card, kb.id); };
+                card.innerHTML = '<div class="kb-card-head"><span class="kb-icon">' + icon + '</span><span class="kb-status ' + statusClass + '">' + statusText + '</span></div>'
+                    + '<div class="kb-name">' + (kb.name || kb.id) + '</div>'
+                    + '<div class="kb-desc">' + (kb.description || '') + '</div>'
+                    + '<div class="kb-meta"><span>📄 ' + (kb.documentCount || 0) + ' 文档</span><span>🧩 ' + (kb.totalChunks || 0).toLocaleString() + ' 块</span></div>';
+                grid.appendChild(card);
+                if (idx === 0 && !currentKb) { currentKb = kb.id; currentKbName = kb.name; card.classList.add('selected'); }
+            });
+            // if currentKb matches one in list, select it; otherwise select first
+            var found = list.find(function(k){return k.id === currentKb;});
+            if (!found && list.length) { currentKb = list[0].id; currentKbName = list[0].name; }
+            loadDocuments();
+        } catch(e) {
+            // fallback: render static demo cards
+            grid.innerHTML = '';
+            var demos = [
+                {id:'kb-001',name:'企业通用知识库',desc:'制度流程、HR政策、行政规范等通用文档',icon:'📚',docs:142,chunks:8924},
+                {id:'kb-002',name:'研发知识库',desc:'技术规范、API文档、架构设计、开发指南',icon:'⚙️',docs:89,chunks:5211},
+                {id:'kb-003',name:'销售知识库',desc:'产品手册、报价规则、竞品分析、案例库',icon:'💰',docs:63,chunks:3456}
+            ];
+            demos.forEach(function(kb) {
+                var card = document.createElement('div');
+                card.className = 'kb-card' + (kb.id === currentKb ? ' selected' : '');
+                card.onclick = function() { selectKb(card, kb.id); };
+                card.innerHTML = '<div class="kb-card-head"><span class="kb-icon">' + kb.icon + '</span><span class="kb-status active">在线</span></div>'
+                    + '<div class="kb-name">' + kb.name + '</div>'
+                    + '<div class="kb-desc">' + kb.desc + '</div>'
+                    + '<div class="kb-meta"><span>📄 ' + kb.docs + ' 文档</span><span>🧩 ' + kb.chunks.toLocaleString() + ' 块</span></div>';
+                grid.appendChild(card);
+            });
+        }
+    }
+
     function selectKb(el, kbId) {
         document.querySelectorAll('.kb-card').forEach(function(c){c.classList.remove('selected');});
         el.classList.add('selected');
         currentKb = kbId;
         currentKbName = el.querySelector('.kb-name').textContent;
         showToast('已选择知识库: ' + currentKbName);
+        loadDocuments();
+    }
+
+    async function loadDocuments() {
+        var tbody = document.getElementById('doc-table-body');
+        var badge = document.getElementById('doc-count-badge');
+        var kbId = currentKb;
+        if (!kbId) { tbody.innerHTML = '<tr><td colspan="7" class="doc-empty">请先选择知识库</td></tr>'; return; }
+        tbody.innerHTML = '<tr><td colspan="7" class="doc-empty">加载中...</td></tr>';
+
+        try {
+            var resp = await apiGet(SERVICES.rag + '/rag/documents?knowledgeBaseId=' + encodeURIComponent(kbId));
+            var docs = resp.data || resp || [];
+            badge.textContent = '(' + docs.length + ')';
+            if (!docs.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="doc-empty">暂无文档，请上传</td></tr>';
+                return;
+            }
+            tbody.innerHTML = '';
+            docs.forEach(function(doc) {
+                var size = doc.fileSize ? (doc.fileSize > 1048576 ? (doc.fileSize/1048576).toFixed(1)+' MB' : Math.round(doc.fileSize/1024)+' KB') : '-';
+                var date = doc.createdAt ? doc.createdAt.replace('T',' ').substring(0,16) : '-';
+                var statusClass = doc.status === 'INDEXED' ? 'done' : 'indexing';
+                var statusText = doc.status === 'INDEXED' ? '已入库' : (doc.status === 'FAILED' ? '失败' : '处理中');
+                var tr = document.createElement('tr');
+                tr.innerHTML = '<td class="doc-filename" title="' + (doc.filename||'') + '">' + (doc.filename||'-') + '</td>'
+                    + '<td class="doc-size">' + size + '</td>'
+                    + '<td>' + (doc.chunkCount||0) + '</td>'
+                    + '<td>' + (doc.uploadedBy||'-') + '</td>'
+                    + '<td class="doc-date">' + date + '</td>'
+                    + '<td><span class="file-status ' + statusClass + '">' + statusText + '</span></td>'
+                    + '<td class="doc-actions">'
+                    + (doc.storagePath ? '<button onclick="downloadDoc(\'' + doc.id + '\')">下载</button>' : '')
+                    + (doc.storagePath ? '<button onclick="previewDoc(\'' + doc.id + '\')">预览</button>' : '')
+                    + '<button class="del" onclick="deleteDoc(\'' + doc.id + '\',\'' + (doc.filename||'').replace(/'/g,"\\'") + '\')">删除</button>'
+                    + '</td>';
+                tbody.appendChild(tr);
+            });
+        } catch(e) {
+            tbody.innerHTML = '<tr><td colspan="7" class="doc-empty">加载失败，请检查服务</td></tr>';
+            badge.textContent = '';
+        }
+    }
+
+    function downloadDoc(docId) {
+        var url = SERVICES.rag + '/rag/documents/' + docId + '/download';
+        var a = document.createElement('a');
+        a.href = url;
+        if (authToken) {
+            // For authenticated downloads, use fetch + blob
+            fetch(url, { headers: { 'Authorization': 'Bearer ' + authToken } })
+                .then(function(res) { return res.blob(); })
+                .then(function(blob) {
+                    var blobUrl = URL.createObjectURL(blob);
+                    a.href = blobUrl;
+                    a.download = '';
+                    a.click();
+                    URL.revokeObjectURL(blobUrl);
+                })
+                .catch(function(e) { showToast('下载失败: ' + e.message); });
+        } else {
+            a.download = '';
+            a.click();
+        }
+    }
+
+    async function previewDoc(docId) {
+        try {
+            var resp = await apiGet(SERVICES.rag + '/rag/documents/' + docId + '/preview');
+            var data = resp.data || resp;
+            if (data.previewUrl) {
+                window.open(data.previewUrl, '_blank');
+            } else {
+                showToast('无法生成预览链接');
+            }
+        } catch(e) {
+            showToast('预览失败: ' + (e.message || '请检查服务'));
+        }
+    }
+
+    async function deleteDoc(docId, filename) {
+        if (!confirm('确定删除文档 "' + filename + '"？\n将同时删除 S3 文件和向量数据，不可恢复。')) return;
+        try {
+            var headers = {};
+            if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+            var res = await fetch(SERVICES.rag + '/rag/documents/' + docId, { method: 'DELETE', headers: headers });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            showToast('文档已删除: ' + filename);
+            loadDocuments();
+            loadKnowledgeBases();
+        } catch(e) {
+            showToast('删除失败: ' + (e.message || '请检查服务'));
+        }
     }
 
     async function doRagQuery(stream) {
@@ -1774,8 +1927,7 @@
         const result = document.getElementById('rag-result');
         result.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:var(--text3);font-size:12px"><div class="thinking"><span></span><span></span><span></span></div> 正在检索知识库...</div>';
         document.getElementById('rag-sources').innerHTML = '';
-        const kbIdMap = {'kb-general':'kb-001','kb-rd':'kb-002','kb-sales':'kb-003'};
-        const kbId = kbIdMap[currentKb] || currentKb;
+        const kbId = currentKb || 'kb-001';
 
         try {
             if (stream) {
@@ -1816,7 +1968,7 @@
             }
         } catch(e) {
             await new Promise(function(r){setTimeout(r,800);});
-            const mock = {'kb-general':'根据企业通用知识库检索结果：\n\n**年假政策（2024版）**\n\n工作年限满1年不满10年享有10天年假。需在次年3月31日前使用完毕。\n\n**申请流程**：OA系统 → 假期申请 → 上级审批 → HR备案。','kb-rd':'根据研发知识库：\n\n**API 开发规范 v2.3**\n\n接口命名遵循 RESTful，使用 /api/v{n}/ 前缀，统一返回 Result<T> 包装体。','kb-sales':'根据销售知识库：\n\nA类客户85折 / B类客户90折 / C类客户95折。年采购超100万元可申请特殊报价。'};
+            const mock = {'kb-001':'根据企业通用知识库检索结果：\n\n**年假政策（2024版）**\n\n工作年限满1年不满10年享有10天年假。需在次年3月31日前使用完毕。\n\n**申请流程**：OA系统 → 假期申请 → 上级审批 → HR备案。','kb-002':'根据研发知识库：\n\n**API 开发规范 v2.3**\n\n接口命名遵循 RESTful，使用 /api/v{n}/ 前缀，统一返回 Result<T> 包装体。','kb-003':'根据销售知识库：\n\nA类客户85折 / B类客户90折 / C类客户95折。年采购超100万元可申请特殊报价。'};
             result.innerHTML = '<div style="font-size:11px;color:var(--text3)">[演示模式]</div><div style="white-space:pre-wrap;line-height:1.7">' + (mock[currentKb]||'未找到相关信息').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>') + '</div>';
             renderSources(['📄 制度文件2024.pdf','📄 员工手册v3.docx','📄 HR政策汇编.xlsx']);
         }
@@ -1836,8 +1988,7 @@
         const icons = {pdf:'📕',docx:'📘',doc:'📘',xlsx:'📗',xls:'📗',txt:'📄',md:'📝'};
         const icon = icons[ext] || '📄';
         const size = file.size > 1048576 ? (file.size/1048576).toFixed(1)+'MB' : Math.round(file.size/1024)+'KB';
-        const kbIdMap = {'kb-general':'kb-001','kb-rd':'kb-002','kb-sales':'kb-003'};
-        const kbId = kbIdMap[currentKb] || 'kb-001';
+        const kbId = currentKb || 'kb-001';
 
         const item = document.createElement('div'); item.className='file-item';
         item.innerHTML = '<span class="file-icon">'+icon+'</span><span class="file-name">'+file.name+'</span><span class="file-size">'+size+'</span><span class="file-status indexing">上传中</span>';
@@ -1861,6 +2012,8 @@
             fill.style.width = '100%';
             uploaded = true;
             showToast('✅ ' + file.name + ' 已上传并向量化入库');
+            loadDocuments();
+            loadKnowledgeBases();
         } catch(e) {}
 
         if (!uploaded) {

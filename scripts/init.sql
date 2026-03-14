@@ -52,6 +52,9 @@ CREATE TABLE IF NOT EXISTS knowledge_bases (
     chunk_size      INT DEFAULT 1000,
     chunk_overlap   INT DEFAULT 200,
     created_by      VARCHAR(64),
+    status          VARCHAR(16) DEFAULT 'ACTIVE',
+    document_count  INT DEFAULT 0,
+    total_chunks    INT DEFAULT 0,
     created_at      TIMESTAMP DEFAULT NOW(),
     updated_at      TIMESTAMP DEFAULT NOW()
 );
@@ -62,10 +65,13 @@ CREATE TABLE IF NOT EXISTS document_meta (
     knowledge_base_id   VARCHAR(36) REFERENCES knowledge_bases(id),
     file_size           BIGINT,
     storage_path        VARCHAR(500),
+    content_type        VARCHAR(128),
     chunk_count         INT DEFAULT 0,
     uploaded_by         VARCHAR(64),
     status              VARCHAR(16) DEFAULT 'PROCESSING',  -- PROCESSING | INDEXED | FAILED
+    error_message       TEXT,
     created_at          TIMESTAMP DEFAULT NOW(),
+    indexed_at          TIMESTAMP,
     updated_at          TIMESTAMP DEFAULT NOW()
 );
 

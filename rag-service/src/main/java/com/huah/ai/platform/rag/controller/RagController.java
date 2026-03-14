@@ -1,22 +1,29 @@
 package com.huah.ai.platform.rag.controller;
 
 import com.huah.ai.platform.common.dto.Result;
+import com.huah.ai.platform.common.exception.BizException;
+import com.huah.ai.platform.rag.config.S3Properties;
 import com.huah.ai.platform.rag.model.DocumentMeta;
 import com.huah.ai.platform.rag.model.KnowledgeBase;
 import com.huah.ai.platform.rag.model.RagQueryRequest;
 import com.huah.ai.platform.rag.model.RagQueryResponse;
 import com.huah.ai.platform.rag.service.DocumentIngestionService;
 import com.huah.ai.platform.rag.service.DocumentMetaService;
+import com.huah.ai.platform.rag.service.FileStorageService;
 import com.huah.ai.platform.rag.service.RagService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -34,6 +41,8 @@ public class RagController {
     private final RagService ragService;
     private final DocumentIngestionService ingestionService;
     private final DocumentMetaService metaService;
+    private final FileStorageService fileStorageService;
+    private final S3Properties s3Properties;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     // ============ 知识库问答 ============
@@ -51,11 +60,16 @@ public class RagController {
         List<Document> sourceDocs = ragService.search(req.getQuestion(), req.getKnowledgeBaseId(), topK);
 
         List<RagQueryResponse.SourceDocument> sources = sourceDocs.stream()
-                .map(doc -> RagQueryResponse.SourceDocument.builder()
-                        .filename((String) doc.getMetadata().getOrDefault("filename", "未知文件"))
-                        .content(doc.getText() != null ? doc.getText().substring(0, Math.min(200, doc.getText().length())) : "")
-                        .score((double) doc.getMetadata().getOrDefault("distance", 0.0))
-                        .build())
+                .map(doc -> {
+                    Object scoreObj = doc.getMetadata().getOrDefault("distance", 0.0);
+                    double score = (scoreObj instanceof Number) ? ((Number) scoreObj).doubleValue() : 0.0;
+
+                    return RagQueryResponse.SourceDocument.builder()
+                            .filename((String) doc.getMetadata().getOrDefault("filename", "未知文件"))
+                            .content(doc.getText() != null ? doc.getText().substring(0, Math.min(200, doc.getText().length())) : "")
+                            .score(score)
+                            .build();
+                })
                 .toList();
 
         return Result.ok(RagQueryResponse.builder()
@@ -158,5 +172,68 @@ public class RagController {
                 .map(f -> ingestionService.ingestDocument(f, knowledgeBaseId, userId))
                 .toList();
         return Result.ok(results);
+    }
+
+    /**
+     * 查询知识库下的文档列表
+     */
+    @GetMapping("/documents")
+    public Result<List<DocumentMeta>> listDocuments(
+            @RequestParam("knowledgeBaseId") String knowledgeBaseId) {
+        return Result.ok(metaService.listDocuments(knowledgeBaseId));
+    }
+
+    /**
+     * 获取单个文档元数据
+     */
+    @GetMapping("/documents/{id}")
+    public Result<DocumentMeta> getDocument(@PathVariable("id") String id) {
+        return Result.ok(metaService.getDocument(id));
+    }
+
+    /**
+     * 下载文档原始文件
+     */
+    @GetMapping("/documents/{id}/download")
+    public ResponseEntity<InputStreamResource> downloadDocument(@PathVariable("id") String id) {
+        DocumentMeta doc = metaService.getDocument(id);
+        if (doc.getStoragePath() == null) {
+            throw new BizException("该文档没有原始文件存储");
+        }
+        InputStream inputStream = fileStorageService.download(doc.getStoragePath());
+        String contentType = doc.getContentType() != null ? doc.getContentType() : "application/octet-stream";
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(contentType))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + doc.getFilename() + "\"")
+                .body(new InputStreamResource(inputStream));
+    }
+
+    /**
+     * 在线预览文档（返回预签名URL）
+     */
+    @GetMapping("/documents/{id}/preview")
+    public Result<Map<String, String>> previewDocument(@PathVariable("id") String id) {
+        DocumentMeta doc = metaService.getDocument(id);
+        if (doc.getStoragePath() == null) {
+            throw new BizException("该文档没有原始文件存储");
+        }
+        String url = fileStorageService.generatePresignedUrl(
+                doc.getStoragePath(), s3Properties.getPresignedUrlExpiry());
+        return Result.ok(Map.of(
+                "previewUrl", url,
+                "filename", doc.getFilename(),
+                "contentType", doc.getContentType() != null ? doc.getContentType() : "application/octet-stream"
+        ));
+    }
+
+    /**
+     * 删除文档（元数据 + S3文件 + 向量）
+     */
+    @DeleteMapping("/documents/{id}")
+    public Result<Void> deleteDocument(@PathVariable("id") String id) {
+        metaService.deleteDocument(id);
+        return Result.ok(null);
     }
 }

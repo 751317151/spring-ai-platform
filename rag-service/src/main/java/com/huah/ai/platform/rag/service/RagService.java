@@ -11,6 +11,7 @@ import org.springframework.ai.rag.retrieval.search.VectorStoreDocumentRetriever;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -28,17 +29,17 @@ public class RagService {
     private final VectorStore vectorStore;
     private final ChatClient.Builder chatClientBuilder;
 
+    @Autowired
+    private ChatClient chatClient;
+
     private static final String RAG_SYSTEM_PROMPT = """
-            你是企业知识库智能助手。请严格基于以下提供的上下文资料回答问题。
-            
+            你是企业知识库智能助手。请严格基于用户消息中提供的上下文资料回答问题。
+
             规则：
             1. 只使用上下文中的信息回答，不要凭空捏造
             2. 如果上下文中没有相关信息，请明确说明"知识库中未找到相关信息"
             3. 回答要简洁、准确、专业
             4. 如果引用了具体资料，请标注来源文件名
-            
-            上下文资料：
-            {question_answer_context}
             """;
 
     /**
@@ -47,12 +48,8 @@ public class RagService {
     public String query(String question, String knowledgeBaseId, int topK) {
         Advisor ragAdvisor = buildRagAdvisor(knowledgeBaseId, topK);
 
-        ChatClient client = chatClientBuilder
-                .defaultAdvisors(new SimpleLoggerAdvisor(), ragAdvisor)
-                .build();
-
-        return client.prompt()
-                .system(RAG_SYSTEM_PROMPT)
+        return chatClient.prompt()
+                .advisors(ragAdvisor)
                 .user(question)
                 .call()
                 .content();
@@ -64,12 +61,8 @@ public class RagService {
     public Flux<String> queryStream(String question, String knowledgeBaseId, int topK) {
         Advisor ragAdvisor = buildRagAdvisor(knowledgeBaseId, topK);
 
-        ChatClient client = chatClientBuilder
-                .defaultAdvisors(new SimpleLoggerAdvisor(), ragAdvisor)
-                .build();
-
-        return client.prompt()
-                .system(RAG_SYSTEM_PROMPT)
+        return chatClient.prompt()
+                .advisors(ragAdvisor)
                 .user(question)
                 .stream()
                 .content();
@@ -113,7 +106,7 @@ public class RagService {
         var builder = SearchRequest.builder()
                 .query(query)
                 .topK(topK)
-                .similarityThreshold(0.6);
+                .similarityThreshold(0.2);
 
         // 按知识库ID过滤
         if (knowledgeBaseId != null && !knowledgeBaseId.isBlank()) {
@@ -127,7 +120,7 @@ public class RagService {
     private Advisor buildRagAdvisor(String knowledgeBaseId, int topK) {
         var retrieverBuilder = VectorStoreDocumentRetriever.builder()
                 .vectorStore(vectorStore)
-                .similarityThreshold(0.6)
+                .similarityThreshold(0.2)
                 .topK(topK);
 
         if (knowledgeBaseId != null && !knowledgeBaseId.isBlank()) {
