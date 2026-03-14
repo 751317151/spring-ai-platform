@@ -91,6 +91,9 @@ public class GatewayController {
             @RequestHeader(value = "X-Model-Id", required = false) String modelId) {
 
         SseEmitter emitter = new SseEmitter(60_000L);
+        String usedModelId = modelId != null ? modelId : "auto";
+        long startTime = System.currentTimeMillis();
+
         ChatClient client = modelId != null
                 ? gatewayService.getChatClientById(modelId)
                 : gatewayService.getChatClient(scene);
@@ -111,6 +114,8 @@ public class GatewayController {
                             }
                         })
                         .doOnComplete(() -> {
+                            long latency = System.currentTimeMillis() - startTime;
+                            gatewayService.recordCall(usedModelId, latency, true);
                             try {
                                 emitter.send(SseEmitter.event()
                                         .data(Map.of("chunk", "", "done", true)));
@@ -119,9 +124,15 @@ public class GatewayController {
                                 emitter.completeWithError(e);
                             }
                         })
-                        .doOnError(emitter::completeWithError)
+                        .doOnError(e -> {
+                            long latency = System.currentTimeMillis() - startTime;
+                            gatewayService.recordCall(usedModelId, latency, false);
+                            emitter.completeWithError(e);
+                        })
                         .subscribe();
             } catch (Exception e) {
+                long latency = System.currentTimeMillis() - startTime;
+                gatewayService.recordCall(usedModelId, latency, false);
                 emitter.completeWithError(e);
             }
         });
@@ -184,6 +195,23 @@ public class GatewayController {
     public Result<ChatResponse> chatFallback(ChatRequest request, String scene, String modelId, Exception e) {
         log.error("AI网关熔断降级，模型: {}, 错误: {}", modelId, e.getMessage());
         return Result.fail(503, "AI服务暂时不可用，已触发熔断保护，请稍后重试");
+    }
+
+    /**
+     * 更新负载均衡策略
+     */
+    @PutMapping("/config/load-balance")
+    public Result<String> updateLoadBalance(@RequestBody Map<String, String> body) {
+        String strategy = body.get("strategy");
+        if (strategy == null || strategy.isBlank()) {
+            return Result.fail(400, "strategy 不能为空");
+        }
+        if (!"round-robin".equals(strategy) && !"weighted".equals(strategy) && !"least-latency".equals(strategy)) {
+            return Result.fail(400, "不支持的策略: " + strategy + "，可选: round-robin, weighted, least-latency");
+        }
+        registryConfig.setLoadBalanceStrategy(strategy);
+        log.info("负载均衡策略已更新为: {}", strategy);
+        return Result.ok("负载均衡策略已更新为: " + strategy);
     }
 
     private List<Message> buildMessages(ChatRequest request) {

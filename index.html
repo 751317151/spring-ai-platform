@@ -550,7 +550,7 @@
                     <div class="status-dot"></div>
                     <span>5 个服务在线</span>
                 </div>
-                <button class="header-btn" onclick="showToast('配置已保存')">
+                <button class="header-btn" onclick="showToast('请前往模型网关页面管理 API 配置')">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M5 5a10 10 0 0 0 0 14"/></svg>
                     API 配置
                 </button>
@@ -565,23 +565,23 @@
                 <div class="metrics-grid">
                     <div class="metric-card blue">
                         <div class="metric-label">今日请求</div>
-                        <div class="metric-value" id="m-requests">28,471</div>
-                        <div class="metric-sub"><span class="metric-trend">↑ 12.4%</span> vs 昨日</div>
+                        <div class="metric-value" id="m-requests">—</div>
+                        <div class="metric-sub">加载中...</div>
                     </div>
                     <div class="metric-card green">
                         <div class="metric-label">Token 消耗</div>
-                        <div class="metric-value" id="m-tokens">4.2M</div>
-                        <div class="metric-sub"><span class="metric-trend">↑ 8.1%</span> vs 昨日</div>
+                        <div class="metric-value" id="m-tokens">—</div>
+                        <div class="metric-sub">加载中...</div>
                     </div>
                     <div class="metric-card amber">
                         <div class="metric-label">平均延迟</div>
-                        <div class="metric-value" id="m-latency">842<span style="font-size:14px">ms</span></div>
-                        <div class="metric-sub"><span class="metric-trend down">↑ 23ms</span> P95</div>
+                        <div class="metric-value" id="m-latency">—<span style="font-size:14px">ms</span></div>
+                        <div class="metric-sub">加载中...</div>
                     </div>
                     <div class="metric-card purple">
                         <div class="metric-label">成功率</div>
-                        <div class="metric-value" id="m-success">99.2<span style="font-size:14px">%</span></div>
-                        <div class="metric-sub"><span class="metric-trend">↓ 0.1%</span> 错误率</div>
+                        <div class="metric-value" id="m-success">—<span style="font-size:14px">%</span></div>
+                        <div class="metric-sub">加载中...</div>
                     </div>
                 </div>
 
@@ -606,11 +606,7 @@
                         <table>
                             <thead><tr><th>模型</th><th>请求数</th><th>延迟</th><th>状态</th></tr></thead>
                             <tbody>
-                            <tr><td><span class="mono">deepseek-chat</span></td><td>12,841</td><td>620ms</td><td><span class="pill green">在线</span></td></tr>
-                            <tr><td><span class="mono">gpt-4o-mini</span></td><td>8,923</td><td>980ms</td><td><span class="pill green">在线</span></td></tr>
-                            <tr><td><span class="mono">qwen-plus</span></td><td>4,211</td><td>720ms</td><td><span class="pill green">在线</span></td></tr>
-                            <tr><td><span class="mono">gpt-4o</span></td><td>1,892</td><td>1840ms</td><td><span class="pill amber">限流</span></td></tr>
-                            <tr><td><span class="mono">llama3-local</span></td><td>604</td><td>220ms</td><td><span class="pill green">在线</span></td></tr>
+                            <tr><td colspan="4" style="text-align:center;color:var(--text3)">加载中...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -619,11 +615,7 @@
                         <table>
                             <thead><tr><th>时间</th><th>用户</th><th>Agent</th><th>状态</th></tr></thead>
                             <tbody id="audit-log-table">
-                            <tr><td>14:32:01</td><td>张三</td><td>研发助手</td><td><span class="pill green">成功</span></td></tr>
-                            <tr><td>14:31:44</td><td>李四</td><td>销售助手</td><td><span class="pill green">成功</span></td></tr>
-                            <tr><td>14:31:02</td><td>王五</td><td>HR助手</td><td><span class="pill green">成功</span></td></tr>
-                            <tr><td>14:30:18</td><td>赵六</td><td>财务助手</td><td><span class="pill red">超时</span></td></tr>
-                            <tr><td>14:29:55</td><td>张三</td><td>供应链</td><td><span class="pill green">成功</span></td></tr>
+                            <tr><td colspan="4" style="text-align:center;color:var(--text3)">加载中...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -824,7 +816,7 @@
                             <option value="weighted">负载均衡: 加权</option>
                             <option value="least-latency">负载均衡: 最低延迟</option>
                         </select>
-                        <button class="btn btn-primary btn-sm" onclick="showToast('配置已保存')">保存配置</button>
+                        <button class="btn btn-primary btn-sm" onclick="saveGatewayConfig()">保存配置</button>
                     </div>
                 </div>
 
@@ -1006,6 +998,7 @@
         document.getElementById('app').style.display = 'flex';
         document.getElementById('user-display').textContent = username;
         initCharts();
+        loadDashboardData();
         startRealtimeUpdates();
     }
 
@@ -1040,11 +1033,110 @@
 
     function initCharts() {
         const hrs = Array.from({length:24},function(_,i){return i+':00';});
-        const vals = Array.from({length:24},function(){return Math.floor(Math.random()*2000+500);});
+        const emptyVals = Array.from({length:24},function(){return 0;});
         const rCtx = document.getElementById('requests-chart').getContext('2d');
-        new Chart(rCtx, {type:'line', data:{labels:hrs, datasets:[{data:vals, borderColor:'#4f8ef7', borderWidth:1.5, backgroundColor:function(ctx){const g=ctx.chart.ctx.createLinearGradient(0,0,0,180);g.addColorStop(0,'rgba(79,142,247,0.25)');g.addColorStop(1,'rgba(79,142,247,0)');return g;}, fill:true, tension:0.4, pointRadius:0}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(255,255,255,0.04)'}}}}});
+        window._requestsChart = new Chart(rCtx, {type:'line', data:{labels:hrs, datasets:[{data:emptyVals.slice(), borderColor:'#4f8ef7', borderWidth:1.5, backgroundColor:function(ctx){const g=ctx.chart.ctx.createLinearGradient(0,0,0,180);g.addColorStop(0,'rgba(79,142,247,0.25)');g.addColorStop(1,'rgba(79,142,247,0)');return g;}, fill:true, tension:0.4, pointRadius:0}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(255,255,255,0.04)'}}}}});
         const pCtx = document.getElementById('agent-pie').getContext('2d');
-        new Chart(pCtx, {type:'doughnut', data:{labels:['研发助手','销售助手','HR助手','财务助手','供应链'], datasets:[{data:[35,25,18,12,10], backgroundColor:['#4f8ef7','#3dd68c','#9d7cf4','#f5a623','#2dd4bf'], borderWidth:0}]}, options:{responsive:true, maintainAspectRatio:false, cutout:'68%', plugins:{legend:{position:'right',labels:{boxWidth:10,padding:12}}}}});
+        window._agentPieChart = new Chart(pCtx, {type:'doughnut', data:{labels:[], datasets:[{data:[], backgroundColor:['#4f8ef7','#3dd68c','#9d7cf4','#f5a623','#2dd4bf','#f06060'], borderWidth:0}]}, options:{responsive:true, maintainAspectRatio:false, cutout:'68%', plugins:{legend:{position:'right',labels:{boxWidth:10,padding:12}}}}});
+    }
+
+    var agentLabels = {'RdAssistantAgent':'研发助手','SalesAssistantAgent':'销售助手','HrAssistantAgent':'HR助手','FinanceAssistantAgent':'财务助手','SupplyChainAgent':'供应链','QcAssistantAgent':'质控助手','multi':'多Agent协作'};
+
+    async function loadDashboardData() {
+        // Parallel fetch all dashboard data sources
+        var results = await Promise.all([
+            apiGet(SERVICES.monitor + '/monitor/overview').catch(function(e) { return null; }),
+            apiGet(SERVICES.monitor + '/monitor/hourly-stats').catch(function(e) { return null; }),
+            apiGet(SERVICES.monitor + '/monitor/by-agent').catch(function(e) { return null; }),
+            apiGet(SERVICES.gateway + '/chat/models').catch(function(e) { return null; }),
+            apiGet(SERVICES.monitor + '/monitor/audit-logs?limit=5').catch(function(e) { return null; })
+        ]);
+
+        var overviewResp = results[0], hourlyResp = results[1], agentResp = results[2], gwResp = results[3], logsResp = results[4];
+
+        // 1. Overview metrics
+        if (overviewResp) {
+            var d = overviewResp.data || overviewResp;
+            var dmReq = document.getElementById('m-requests');
+            var dmTok = document.getElementById('m-tokens');
+            var dmLat = document.getElementById('m-latency');
+            var dmSuc = document.getElementById('m-success');
+            if (dmReq) dmReq.textContent = (Math.round(d.totalRequests) || 0).toLocaleString();
+            var totalTokens = d.totalTokens || 0;
+            if (dmTok) dmTok.textContent = totalTokens > 1000000 ? (totalTokens/1000000).toFixed(1)+'M' : totalTokens > 1000 ? (totalTokens/1000).toFixed(1)+'K' : totalTokens;
+            if (dmLat) dmLat.innerHTML = Math.round(d.avgLatencyMs || 0) + '<span style="font-size:14px">ms</span>';
+            if (dmSuc) dmSuc.innerHTML = (d.successRate != null ? (d.successRate*100).toFixed(1) : '100.0') + '<span style="font-size:14px">%</span>';
+        }
+
+        // 2. Hourly request trend chart
+        if (hourlyResp) {
+            var hourlyData = (hourlyResp.data || []);
+            var reqPerHour = Array.from({length:24},function(){return 0;});
+            hourlyData.forEach(function(row) {
+                var h = row.hour;
+                if (h >= 0 && h < 24) reqPerHour[h] = row.total || 0;
+            });
+            if (window._requestsChart) {
+                window._requestsChart.data.datasets[0].data = reqPerHour;
+                window._requestsChart.update();
+            }
+        }
+
+        // 3. Agent distribution pie chart
+        if (agentResp) {
+            var agents = agentResp.data || [];
+            if (agents.length > 0 && window._agentPieChart) {
+                var labels = agents.map(function(a){return agentLabels[a.agent_type] || a.agent_type;});
+                var counts = agents.map(function(a){return a.count || 0;});
+                window._agentPieChart.data.labels = labels;
+                window._agentPieChart.data.datasets[0].data = counts;
+                window._agentPieChart.update();
+            }
+        }
+
+        // 4. Model ranking table
+        var modelTbody = document.querySelector('#page-dashboard .grid-2 .card:first-child tbody');
+        if (gwResp) {
+            var models = (gwResp.data || gwResp).models || [];
+            if (modelTbody && models.length > 0) {
+                modelTbody.innerHTML = '';
+                models.sort(function(a,b){return (b.totalCalls||0)-(a.totalCalls||0);});
+                models.forEach(function(m) {
+                    var statusPill = m.enabled ? '<span class="pill green">在线</span>' : '<span class="pill red">离线</span>';
+                    var calls = (m.totalCalls || 0).toLocaleString();
+                    var lat = (m.avgLatencyMs || 0) + 'ms';
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = '<td><span class="mono">' + (m.name || m.id) + '</span></td>' +
+                        '<td>' + calls + '</td><td>' + lat + '</td><td>' + statusPill + '</td>';
+                    modelTbody.appendChild(tr);
+                });
+            } else if (modelTbody) {
+                modelTbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text3)">暂无模型数据</td></tr>';
+            }
+        } else if (modelTbody) {
+            modelTbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text3)">模型服务未连接</td></tr>';
+        }
+
+        // 5. Recent audit logs
+        var logTbody = document.getElementById('audit-log-table');
+        if (logsResp) {
+            var logs = logsResp.data || [];
+            if (logTbody && logs.length > 0) {
+                logTbody.innerHTML = '';
+                logs.forEach(function(l) {
+                    var time = l.created_at ? new Date(l.created_at).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '-';
+                    var statusPill = l.success ? '<span class="pill green">成功</span>' : '<span class="pill red">失败</span>';
+                    var agent = agentLabels[l.agent_type] || l.agent_type || '-';
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = '<td>' + time + '</td><td>' + (l.user_id || '-') + '</td><td>' + agent + '</td><td>' + statusPill + '</td>';
+                    logTbody.appendChild(tr);
+                });
+            } else if (logTbody) {
+                logTbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text3)">暂无审计日志</td></tr>';
+            }
+        } else if (logTbody) {
+            logTbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text3)">监控服务未连接</td></tr>';
+        }
     }
 
     function initMonitorCharts() {
@@ -1241,11 +1333,23 @@
                     tr.innerHTML = '<td>' + (sceneLabels[scene] || scene) + '</td>' +
                         '<td><span class="mono">' + primary + '</span></td>' +
                         '<td><span class="mono">' + fallback + '</span></td>' +
-                        '<td><button class="btn btn-ghost btn-sm" onclick="showToast(\'路由规则已更新\')">编辑</button></td>';
+                        '<td><span style="font-size:11px;color:var(--text3)">配置文件管理</span></td>';
                     routesBody.appendChild(tr);
                 });
             }
         } catch(e) { /* keep empty state on failure */ }
+    }
+
+    async function saveGatewayConfig() {
+        var sel = document.getElementById('gw-lb-strategy');
+        if (!sel) return;
+        var strategy = sel.value;
+        try {
+            await apiPut(SERVICES.gateway + '/chat/config/load-balance', {strategy: strategy});
+            showToast('负载均衡策略已更新为: ' + strategy);
+        } catch(e) {
+            showToast('保存失败: ' + e.message);
+        }
     }
 
     // ===== USERS/PERMISSIONS DATA =====
@@ -1786,6 +1890,9 @@
                 if (el && d.totalRequests != null) el.textContent = Math.round(d.totalRequests).toLocaleString();
                 var s = document.getElementById('active-sessions');
                 if (s && d.activeRequests != null) s.textContent = Math.round(d.activeRequests);
+                var totalTokens = d.totalTokens || 0;
+                var dmTok = document.getElementById('m-tokens');
+                if (dmTok) dmTok.textContent = totalTokens > 1000000 ? (totalTokens/1000000).toFixed(1)+'M' : totalTokens > 1000 ? (totalTokens/1000).toFixed(1)+'K' : totalTokens;
             }).catch(function() {});
         }, 5000);
     }

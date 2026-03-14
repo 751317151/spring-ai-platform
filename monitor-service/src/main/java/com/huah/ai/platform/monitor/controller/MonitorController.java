@@ -6,12 +6,19 @@ import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.*;
-import java.util.concurrent.TimeUnit;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 监控仪表板接口
@@ -103,7 +110,7 @@ public class MonitorController {
 
     /** 用户 Token 消耗查询 */
     @GetMapping("/token-usage/{userId}")
-    public Result<Map<String, Object>> tokenUsage(@PathVariable String userId) {
+    public Result<Map<String, Object>> tokenUsage(@PathVariable(name = "userId") String userId) {
         String today = LocalDate.now().toString();
         String key   = "ai:token:daily:" + userId + ":" + today;
         String usage = redisTemplate.opsForValue().get(key);
@@ -117,8 +124,8 @@ public class MonitorController {
     /** 最近审计日志（读 DB） */
     @GetMapping("/audit-logs")
     public Result<List<Map<String, Object>>> auditLogs(
-            @RequestParam(defaultValue = "20") int limit,
-            @RequestParam(required = false) String userId) {
+            @RequestParam(name = "limit", defaultValue = "20") int limit,
+            @RequestParam(name = "userId", required = false) String userId) {
         try {
             String sql = userId != null
                 ? "SELECT id, user_id, agent_type, latency_ms, success, created_at " +

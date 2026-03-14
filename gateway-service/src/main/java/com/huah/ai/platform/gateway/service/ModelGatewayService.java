@@ -4,7 +4,6 @@ import com.huah.ai.platform.common.exception.AiServiceException;
 import com.huah.ai.platform.gateway.config.ModelRegistryConfig;
 import com.huah.ai.platform.gateway.config.ModelRegistryConfig.ModelDefinition;
 import jakarta.annotation.PostConstruct;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
@@ -14,6 +13,7 @@ import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -30,10 +30,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ModelGatewayService {
 
     private final ModelRegistryConfig registryConfig;
+    private final JdbcTemplate jdbcTemplate;
 
     /** 模型实例缓存 */
     private final Map<String, ChatModel> modelCache = new ConcurrentHashMap<>();
@@ -42,8 +42,24 @@ public class ModelGatewayService {
     /** 模型调用统计 */
     private final Map<String, ModelStats> statsMap = new ConcurrentHashMap<>();
 
+    public ModelGatewayService(ModelRegistryConfig registryConfig, JdbcTemplate jdbcTemplate) {
+        this.registryConfig = registryConfig;
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
     @PostConstruct
     public void init() {
+        // 确保表存在
+        jdbcTemplate.execute("""
+            CREATE TABLE IF NOT EXISTS gateway_model_stats (
+                model_id        VARCHAR(64) PRIMARY KEY,
+                total_calls     INT DEFAULT 0,
+                success_calls   INT DEFAULT 0,
+                total_latency_ms BIGINT DEFAULT 0,
+                updated_at      TIMESTAMP DEFAULT NOW()
+            )
+        """);
+
         log.info("初始化模型注册表...");
         if (registryConfig.getRegistry() == null) {
             log.warn("未配置模型注册表，将使用默认注入模型");
@@ -60,7 +76,56 @@ public class ModelGatewayService {
                 log.error("模型初始化失败: id={}, error={}", def.getId(), e.getMessage());
             }
         }
+
+        // 从数据库加载历史统计
+        loadStatsFromDb();
         log.info("模型注册表初始化完成，共注册 {} 个模型", modelCache.size());
+    }
+
+    private void loadStatsFromDb() {
+        try {
+            jdbcTemplate.query(
+                "SELECT model_id, total_calls, success_calls, total_latency_ms FROM gateway_model_stats",
+                rs -> {
+                    String modelId = rs.getString("model_id");
+                    int totalCalls = rs.getInt("total_calls");
+                    int successCalls = rs.getInt("success_calls");
+                    long totalLatencyMs = rs.getLong("total_latency_ms");
+
+                    ModelStats stats = statsMap.get(modelId);
+                    if (stats == null) {
+                        stats = new ModelStats(modelId);
+                        statsMap.put(modelId, stats);
+                    }
+                    stats.restore(totalCalls, successCalls, totalLatencyMs);
+                    log.info("已恢复模型统计: id={}, totalCalls={}, successCalls={}, avgLatency={}ms",
+                            modelId, totalCalls, successCalls,
+                            totalCalls > 0 ? totalLatencyMs / totalCalls : 0);
+                }
+            );
+        } catch (Exception e) {
+            log.warn("加载模型统计失败（首次启动可忽略）: {}", e.getMessage());
+        }
+    }
+
+    private void persistStats(String modelId, ModelStats stats) {
+        try {
+            int total = stats.getTotalCalls().get();
+            int success = stats.getSuccessCalls().get();
+            long totalLatency = stats.getTotalLatencyMs();
+
+            jdbcTemplate.update("""
+                INSERT INTO gateway_model_stats (model_id, total_calls, success_calls, total_latency_ms, updated_at)
+                VALUES (?, ?, ?, ?, NOW())
+                ON CONFLICT (model_id) DO UPDATE SET
+                    total_calls = EXCLUDED.total_calls,
+                    success_calls = EXCLUDED.success_calls,
+                    total_latency_ms = EXCLUDED.total_latency_ms,
+                    updated_at = NOW()
+            """, modelId, total, success, totalLatency);
+        } catch (Exception e) {
+            log.warn("持久化模型统计失败: modelId={}, error={}", modelId, e.getMessage());
+        }
     }
 
     /**
@@ -174,18 +239,6 @@ public class ModelGatewayService {
 
     /** Anthropic Claude */
     private ChatModel buildAnthropicModel(ModelDefinition def) {
-//        AnthropicApi api = AnthropicApi.builder()
-//                .apiKey(def.getApiKey())
-//                .build();
-//        AnthropicChatOptions options = AnthropicChatOptions.builder()
-//                .model(def.getName())
-//                .temperature(0.7)
-//                .maxTokens(4096)
-//                .build();
-//        return AnthropicChatModel.builder()
-//                .anthropicApi(api)
-//                .defaultOptions(options)
-//                .build();
         return null;
     }
 
@@ -201,9 +254,11 @@ public class ModelGatewayService {
         return OllamaChatModel.builder().ollamaApi(api).defaultOptions(options).build();
     }
 
-    /** 记录调用统计 */
+    /** 记录调用统计并持久化 */
     public void recordCall(String modelId, long latencyMs, boolean success) {
-        statsMap.computeIfAbsent(modelId, ModelStats::new).record(latencyMs, success);
+        ModelStats stats = statsMap.computeIfAbsent(modelId, ModelStats::new);
+        stats.record(latencyMs, success);
+        persistStats(modelId, stats);
     }
 
     /** 获取所有模型统计 */
@@ -217,17 +272,26 @@ public class ModelGatewayService {
         private final String modelId;
         private final AtomicInteger totalCalls = new AtomicInteger(0);
         private final AtomicInteger successCalls = new AtomicInteger(0);
+        private volatile long totalLatencyMs = 0;
         private volatile double avgLatencyMs = 0;
 
         public ModelStats(String modelId) {
             this.modelId = modelId;
         }
 
-        public void record(long latencyMs, boolean success) {
+        public synchronized void record(long latencyMs, boolean success) {
             int n = totalCalls.incrementAndGet();
             if (success) successCalls.incrementAndGet();
-            // 滑动平均
-            avgLatencyMs = avgLatencyMs + (latencyMs - avgLatencyMs) / n;
+            totalLatencyMs += latencyMs;
+            avgLatencyMs = (double) totalLatencyMs / n;
+        }
+
+        /** 从数据库恢复统计数据 */
+        public void restore(int total, int success, long totalLatency) {
+            totalCalls.set(total);
+            successCalls.set(success);
+            totalLatencyMs = totalLatency;
+            avgLatencyMs = total > 0 ? (double) totalLatency / total : 0;
         }
 
         public double getSuccessRate() {

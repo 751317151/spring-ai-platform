@@ -112,6 +112,18 @@ CREATE INDEX IF NOT EXISTS idx_audit_created   ON ai_audit_logs (created_at DESC
 CREATE INDEX IF NOT EXISTS idx_audit_agent     ON ai_audit_logs (agent_type);
 
 -- ============================================================
+-- Gateway Service Tables (Model Stats)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS gateway_model_stats (
+    model_id        VARCHAR(64) PRIMARY KEY,
+    total_calls     INT DEFAULT 0,
+    success_calls   INT DEFAULT 0,
+    total_latency_ms BIGINT DEFAULT 0,
+    updated_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ============================================================
 -- Seed Data
 -- ============================================================
 

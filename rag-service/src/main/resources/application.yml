@@ -39,12 +39,16 @@ spring:
       pgvector:
         index-type: HNSW
         distance-type: COSINE_DISTANCE
-        dimensions: 1536
+#        dimensions: 1536
         schema-name: public
-        table-name: document_embeddings
+#        table-name: document_embeddings
         initialize-schema: true
 
   servlet:
     multipart:
       max-file-size: 50MB
       max-request-size: 100MB
+logging:
+  level:
+    org.springframework.ai: debug
+    com.huah.ai.platform.rag: debug

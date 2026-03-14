@@ -8,6 +8,11 @@ spring:
     redis:
       host: localhost
       port: 6379
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ai-platform
+    username: ${DB_USER:postgres}
+    password: ${DB_PASS:blackstar}
+    driver-class-name: org.postgresql.Driver
 
   # 关闭各 AI starter 的自动 ChatModel 注册，避免多 starter 并存时 bean 名称冲突
   # gateway-service 通过 ModelGatewayService 按需手动构建 ChatModel
