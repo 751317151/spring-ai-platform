@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.Map;
 
+import static org.springframework.ai.chat.memory.ChatMemory.CONVERSATION_ID;
+
 /**
  * Multi-Agent 协作框架
  *
@@ -32,33 +34,35 @@ public class MultiAgentOrchestrator {
 
     /**
      * 执行复杂多步任务（Planner → Executor → Critic）
+     * 一次性返回最终结果，供非流式接口使用
      */
     public String executeComplexTask(String userId, String sessionId, String task) {
         log.info("Multi-Agent 任务开始: userId={}, task={}", userId, task);
+        String internalId = sessionId + "-multi-" + System.currentTimeMillis();
 
-        // Step 1: Planner 分解任务
-        String plan = planTask(task);
+        String plan = planTask(task, internalId + "-planner");
         log.debug("任务规划: {}", plan);
 
-        // Step 2: Executor 执行（携带工具 + 记忆）
-        String executionResult = executeWithTools(task, plan, sessionId);
+        String executionResult = executeWithTools(task, plan, internalId + "-executor");
 
-        // Step 3: Critic 综合评审
-        String finalResult = critique(task, executionResult);
+        String finalResult = critique(task, executionResult, internalId + "-critic");
         log.info("Multi-Agent 任务完成");
         return finalResult;
     }
 
-    private String planTask(String task) {
+    /** Step 1: Planner 分解任务 */
+    public String planTask(String task, String sessionId) {
         return chatClientBuilder.build()
                 .prompt()
                 .system(PLANNER_SYSTEM)
                 .user("请分解以下任务：" + task)
+                .advisors(a -> a.param(CONVERSATION_ID, sessionId))
                 .call()
                 .content();
     }
 
-    private String executeWithTools(String task, String plan, String sessionId) {
+    /** Step 2: Executor 执行（携带工具 + 记忆） */
+    public String executeWithTools(String task, String plan, String sessionId) {
         String executorSystem = String.format("""
                 你是任务执行专家，负责使用工具完成具体任务。
                 任务计划：%s
@@ -69,18 +73,20 @@ public class MultiAgentOrchestrator {
                 .defaultAdvisors(
                     new SimpleLoggerAdvisor(),
                     MessageChatMemoryAdvisor.builder(
-                        memoryService.getOrCreateMemory(sessionId + "-executor")
+                        memoryService.getOrCreateMemory(sessionId)
                     ).build()
                 )
                 .build()
                 .prompt()
                 .system(executorSystem)
                 .user(task)
+                .advisors(a -> a.param(CONVERSATION_ID, sessionId))
                 .call()
                 .content();
     }
 
-    private String critique(String originalTask, String executionResult) {
+    /** Step 3: Critic 综合评审 */
+    public String critique(String originalTask, String executionResult, String sessionId) {
         String criticSystem = String.format("""
                 你是质量审查专家，评估任务执行结果。
                 原始任务：%s
@@ -92,6 +98,7 @@ public class MultiAgentOrchestrator {
                 .prompt()
                 .system(criticSystem)
                 .user("请对执行结果进行评审并给出最终答案")
+                .advisors(a -> a.param(CONVERSATION_ID, sessionId))
                 .call()
                 .content();
     }

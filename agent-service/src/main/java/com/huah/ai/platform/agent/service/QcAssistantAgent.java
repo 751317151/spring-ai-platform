@@ -8,6 +8,8 @@ import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
+import static org.springframework.ai.chat.memory.ChatMemory.CONVERSATION_ID;
+
 /**
  * 生产质控助手 Agent
  * 功能：不良品分析、质检报告查询、质量趋势预警
@@ -40,6 +42,7 @@ public class QcAssistantAgent {
                 .prompt()
                 .system(s -> s.param("userId", userId))
                 .user(message)
+                .advisors(a -> a.param(CONVERSATION_ID, sessionId))
                 .call()
                 .content();
     }
@@ -53,6 +56,7 @@ public class QcAssistantAgent {
                 .prompt()
                 .system(s -> s.param("userId", userId))
                 .user(message)
+                .advisors(a -> a.param(CONVERSATION_ID, sessionId))
                 .stream()
                 .content();
     }

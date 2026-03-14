@@ -8,6 +8,8 @@ import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
+import static org.springframework.ai.chat.memory.ChatMemory.CONVERSATION_ID;
+
 @Service
 @RequiredArgsConstructor
 public class FinanceAssistantAgent {
@@ -20,13 +22,15 @@ public class FinanceAssistantAgent {
         return b.defaultSystem(SYSTEM)
                 .defaultAdvisors(new SimpleLoggerAdvisor(), MessageChatMemoryAdvisor.builder(mem.getOrCreateMemory(sessionId)).build())
                 .build()
-                .prompt().system(s -> s.param("userId", userId)).user(message).call().content();
+                .prompt().system(s -> s.param("userId", userId)).user(message)
+                .advisors(a -> a.param(CONVERSATION_ID, sessionId)).call().content();
     }
 
     public Flux<String> chatStream(String userId, String sessionId, String message) {
         return b.defaultSystem(SYSTEM)
                 .defaultAdvisors(new SimpleLoggerAdvisor(), MessageChatMemoryAdvisor.builder(mem.getOrCreateMemory(sessionId)).build())
                 .build()
-                .prompt().system(s -> s.param("userId", userId)).user(message).stream().content();
+                .prompt().system(s -> s.param("userId", userId)).user(message)
+                .advisors(a -> a.param(CONVERSATION_ID, sessionId)).stream().content();
     }
 }

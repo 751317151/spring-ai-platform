@@ -3,18 +3,23 @@ package com.huah.ai.platform.agent.memory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
+import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.MessageType;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
  * 会话记忆管理服务
- * - 短期记忆：基于 InMemoryChatMemory（滑动窗口）
+ * - 短期记忆：基于 JDBC 持久化（PostgreSQL）+ 滑动窗口
  * - 长期记忆：Redis 持久化用户画像
  */
 @Slf4j
@@ -23,32 +28,53 @@ import java.util.concurrent.TimeUnit;
 public class ConversationMemoryService {
 
     private final StringRedisTemplate redisTemplate;
-
-    /** 短期会话记忆缓存 */
-    private final Map<String, ChatMemory> sessionMemories = new ConcurrentHashMap<>();
+    private final ChatMemoryRepository chatMemoryRepository;
 
     private static final String USER_PROFILE_KEY = "ai:user:profile:";
-    private static final int SESSION_TTL_HOURS = 24;
 
     /**
-     * 获取或创建会话记忆（短期）
+     * 获取或创建会话记忆（JDBC 持久化）
      */
     public ChatMemory getOrCreateMemory(String sessionId) {
-        return sessionMemories.computeIfAbsent(sessionId, id -> {
-            log.debug("创建新会话记忆: sessionId={}", id);
-            return MessageWindowChatMemory.builder()
-                    .chatMemoryRepository(new InMemoryChatMemoryRepository())
-                    .maxMessages(20)
-                    .build();
-        });
+        log.debug("获取会话记忆: sessionId={}", sessionId);
+        return MessageWindowChatMemory.builder()
+                .chatMemoryRepository(chatMemoryRepository)
+                .maxMessages(20)
+                .build();
     }
 
     /**
      * 清除会话记忆
      */
     public void clearMemory(String sessionId) {
-        sessionMemories.remove(sessionId);
+        chatMemoryRepository.deleteByConversationId(sessionId);
         log.debug("已清除会话记忆: sessionId={}", sessionId);
+    }
+
+    /**
+     * 查询会话历史消息（仅返回 USER 和 ASSISTANT 类型）
+     */
+    public List<Map<String, String>> getHistory(String sessionId) {
+        List<Message> messages = chatMemoryRepository.findByConversationId(sessionId);
+        return messages.stream()
+                .filter(m -> m.getMessageType() == MessageType.USER || m.getMessageType() == MessageType.ASSISTANT)
+                .map(m -> Map.of(
+                        "role", m.getMessageType() == MessageType.USER ? "user" : "ai",
+                        "content", m.getText()
+                ))
+                .toList();
+    }
+
+    /**
+     * 手动保存一轮对话到指定会话（用于 Multi-Agent 等非 Advisor 场景）
+     */
+    public void saveExchange(String sessionId, String userMessage, String aiResponse) {
+        List<Message> existing = chatMemoryRepository.findByConversationId(sessionId);
+        List<Message> updated = new ArrayList<>(existing);
+        updated.add(new UserMessage(userMessage));
+        updated.add(new AssistantMessage(aiResponse));
+        chatMemoryRepository.saveAll(sessionId, updated);
+        log.debug("保存对话记录: sessionId={}, totalMessages={}", sessionId, updated.size());
     }
 
     /**
@@ -84,9 +110,30 @@ public class ConversationMemoryService {
     }
 
     /**
-     * 统计当前活跃会话数
+     * 查询指定用户+助手下的所有会话列表，每个会话附带摘要（第一条用户消息前30字）
+     * sessionId 格式: {userId}-{agentType}-{timestamp}
+     */
+    public List<Map<String, String>> listSessions(String prefix) {
+        return chatMemoryRepository.findConversationIds().stream()
+                .filter(id -> id.startsWith(prefix))
+                .sorted(java.util.Comparator.reverseOrder())
+                .map(id -> {
+                    List<Message> msgs = chatMemoryRepository.findByConversationId(id);
+                    String summary = msgs.stream()
+                            .filter(m -> m.getMessageType() == MessageType.USER)
+                            .map(Message::getText)
+                            .findFirst()
+                            .map(t -> t.length() > 30 ? t.substring(0, 30) + "..." : t)
+                            .orElse("新对话");
+                    return Map.of("sessionId", id, "summary", summary);
+                })
+                .toList();
+    }
+
+    /**
+     * 统计当前持久化的会话数
      */
     public int getActiveSessionCount() {
-        return sessionMemories.size();
+        return chatMemoryRepository.findConversationIds().size();
     }
 }

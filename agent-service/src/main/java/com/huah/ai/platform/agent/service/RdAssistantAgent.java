@@ -10,6 +10,8 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
+import static org.springframework.ai.chat.memory.ChatMemory.CONVERSATION_ID;
+
 /**
  * 研发助手 Agent
  * 功能：代码审查、技术文档查询、缺陷分析、技术选型建议
@@ -51,6 +53,7 @@ public class RdAssistantAgent {
                 .prompt()
                 .system(s -> s.param("userId", userId))
                 .user(message)
+                .advisors(a -> a.param(CONVERSATION_ID, sessionId))
                 .call()
                 .content();
     }
@@ -65,6 +68,7 @@ public class RdAssistantAgent {
                 .prompt()
                 .system(s -> s.param("userId", userId))
                 .user(message)
+                .advisors(a -> a.param(CONVERSATION_ID, sessionId))
                 .stream()
                 .content();
     }

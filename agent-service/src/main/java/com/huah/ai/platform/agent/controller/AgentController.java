@@ -1,20 +1,39 @@
 package com.huah.ai.platform.agent.controller;
 
+import com.huah.ai.platform.agent.memory.ConversationMemoryService;
 import com.huah.ai.platform.agent.multi.MultiAgentOrchestrator;
-import com.huah.ai.platform.agent.service.*;
+import com.huah.ai.platform.agent.service.FinanceAssistantAgent;
+import com.huah.ai.platform.agent.service.HrAssistantAgent;
+import com.huah.ai.platform.agent.service.QcAssistantAgent;
+import com.huah.ai.platform.agent.service.RdAssistantAgent;
+import com.huah.ai.platform.agent.service.SalesAssistantAgent;
+import com.huah.ai.platform.agent.service.SupplyChainAgent;
 import com.huah.ai.platform.common.dto.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.springframework.ai.chat.memory.ChatMemory.CONVERSATION_ID;
 
 /**
  * Agent 统一入口控制器
@@ -33,7 +52,11 @@ public class AgentController {
     private final SupplyChainAgent supplyChainAgent;
     private final QcAssistantAgent qcAssistant;
     private final MultiAgentOrchestrator multiAgentOrchestrator;
+    private final ConversationMemoryService memoryService;
     private final ExecutorService executor = Executors.newCachedThreadPool();
+
+    @Autowired
+    private ChatClient chatClient;
 
     /** 普通对话（所有 Agent 统一入口） */
     @PostMapping("/{agentType}/chat")
@@ -98,13 +121,29 @@ public class AgentController {
         executor.submit(() -> {
             try {
                 if ("multi".equals(agentType)) {
-                    log.info("[Stream] Multi-Agent 任务, 使用同步回退, userId={}", userId);
-                    String resp = multiAgentOrchestrator.executeComplexTask(userId, sessionId, message);
-                    sendChunk(emitter, resp);
-                    chunkCount.incrementAndGet();
+                    log.info("[Stream] Multi-Agent 分步流式, userId={}", userId);
+                    String internalId = sessionId + "-";
+
+                    // Step 1: Planner
+                    sendChunk(emitter, "**[Planner] 正在分析任务...**\n\n");
+                    String plan = multiAgentOrchestrator.planTask(message, internalId + "-planner");
+                    sendChunk(emitter, plan + "\n\n---\n\n");
+
+                    // Step 2: Executor
+                    sendChunk(emitter, "**[Executor] 正在执行任务...**\n\n");
+                    String executionResult = multiAgentOrchestrator.executeWithTools(message, plan, internalId + "-executor");
+                    sendChunk(emitter, executionResult + "\n\n---\n\n");
+
+                    // Step 3: Critic
+                    sendChunk(emitter, "**[Critic] 正在评审结果...**\n\n");
+                    String finalResult = multiAgentOrchestrator.critique(message, executionResult, internalId + "-critic");
+                    sendChunk(emitter, finalResult);
+
+                    // 保存用户输入和最终结果到主会话，供前端查询历史
+                    memoryService.saveExchange(sessionId, message, finalResult);
+
                     long latency = System.currentTimeMillis() - startTime;
-                    log.info("[Stream] 模型输出 agent=multi, userId={}, latency={}ms, responseLength={}, response={}",
-                            userId, latency, resp != null ? resp.length() : 0, truncate(resp, 500));
+                    log.info("[Stream] Multi-Agent 完成 userId={}, latency={}ms", userId, latency);
                     sendDone(emitter);
                 } else {
                     Flux<String> flux = routeToAgentStream(agentType, userId, sessionId, message);
@@ -175,6 +214,37 @@ public class AgentController {
         }
     }
 
+    /** 清除会话记忆 */
+    @DeleteMapping("/{agentType}/memory")
+    public Result<String> clearMemory(
+            @PathVariable(name = "agentType") String agentType,
+            @RequestHeader(value = "X-User-Id", defaultValue = "anonymous") String userId,
+            @RequestHeader(value = "X-Session-Id", defaultValue = "default") String sessionId) {
+        log.info("[Memory] 清除记忆 agent={}, userId={}, sessionId={}", agentType, userId, sessionId);
+        memoryService.clearMemory(sessionId);
+        return Result.ok("会话记忆已清除");
+    }
+
+    /** 查询会话历史 */
+    @GetMapping("/{agentType}/memory")
+    public Result<List<Map<String, String>>> getHistory(
+            @PathVariable(name = "agentType") String agentType,
+            @RequestHeader(value = "X-User-Id", defaultValue = "anonymous") String userId,
+            @RequestHeader(value = "X-Session-Id", defaultValue = "default") String sessionId) {
+        log.info("[Memory] 查询历史 agent={}, userId={}, sessionId={}", agentType, userId, sessionId);
+        return Result.ok(memoryService.getHistory(sessionId));
+    }
+
+    /** 查询当前用户在该助手下的所有会话列表 */
+    @GetMapping("/{agentType}/sessions")
+    public Result<List<Map<String, String>>> listSessions(
+            @PathVariable(name = "agentType") String agentType,
+            @RequestHeader(value = "X-User-Id", defaultValue = "anonymous") String userId) {
+        String prefix = userId + "-" + agentType + "-";
+        log.info("[Sessions] 查询会话列表 agent={}, userId={}, prefix={}", agentType, userId, prefix);
+        return Result.ok(memoryService.listSessions(prefix));
+    }
+
     private String routeToAgent(String type, String userId, String sessionId, String msg) {
         return switch (type) {
             case "rd"           -> rdAssistant.chat(userId, sessionId, msg);
@@ -213,5 +283,17 @@ public class AgentController {
     private static String truncate(String text, int maxLen) {
         if (text == null) return "null";
         return text.length() <= maxLen ? text : text.substring(0, maxLen) + "...(truncated, total=" + text.length() + ")";
+    }
+
+    @RequestMapping(value="/test", produces = "text/html;charset=utf-8")
+    public Flux<String> chat(
+            @RequestParam("prompt") String prompt,
+            @RequestParam("chatId") String chatId,
+            @RequestParam("userId") String userId){
+        return chatClient.prompt()
+                .user(prompt)
+                .advisors(a -> a.param(CONVERSATION_ID, chatId))
+                .stream()
+                .content();
     }
 }

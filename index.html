@@ -204,6 +204,29 @@
             width: 6px; height: 6px; border-radius: 50%; display: inline-block;
             margin-right: 6px; vertical-align: middle;
         }
+        .session-list {
+            padding: 4px 8px 8px; border-top: 1px solid var(--border);
+            overflow-y: auto; max-height: 200px;
+        }
+        .session-list-label {
+            font-size: 10px; font-weight: 500; text-transform: uppercase;
+            letter-spacing: .08em; color: var(--text3); padding: 6px 4px 4px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .session-item {
+            padding: 7px 10px; border-radius: var(--r); cursor: pointer;
+            margin-bottom: 2px; transition: all var(--transition);
+            border: 1px solid transparent; font-size: 12px; color: var(--text2);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .session-item:hover { background: var(--surface2); color: var(--text); }
+        .session-item.active { background: var(--accent-dim); border-color: rgba(79,142,247,0.2); color: var(--accent2); }
+        .btn-new-chat {
+            font-size: 11px; padding: 3px 8px; border-radius: var(--r);
+            background: var(--accent-dim); color: var(--accent2); border: none;
+            cursor: pointer; transition: all var(--transition);
+        }
+        .btn-new-chat:hover { background: var(--accent); color: #fff; }
 
         .chat-header {
             padding: 14px 20px; border-bottom: 1px solid var(--border);
@@ -642,6 +665,13 @@
                                 <div class="agent-desc">复杂跨域任务自动拆解</div>
                             </div>
                         </div>
+                        <div class="session-list" id="session-list" style="display:none">
+                            <div class="session-list-label">
+                                <span>对话列表</span>
+                                <button class="btn-new-chat" onclick="createNewSession()">+ 新对话</button>
+                            </div>
+                            <div id="session-items"></div>
+                        </div>
                         <div style="padding:8px;border-top:1px solid var(--border)">
                             <div class="form-group" style="margin:0">
                                 <label class="form-label">模型</label>
@@ -665,6 +695,7 @@
                                 <div style="font-size:11px;color:var(--text3)">连接到 DeepSeek · 工具: Jira / Confluence / SonarQube</div>
                             </div>
                             <div style="margin-left:auto;display:flex;gap:8px">
+                                <button class="btn btn-ghost btn-sm" onclick="createNewSession()">新建对话</button>
                                 <button class="btn btn-ghost btn-sm" onclick="clearChat()">清空对话</button>
                                 <button class="btn btn-ghost btn-sm" onclick="showToast('会话已导出')">导出</button>
                             </div>
@@ -1112,6 +1143,8 @@
     let authToken = null;
     let currentUserId = 'EMP001';
     let monitorInterval = null;
+    let currentSessionId = null;
+    let sessionList = [];
 
     // ===== HTTP HELPERS =====
     async function apiCall(url, opts) {
@@ -1222,11 +1255,115 @@
         document.getElementById('agent-icon').textContent = cfg.icon;
         document.getElementById('agent-icon').style.background = color + '22';
         document.getElementById('agent-title').textContent = cfg.name;
-        clearChat();
+        document.getElementById('chat-messages').innerHTML = '';
+        chatHistory = [];
+        loadSessionList(cfg);
+    }
+
+    async function loadSessionList(cfg) {
+        var listEl = document.getElementById('session-list');
+        var itemsEl = document.getElementById('session-items');
+        try {
+            var data = await apiCall(SERVICES.agent + '/agent/' + currentAgent + '/sessions', {
+                method:'GET',
+                headers:{'X-User-Id':currentUserId}
+            });
+            sessionList = data.data || [];
+        } catch(e) {
+            sessionList = [];
+        }
+        if (sessionList.length > 0) {
+            listEl.style.display = '';
+            currentSessionId = sessionList[0].sessionId;
+            renderSessionList();
+            loadChatHistory(cfg);
+        } else {
+            currentSessionId = currentUserId + '-' + currentAgent + '-' + Date.now();
+            sessionList = [{sessionId: currentSessionId, summary: '新对话'}];
+            listEl.style.display = '';
+            renderSessionList();
+            addMessage('ai', '你好！我是' + cfg.name + '，可以帮你处理相关业务。工具: ' + cfg.tools.join(' / '));
+        }
+    }
+
+    function renderSessionList() {
+        var itemsEl = document.getElementById('session-items');
+        itemsEl.innerHTML = '';
+        sessionList.forEach(function(s) {
+            var div = document.createElement('div');
+            div.className = 'session-item' + (s.sessionId === currentSessionId ? ' active' : '');
+            div.textContent = s.summary || '新对话';
+            div.title = s.sessionId;
+            div.onclick = function() { switchSession(s.sessionId); };
+            itemsEl.appendChild(div);
+        });
+    }
+
+    function switchSession(sessionId) {
+        currentSessionId = sessionId;
+        renderSessionList();
+        document.getElementById('chat-messages').innerHTML = '';
+        chatHistory = [];
+        var cfg = agentConfig[currentAgent] || agentConfig.rd;
+        loadChatHistory(cfg);
+    }
+
+    function createNewSession() {
+        currentSessionId = currentUserId + '-' + currentAgent + '-' + Date.now();
+        var exists = sessionList.some(function(s) { return s.sessionId === currentSessionId; });
+        if (!exists) {
+            sessionList.unshift({sessionId: currentSessionId, summary: '新对话'});
+        }
+        renderSessionList();
+        document.getElementById('chat-messages').innerHTML = '';
+        chatHistory = [];
+        var cfg = agentConfig[currentAgent] || agentConfig.rd;
         addMessage('ai', '你好！我是' + cfg.name + '，可以帮你处理相关业务。工具: ' + cfg.tools.join(' / '));
     }
 
-    function clearChat() { document.getElementById('chat-messages').innerHTML = ''; chatHistory = []; }
+    async function loadChatHistory(cfg) {
+        try {
+            var data = await apiCall(SERVICES.agent + '/agent/' + currentAgent + '/memory', {
+                method:'GET',
+                headers:{'X-User-Id':currentUserId,'X-Session-Id':getSessionId()}
+            });
+            var messages = data.data || [];
+            if (messages.length > 0) {
+                messages.forEach(function(m) {
+                    addMessage(m.role === 'user' ? 'user' : 'ai', m.content);
+                    chatHistory.push({role: m.role === 'user' ? 'user' : 'assistant', content: m.content});
+                });
+            } else {
+                addMessage('ai', '你好！我是' + cfg.name + '，可以帮你处理相关业务。工具: ' + cfg.tools.join(' / '));
+            }
+        } catch(e) {
+            addMessage('ai', '你好！我是' + cfg.name + '，可以帮你处理相关业务。工具: ' + cfg.tools.join(' / '));
+        }
+    }
+
+    function clearChat() {
+        document.getElementById('chat-messages').innerHTML = '';
+        chatHistory = [];
+        fetch(SERVICES.agent + '/agent/' + currentAgent + '/memory', {
+            method:'DELETE',
+            headers:{
+                'X-User-Id':currentUserId,
+                'X-Session-Id':getSessionId(),
+                ...(authToken ? {'Authorization':'Bearer ' + authToken} : {})
+            }
+        }).catch(function(){});
+        sessionList = sessionList.filter(function(s) { return s.sessionId !== currentSessionId; });
+        createNewSession();
+    }
+    function getSessionId() { return currentSessionId || (currentUserId + '-' + currentAgent + '-' + Date.now()); }
+
+    function updateSessionSummary(firstMsg) {
+        var item = sessionList.find(function(s) { return s.sessionId === currentSessionId; });
+        if (item && item.summary === '新对话') {
+            item.summary = firstMsg.length > 20 ? firstMsg.substring(0, 20) + '...' : firstMsg;
+            renderSessionList();
+        }
+    }
 
     function addMessage(role, content) {
         const msgs = document.getElementById('chat-messages');
@@ -1264,64 +1401,55 @@
         try {
             let response = '';
             try {
-                if (currentAgent === 'multi') {
-                    const data = await apiCall(SERVICES.agent + '/agent/multi/execute', {
-                        method:'POST',
-                        headers:{'X-User-Id':currentUserId,'X-Session-Id':'session-'+currentAgent},
-                        body:JSON.stringify({task:msg})
-                    });
-                    response = (data.data !== undefined ? data.data : data.message) || '已收到您的消息';
-                    removeThinking();
-                    addMessage('ai', response);
-                } else {
-                    const endpoint = SERVICES.agent + '/agent/' + currentAgent + '/chat/stream';
-                    const res = await fetch(endpoint, {
-                        method:'POST',
-                        headers:{
-                            'Content-Type':'application/json',
-                            'X-User-Id':currentUserId,
-                            'X-Session-Id':'session-'+currentAgent,
-                            ...(authToken ? {'Authorization':'Bearer ' + authToken} : {})
-                        },
-                        body:JSON.stringify({message:msg})
-                    });
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
-                    removeThinking();
-                    const aiMsg = addMessage('ai', '');
-                    const bubble = aiMsg.querySelector('.msg-bubble');
-                    const reader = res.body.getReader();
-                    const decoder = new TextDecoder();
-                    let buffer = '';
-                    while (true) {
-                        const {done, value} = await reader.read();
-                        if (done) break;
-                        buffer += decoder.decode(value, {stream: true});
-                        const lines = buffer.split('\n');
-                        buffer = lines.pop();
-                        for (const line of lines) {
-                            if (!line.startsWith('data:')) continue;
-                            const jsonStr = line.substring(5).trim();
-                            if (!jsonStr) continue;
-                            try {
-                                const event = JSON.parse(jsonStr);
-                                if (event.done) break;
-                                if (event.chunk) {
-                                    response += event.chunk;
-                                    bubble.innerHTML = response.replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
-                                    const msgs = document.getElementById('chat-messages');
-                                    msgs.scrollTop = msgs.scrollHeight;
-                                }
-                            } catch(pe) {}
-                        }
+                const endpoint = SERVICES.agent + '/agent/' + currentAgent + '/chat/stream';
+                const bodyData = {message:msg};
+                const res = await fetch(endpoint, {
+                    method:'POST',
+                    headers:{
+                        'Content-Type':'application/json',
+                        'X-User-Id':currentUserId,
+                        'X-Session-Id':getSessionId(),
+                        ...(authToken ? {'Authorization':'Bearer ' + authToken} : {})
+                    },
+                    body:JSON.stringify(bodyData)
+                });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                removeThinking();
+                const aiMsg = addMessage('ai', '');
+                const bubble = aiMsg.querySelector('.msg-bubble');
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                while (true) {
+                    const {done, value} = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, {stream: true});
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    for (const line of lines) {
+                        if (!line.startsWith('data:')) continue;
+                        const jsonStr = line.substring(5).trim();
+                        if (!jsonStr) continue;
+                        try {
+                            const event = JSON.parse(jsonStr);
+                            if (event.done) break;
+                            if (event.chunk) {
+                                response += event.chunk;
+                                bubble.innerHTML = response.replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
+                                const msgs = document.getElementById('chat-messages');
+                                msgs.scrollTop = msgs.scrollHeight;
+                            }
+                        } catch(pe) {}
                     }
-                    if (!response) response = '已收到您的消息';
                 }
+                if (!response) response = '已收到您的消息';
             } catch(e) {
                 response = await mockAgentResponse(currentAgent, msg);
                 removeThinking();
                 addMessage('ai', response);
             }
             chatHistory.push({role:'assistant',content:response});
+            updateSessionSummary(msg);
         } catch(e) {
             removeThinking();
             addMessage('ai', '请求异常，请检查后端服务是否启动。错误: ' + e.message);
