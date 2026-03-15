@@ -46,7 +46,7 @@ export interface BotPermission {
 }
 
 // Agent types
-export type AgentType = 'rd' | 'sales' | 'hr' | 'finance' | 'supply-chain' | 'qc' | 'multi'
+export type AgentType = string
 
 export interface ChatMessage {
   role: 'user' | 'assistant'

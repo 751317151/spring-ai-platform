@@ -35,6 +35,22 @@ export function getPermissions(): Promise<BotPermission[]> {
   return client.get(`${BASE}/permissions`)
 }
 
+export function getPermission(id: string): Promise<BotPermission> {
+  return client.get(`${BASE}/permissions/${id}`)
+}
+
+export function createPermission(data: Partial<BotPermission>): Promise<BotPermission> {
+  return client.post(`${BASE}/permissions`, data)
+}
+
 export function updatePermission(id: string, data: Partial<BotPermission>): Promise<BotPermission> {
   return client.put(`${BASE}/permissions/${id}`, data)
+}
+
+export function deletePermission(id: string): Promise<void> {
+  return client.delete(`${BASE}/permissions/${id}`)
+}
+
+export function getMyBots(): Promise<BotPermission[]> {
+  return client.get(`${BASE}/my-bots`)
 }

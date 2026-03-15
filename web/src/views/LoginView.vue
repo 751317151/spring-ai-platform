@@ -18,9 +18,8 @@
         <label class="form-label">密码</label>
         <input class="form-input" type="password" v-model="password" placeholder="••••••••" @keyup.enter="handleLogin">
       </div>
-      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px">
-        <div class="status-dot"></div>
-        <span style="font-size: 11px; color: var(--text3)">API 服务在线</span>
+      <div v-if="errorMsg" style="margin-bottom: 16px; padding: 8px 12px; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); border-radius: 6px; font-size: 12px; color: #ef4444">
+        {{ errorMsg }}
       </div>
       <button class="btn btn-primary" style="width: 100%; justify-content: center" @click="handleLogin" :disabled="isLoading">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
@@ -41,13 +40,17 @@ const authStore = useAuthStore()
 const username = ref('admin')
 const password = ref('admin123')
 const isLoading = ref(false)
+const errorMsg = ref('')
 
 async function handleLogin() {
   if (isLoading.value) return
   isLoading.value = true
+  errorMsg.value = ''
   try {
     await authStore.login(username.value, password.value)
     router.push('/dashboard')
+  } catch (e: unknown) {
+    errorMsg.value = e instanceof Error ? e.message : '登录失败，请重试'
   } finally {
     isLoading.value = false
   }

@@ -18,7 +18,7 @@
         <span v-if="item.badge" class="nav-badge">{{ item.badge }}</span>
       </router-link>
     </div>
-    <div class="sidebar-section">
+    <div v-if="isAdmin" class="sidebar-section">
       <div class="sidebar-section-label">平台管理</div>
       <router-link
         v-for="item in adminNav"
@@ -35,8 +35,8 @@
       <div class="user-card">
         <div class="avatar">{{ displayChar }}</div>
         <div class="user-info">
-          <div class="user-name">{{ authStore.username || '管理员' }}</div>
-          <div class="user-role">超级管理员</div>
+          <div class="user-name">{{ authStore.username || '用户' }}</div>
+          <div class="user-role">{{ displayRole }}</div>
         </div>
       </div>
     </div>
@@ -50,8 +50,31 @@ import { useAuthStore } from '@/stores/auth'
 const authStore = useAuthStore()
 
 const displayChar = computed(() => {
-  const name = authStore.username || '管'
+  const name = authStore.username || '用'
   return name.charAt(0)
+})
+
+const isAdmin = computed(() => {
+  return (authStore.roles || '').includes('ROLE_ADMIN')
+})
+
+const roleLabels: Record<string, string> = {
+  'ROLE_ADMIN': '超级管理员',
+  'ROLE_RD': '研发',
+  'ROLE_SALES': '销售',
+  'ROLE_HR': '人力资源',
+  'ROLE_FINANCE': '财务',
+  'ROLE_USER': '普通用户'
+}
+
+const displayRole = computed(() => {
+  const roles = (authStore.roles || '').split(',').map((r: string) => r.trim())
+  // 优先显示管理员角色，否则显示第一个业务角色
+  if (roles.includes('ROLE_ADMIN')) return '超级管理员'
+  for (const r of roles) {
+    if (r !== 'ROLE_USER' && roleLabels[r]) return roleLabels[r]
+  }
+  return roleLabels[roles[0]] || '用户'
 })
 
 const mainNav = [

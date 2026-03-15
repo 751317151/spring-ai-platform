@@ -76,8 +76,7 @@ export const useRagStore = defineStore('rag', () => {
       a.click()
       URL.revokeObjectURL(url)
     } catch {
-      // fallback to direct link
-      window.open(`/api/v1/rag/documents/${docId}/download`, '_blank')
+      // ignore - axios call already includes auth headers, no fallback to window.open
     }
   }
 

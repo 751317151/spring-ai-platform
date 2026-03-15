@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { getAuthToken } from '@/api/client'
 
 export interface UseSSEOptions {
   url: string
@@ -21,11 +22,18 @@ export function useSSE() {
     isStreaming.value = true
     controller = new AbortController()
 
+    const authHeaders: Record<string, string> = {}
+    const token = getAuthToken()
+    if (token) {
+      authHeaders['Authorization'] = `Bearer ${token}`
+    }
+
     try {
       const res = await fetch(options.url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...authHeaders,
           ...(options.headers || {})
         },
         body: JSON.stringify(options.body),

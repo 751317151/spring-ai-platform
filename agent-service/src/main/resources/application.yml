@@ -38,6 +38,10 @@ management:
       exposure:
         include: health,info,metrics,prometheus
 
+jwt:
+  secret: ${JWT_SECRET:enterprise-ai-platform-secret-key-minimum-256-bits!!}
+  expiration-ms: 86400000
+
 logging:
   level:
     org.springframework.ai: debug

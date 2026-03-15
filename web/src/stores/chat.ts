@@ -1,8 +1,10 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import * as agentApi from '@/api/agent'
-import type { AgentType, ChatMessage, SessionInfo } from '@/api/types'
+import * as authApi from '@/api/auth'
+import type { AgentType, ChatMessage, SessionInfo, BotPermission } from '@/api/types'
 import { AGENT_CONFIG, MOCK_RESPONSES } from '@/utils/constants'
+import type { AgentConfig } from '@/utils/constants'
 import { useAuthStore } from './auth'
 import { buildHeaders } from '@/api/client'
 
@@ -12,11 +14,46 @@ export const useChatStore = defineStore('chat', () => {
   const sessionList = ref<SessionInfo[]>([])
   const chatHistory = ref<ChatMessage[]>([])
   const isThinking = ref(false)
+  const availableBots = ref<BotPermission[]>([])
 
   const authStore = useAuthStore()
 
-  function getAgentConfig() {
+  // 动态 Agent 列表：合并后端权限 + 前端静态配置
+  const agentList = computed(() => {
+    if (availableBots.value.length === 0) {
+      return Object.entries(AGENT_CONFIG).map(([type, config]) => ({
+        type,
+        ...config
+      }))
+    }
+    return availableBots.value.map(bot => {
+      const staticConfig = AGENT_CONFIG[bot.botType]
+      return {
+        type: bot.botType,
+        name: staticConfig?.name || bot.botType,
+        icon: staticConfig?.icon || '🤖',
+        color: staticConfig?.color || '#6b7280',
+        desc: staticConfig?.desc || ''
+      }
+    })
+  })
+
+  function getAgentConfig(): AgentConfig {
+    const found = agentList.value.find(a => a.type === currentAgent.value)
+    if (found) return { name: found.name, icon: found.icon, color: found.color, desc: found.desc }
     return AGENT_CONFIG[currentAgent.value] || AGENT_CONFIG.rd
+  }
+
+  async function loadAvailableBots() {
+    try {
+      const bots = await authApi.getMyBots()
+      availableBots.value = bots || []
+      if (bots.length > 0 && !bots.find(b => b.botType === currentAgent.value)) {
+        currentAgent.value = bots[0].botType
+      }
+    } catch {
+      availableBots.value = []
+    }
   }
 
   function generateSessionId(): string {
@@ -156,7 +193,8 @@ export const useChatStore = defineStore('chat', () => {
 
   return {
     currentAgent, currentSessionId, sessionList, chatHistory, isThinking,
-    getAgentConfig, selectAgent, loadSessions, switchSession, createNewSession,
+    availableBots, agentList,
+    getAgentConfig, loadAvailableBots, selectAgent, loadSessions, switchSession, createNewSession,
     sendMessage, clearChat
   }
 })

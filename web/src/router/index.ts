@@ -17,9 +17,9 @@ const router = createRouter({
         { path: 'dashboard', name: 'dashboard', component: () => import('@/views/DashboardView.vue'), meta: { title: '控制台' } },
         { path: 'chat', name: 'chat', component: () => import('@/views/ChatView.vue'), meta: { title: 'AI 助手' } },
         { path: 'rag', name: 'rag', component: () => import('@/views/RagView.vue'), meta: { title: '知识库' } },
-        { path: 'gateway', name: 'gateway', component: () => import('@/views/GatewayView.vue'), meta: { title: '模型网关' } },
-        { path: 'monitor', name: 'monitor', component: () => import('@/views/MonitorView.vue'), meta: { title: '监控告警' } },
-        { path: 'users', name: 'users', component: () => import('@/views/UserView.vue'), meta: { title: '权限管理' } }
+        { path: 'gateway', name: 'gateway', component: () => import('@/views/GatewayView.vue'), meta: { title: '模型网关', requiresAdmin: true } },
+        { path: 'monitor', name: 'monitor', component: () => import('@/views/MonitorView.vue'), meta: { title: '监控告警', requiresAdmin: true } },
+        { path: 'users', name: 'users', component: () => import('@/views/UserView.vue'), meta: { title: '权限管理', requiresAdmin: true } }
       ]
     }
   ]
@@ -31,6 +31,13 @@ router.beforeEach((to, _from, next) => {
     next({ name: 'login' })
   } else if (to.name === 'login' && token) {
     next({ name: 'dashboard' })
+  } else if (to.meta?.requiresAdmin) {
+    const roles = localStorage.getItem('auth_roles') || ''
+    if (!roles.includes('ROLE_ADMIN')) {
+      next({ name: 'dashboard' })
+    } else {
+      next()
+    }
   } else {
     next()
   }

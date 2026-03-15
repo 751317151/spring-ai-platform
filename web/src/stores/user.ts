@@ -59,5 +59,40 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  return { users, permissions, loadUsers, loadPermissions, loadAll, createUser, updateUser, deleteUser }
+  async function createPermission(data: Partial<import('@/api/types').BotPermission>): Promise<boolean> {
+    try {
+      await authApi.createPermission(data)
+      await loadPermissions()
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  async function updatePermission(id: string, data: Partial<import('@/api/types').BotPermission>): Promise<boolean> {
+    try {
+      await authApi.updatePermission(id, data)
+      await loadPermissions()
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  async function deletePermission(id: string): Promise<boolean> {
+    try {
+      await authApi.deletePermission(id)
+      await loadPermissions()
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  return {
+    users, permissions,
+    loadUsers, loadPermissions, loadAll,
+    createUser, updateUser, deleteUser,
+    createPermission, updatePermission, deletePermission
+  }
 })

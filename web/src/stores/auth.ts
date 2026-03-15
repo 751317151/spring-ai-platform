@@ -44,18 +44,8 @@ export const useAuthStore = defineStore('auth', () => {
       setAuth(data)
       return true
     } catch {
-      // Mock fallback when backend is offline
-      const mockToken = 'mock-token-' + Date.now()
-      setAuth({
-        token: mockToken,
-        tokenType: 'Bearer',
-        expiresIn: 86400,
-        userId: 'EMP001',
-        username: user,
-        roles: 'ROLE_ADMIN',
-        department: '技术部'
-      })
-      return true
+      // Backend is offline - login fails
+      throw new Error('无法连接到认证服务，请稍后重试')
     }
   }
 

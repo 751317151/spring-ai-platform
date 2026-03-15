@@ -4,6 +4,7 @@ import com.huah.ai.platform.agent.audit.AiAuditLog;
 import com.huah.ai.platform.agent.audit.AiAuditLogMapper;
 import com.huah.ai.platform.agent.memory.ConversationMemoryService;
 import com.huah.ai.platform.agent.multi.MultiAgentOrchestrator;
+import com.huah.ai.platform.agent.security.AgentAccessChecker;
 import com.huah.ai.platform.agent.service.AgentChatResult;
 import com.huah.ai.platform.agent.service.FinanceAssistantAgent;
 import com.huah.ai.platform.agent.service.HrAssistantAgent;
@@ -12,6 +13,7 @@ import com.huah.ai.platform.agent.service.RdAssistantAgent;
 import com.huah.ai.platform.agent.service.SalesAssistantAgent;
 import com.huah.ai.platform.agent.service.SupplyChainAgent;
 import com.huah.ai.platform.common.dto.Result;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -39,6 +41,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Agent 统一入口控制器
  * 支持: rd | sales | hr | finance | supply-chain | qc | multi
+ *
+ * 安全机制:
+ * 1. JWT 认证（JwtAuthFilter 拦截未携带/无效 Token 的请求）
+ * 2. Bot 权限检查（基于 ai_bot_permissions 表的角色/部门匹配）
+ * 3. Token 配额控制（基于 Redis 的每日限额）
  */
 @Slf4j
 @RestController
@@ -55,15 +62,37 @@ public class AgentController {
     private final MultiAgentOrchestrator multiAgentOrchestrator;
     private final ConversationMemoryService memoryService;
     private final AiAuditLogMapper auditLogMapper;
+    private final AgentAccessChecker accessChecker;
     private final ExecutorService executor = Executors.newCachedThreadPool();
+
+    // Token 预扣量（在 AI 调用前预扣，调用后按实际用量修正）
+    private static final int PRE_DEDUCT_TOKENS = 500;
 
     /** 普通对话（所有 Agent 统一入口） */
     @PostMapping("/{agentType}/chat")
     public Result<String> chat(
             @PathVariable(name = "agentType") String agentType,
             @RequestBody Map<String, String> body,
-            @RequestHeader(value = "X-User-Id", defaultValue = "anonymous") String userId,
-            @RequestHeader(value = "X-Session-Id", defaultValue = "default") String sessionId) {
+            @RequestHeader(value = "X-Session-Id", defaultValue = "default") String sessionId,
+            HttpServletRequest request) {
+
+        String userId = getUserId(request);
+        String roles = getRoles(request);
+        String department = getDepartment(request);
+
+        // 权限检查
+        String deny = accessChecker.checkPermission(agentType, roles, department);
+        if (deny != null) {
+            log.warn("[Chat] 权限拒绝 agent={}, userId={}, roles={}, reason={}", agentType, userId, roles, deny);
+            return Result.fail(403, deny);
+        }
+
+        // Token 配额预检
+        String quotaDeny = accessChecker.checkAndConsumeTokens(userId, agentType, PRE_DEDUCT_TOKENS);
+        if (quotaDeny != null) {
+            log.warn("[Chat] Token 超限 agent={}, userId={}", agentType, userId);
+            return Result.fail(429, quotaDeny);
+        }
 
         String message = body.get("message");
         if (message == null || message.isBlank()) return Result.fail(400, "message 不能为空");
@@ -82,11 +111,16 @@ public class AgentController {
                     result.getContent() != null ? result.getContent().length() : 0,
                     result.getPromptTokens(), result.getCompletionTokens(),
                     truncate(result.getContent(), 500));
+            // 修正 Token 预扣
+            int actualTokens = result.getPromptTokens() + result.getCompletionTokens();
+            accessChecker.recordActualTokens(userId, actualTokens, PRE_DEDUCT_TOKENS);
             return Result.ok(result.getContent());
         } catch (Exception e) {
             long latency = System.currentTimeMillis() - startTime;
             log.error("[Chat] 调用失败 agent={}, userId={}, latency={}ms, error={}",
                     agentType, userId, latency, e.getMessage(), e);
+            // 调用失败回滚预扣
+            accessChecker.recordActualTokens(userId, 0, PRE_DEDUCT_TOKENS);
             memoryService.rollbackLastUserMessage(sessionId);
             return Result.fail(500, "AI 服务暂时不可用，请稍后重试");
         }
@@ -97,10 +131,33 @@ public class AgentController {
     public SseEmitter chatStream(
             @PathVariable(name = "agentType") String agentType,
             @RequestBody Map<String, String> body,
-            @RequestHeader(value = "X-User-Id", defaultValue = "anonymous") String userId,
-            @RequestHeader(value = "X-Session-Id", defaultValue = "default") String sessionId) {
+            @RequestHeader(value = "X-Session-Id", defaultValue = "default") String sessionId,
+            HttpServletRequest request) {
 
         SseEmitter emitter = new SseEmitter(180_000L);
+
+        String userId = getUserId(request);
+        String roles = getRoles(request);
+        String department = getDepartment(request);
+
+        // 权限检查
+        String deny = accessChecker.checkPermission(agentType, roles, department);
+        if (deny != null) {
+            log.warn("[Stream] 权限拒绝 agent={}, userId={}, roles={}, reason={}", agentType, userId, roles, deny);
+            sendChunk(emitter, "[权限不足] " + deny);
+            sendDone(emitter);
+            return emitter;
+        }
+
+        // Token 配额预检
+        String quotaDeny = accessChecker.checkAndConsumeTokens(userId, agentType, PRE_DEDUCT_TOKENS);
+        if (quotaDeny != null) {
+            log.warn("[Stream] Token 超限 agent={}, userId={}", agentType, userId);
+            sendChunk(emitter, "[配额不足] " + quotaDeny);
+            sendDone(emitter);
+            return emitter;
+        }
+
         String message = body.get("message");
 
         log.info("[Stream] 收到请求 agent={}, userId={}, sessionId={}, messageLength={}",
@@ -147,6 +204,7 @@ public class AgentController {
                     long latency = System.currentTimeMillis() - startTime;
                     log.info("[Stream] Multi-Agent 完成 userId={}, latency={}ms", userId, latency);
                     saveAuditLog(userId, sessionId, "multi", message, truncate(finalResult, 500), latency, true, null, 0, 0);
+                    accessChecker.recordActualTokens(userId, 0, PRE_DEDUCT_TOKENS);
                     sendDone(emitter);
                 } else {
                     Flux<ChatResponse> flux = routeToAgentStream(agentType, userId, sessionId, message);
@@ -178,6 +236,8 @@ public class AgentController {
                                         agentType, userId, latency, chunkCount.get(),
                                         resp.length(), totalPromptTokens.get(), totalCompletionTokens.get(),
                                         truncate(resp, 500));
+                                int actual = totalPromptTokens.get() + totalCompletionTokens.get();
+                                accessChecker.recordActualTokens(userId, actual, PRE_DEDUCT_TOKENS);
                                 saveAuditLog(userId, sessionId, agentType, message, resp, latency, true, null,
                                         totalPromptTokens.get(), totalCompletionTokens.get());
                                 sendDone(emitter);
@@ -187,6 +247,7 @@ public class AgentController {
                                 log.error("[Stream] 流式异常 agent={}, userId={}, latency={}ms, chunks={}, partialResponse={}, error={}",
                                         agentType, userId, latency, chunkCount.get(),
                                         truncate(fullResponse.toString(), 200), e.getMessage(), e);
+                                accessChecker.recordActualTokens(userId, 0, PRE_DEDUCT_TOKENS);
                                 saveAuditLog(userId, sessionId, agentType, message, null, latency, false, e.getMessage(), 0, 0);
                                 memoryService.rollbackLastUserMessage(sessionId);
                                 sendChunk(emitter, "\n\n[AI 服务异常，请稍后重试]");
@@ -198,6 +259,7 @@ public class AgentController {
                 long latency = System.currentTimeMillis() - startTime;
                 log.error("[Stream] 执行异常 agent={}, userId={}, latency={}ms, error={}",
                         agentType, userId, latency, e.getMessage(), e);
+                accessChecker.recordActualTokens(userId, 0, PRE_DEDUCT_TOKENS);
                 if (!"multi".equals(agentType)) {
                     memoryService.rollbackLastUserMessage(sessionId);
                 }
@@ -219,8 +281,18 @@ public class AgentController {
     @PostMapping("/multi/execute")
     public Result<String> multiAgentExecute(
             @RequestBody Map<String, String> body,
-            @RequestHeader(value = "X-User-Id", defaultValue = "anonymous") String userId,
-            @RequestHeader(value = "X-Session-Id", defaultValue = "default") String sessionId) {
+            @RequestHeader(value = "X-Session-Id", defaultValue = "default") String sessionId,
+            HttpServletRequest request) {
+
+        String userId = getUserId(request);
+        String roles = getRoles(request);
+        String department = getDepartment(request);
+
+        String deny = accessChecker.checkPermission("multi", roles, department);
+        if (deny != null) {
+            return Result.fail(403, deny);
+        }
+
         String task = body.get("task");
         if (task == null || task.isBlank()) return Result.fail(400, "task 不能为空");
 
@@ -247,8 +319,9 @@ public class AgentController {
     @DeleteMapping("/{agentType}/memory")
     public Result<String> clearMemory(
             @PathVariable(name = "agentType") String agentType,
-            @RequestHeader(value = "X-User-Id", defaultValue = "anonymous") String userId,
-            @RequestHeader(value = "X-Session-Id", defaultValue = "default") String sessionId) {
+            @RequestHeader(value = "X-Session-Id", defaultValue = "default") String sessionId,
+            HttpServletRequest request) {
+        String userId = getUserId(request);
         log.info("[Memory] 清除记忆 agent={}, userId={}, sessionId={}", agentType, userId, sessionId);
         memoryService.clearMemory(sessionId);
         return Result.ok("会话记忆已清除");
@@ -258,8 +331,9 @@ public class AgentController {
     @GetMapping("/{agentType}/memory")
     public Result<List<Map<String, String>>> getHistory(
             @PathVariable(name = "agentType") String agentType,
-            @RequestHeader(value = "X-User-Id", defaultValue = "anonymous") String userId,
-            @RequestHeader(value = "X-Session-Id", defaultValue = "default") String sessionId) {
+            @RequestHeader(value = "X-Session-Id", defaultValue = "default") String sessionId,
+            HttpServletRequest request) {
+        String userId = getUserId(request);
         log.info("[Memory] 查询历史 agent={}, userId={}, sessionId={}", agentType, userId, sessionId);
         return Result.ok(memoryService.getHistory(sessionId));
     }
@@ -268,11 +342,31 @@ public class AgentController {
     @GetMapping("/{agentType}/sessions")
     public Result<List<Map<String, String>>> listSessions(
             @PathVariable(name = "agentType") String agentType,
-            @RequestHeader(value = "X-User-Id", defaultValue = "anonymous") String userId) {
+            HttpServletRequest request) {
+        String userId = getUserId(request);
         String prefix = userId + "-" + agentType + "-";
         log.info("[Sessions] 查询会话列表 agent={}, userId={}, prefix={}", agentType, userId, prefix);
         return Result.ok(memoryService.listSessions(prefix));
     }
+
+    // ===== 从 JWT 属性中提取用户信息（由 JwtAuthFilter 设置） =====
+
+    private String getUserId(HttpServletRequest request) {
+        Object attr = request.getAttribute("X-User-Id");
+        return attr != null ? attr.toString() : "anonymous";
+    }
+
+    private String getRoles(HttpServletRequest request) {
+        Object attr = request.getAttribute("X-Roles");
+        return attr != null ? attr.toString() : null;
+    }
+
+    private String getDepartment(HttpServletRequest request) {
+        Object attr = request.getAttribute("X-Department");
+        return attr != null ? attr.toString() : null;
+    }
+
+    // ===== Internal =====
 
     private AgentChatResult routeToAgent(String type, String userId, String sessionId, String msg) {
         return switch (type) {

@@ -6,9 +6,11 @@ import com.huah.ai.platform.auth.model.AiUser;
 import com.huah.ai.platform.auth.model.BotPermission;
 import com.huah.ai.platform.common.dto.Result;
 import com.huah.ai.platform.common.util.JwtUtil;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
@@ -164,9 +166,42 @@ public class AuthController {
     }
 
     /**
+     * 获取当前用户可用的 Bot 列表（任何已认证用户均可调用）
+     * ADMIN 可见所有已启用 Bot，其他用户按角色/部门过滤
+     */
+    @GetMapping("/my-bots")
+    public Result<List<BotPermission>> myBots(HttpServletRequest request) {
+        String roles = (String) request.getAttribute("X-Roles");
+        String department = (String) request.getAttribute("X-Department");
+
+        List<BotPermission> all = botPermissionMapper.selectList(null);
+        List<BotPermission> available = all.stream()
+                .filter(BotPermission::isEnabled)
+                .filter(p -> {
+                    // ADMIN 可见全部
+                    if (roles != null && roles.contains("ROLE_ADMIN")) return true;
+                    // 角色匹配
+                    if (p.getAllowedRoles() != null && !p.getAllowedRoles().isBlank() && roles != null) {
+                        for (String r : roles.split(",")) {
+                            if (p.getAllowedRoles().contains(r.trim())) return true;
+                        }
+                    }
+                    // 部门匹配
+                    if (p.getAllowedDepartments() != null && !p.getAllowedDepartments().isBlank() && department != null) {
+                        if (p.getAllowedDepartments().contains(department.trim())) return true;
+                    }
+                    return false;
+                })
+                .toList();
+
+        return Result.ok(available);
+    }
+
+    /**
      * 初始化演示用户（首次部署调用一次）
      */
     @PostMapping("/init-demo-users")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<String> initDemoUsers() {
         String[] users = {"admin", "rd_user", "sales_user", "hr_user", "finance_user"};
         String[] roles = {
@@ -193,12 +228,13 @@ public class AuthController {
         return Result.ok("演示用户初始化完成");
     }
 
-    // ===== User Management =====
+    // ===== User Management (ADMIN only) =====
 
     /**
      * 获取所有用户列表
      */
     @GetMapping("/users")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<List<AiUser>> listUsers() {
         List<AiUser> users = userMapper.selectList(null);
         users.forEach(u -> u.setPasswordHash(null));
@@ -209,6 +245,7 @@ public class AuthController {
      * 获取单个用户
      */
     @GetMapping("/users/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<AiUser> getUser(@PathVariable(name = "id") String id) {
         AiUser user = userMapper.selectById(id);
         if (user == null) {
@@ -222,6 +259,7 @@ public class AuthController {
      * 创建用户
      */
     @PostMapping("/users")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<AiUser> createUser(@RequestBody Map<String, String> body) {
         String username = body.get("username");
         String password = body.get("password");
@@ -249,6 +287,7 @@ public class AuthController {
      * 更新用户
      */
     @PutMapping("/users/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<AiUser> updateUser(@PathVariable(name = "id") String id, @RequestBody Map<String, String> body) {
         AiUser user = userMapper.selectById(id);
         if (user == null) {
@@ -269,34 +308,80 @@ public class AuthController {
     }
 
     /**
-     * 禁用用户（软删除）
+     * 删除用户
      */
     @DeleteMapping("/users/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<Void> deleteUser(@PathVariable(name = "id") String id) {
         AiUser user = userMapper.selectById(id);
         if (user == null) {
             return Result.fail(404, "用户不存在");
         }
-        user.setEnabled(false);
-        userMapper.updateById(user);
-        log.info("禁用用户: id={}, username={}", id, user.getUsername());
+        userMapper.deleteById(id);
+        log.info("删除用户: id={}, username={}", id, user.getUsername());
         return Result.ok();
     }
 
-    // ===== Bot Permission Management =====
+    // ===== Bot Permission Management (ADMIN only) =====
 
     /**
      * 获取所有 Bot 权限配置
      */
     @GetMapping("/permissions")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<List<BotPermission>> listPermissions() {
         return Result.ok(botPermissionMapper.selectList(null));
+    }
+
+    /**
+     * 获取单个 Bot 权限配置
+     */
+    @GetMapping("/permissions/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<BotPermission> getPermission(@PathVariable(name = "id") String id) {
+        BotPermission perm = botPermissionMapper.selectById(id);
+        if (perm == null) {
+            return Result.fail(404, "权限配置不存在");
+        }
+        return Result.ok(perm);
+    }
+
+    /**
+     * 新增 Bot 权限配置
+     */
+    @PostMapping("/permissions")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<BotPermission> createPermission(@RequestBody Map<String, Object> body) {
+        String botType = (String) body.get("botType");
+        if (botType == null || botType.isBlank()) {
+            return Result.fail(400, "botType 不能为空");
+        }
+        // 检查 botType 唯一性
+        BotPermission existing = botPermissionMapper.selectByBotTypeAndEnabled(botType);
+        if (existing != null) {
+            return Result.fail(400, "Bot 类型 '" + botType + "' 的权限配置已存在");
+        }
+
+        BotPermission perm = BotPermission.builder()
+                .botType(botType)
+                .allowedRoles(body.containsKey("allowedRoles") ? (String) body.get("allowedRoles") : "ROLE_ADMIN")
+                .allowedDepartments(body.containsKey("allowedDepartments") ? (String) body.get("allowedDepartments") : null)
+                .dataScope(body.containsKey("dataScope") ? (String) body.get("dataScope") : "DEPARTMENT")
+                .allowedOperations(body.containsKey("allowedOperations") ? (String) body.get("allowedOperations") : "READ,WRITE")
+                .dailyTokenLimit(body.containsKey("dailyTokenLimit") ? ((Number) body.get("dailyTokenLimit")).intValue() : 100000)
+                .enabled(body.containsKey("enabled") ? (Boolean) body.get("enabled") : true)
+                .build();
+
+        botPermissionMapper.insert(perm);
+        log.info("新增 Bot 权限: botType={}, allowedRoles={}", botType, perm.getAllowedRoles());
+        return Result.ok(perm);
     }
 
     /**
      * 更新 Bot 权限配置
      */
     @PutMapping("/permissions/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<BotPermission> updatePermission(@PathVariable(name = "id") String id, @RequestBody Map<String, Object> body) {
         BotPermission perm = botPermissionMapper.selectById(id);
         if (perm == null) {
@@ -311,5 +396,20 @@ public class AuthController {
         botPermissionMapper.updateById(perm);
         log.info("更新 Bot 权限: id={}, botType={}", id, perm.getBotType());
         return Result.ok(perm);
+    }
+
+    /**
+     * 删除 Bot 权限配置
+     */
+    @DeleteMapping("/permissions/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<Void> deletePermission(@PathVariable(name = "id") String id) {
+        BotPermission perm = botPermissionMapper.selectById(id);
+        if (perm == null) {
+            return Result.fail(404, "权限配置不存在");
+        }
+        botPermissionMapper.deleteById(id);
+        log.info("删除 Bot 权限: id={}, botType={}", id, perm.getBotType());
+        return Result.ok();
     }
 }
