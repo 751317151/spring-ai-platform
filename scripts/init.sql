@@ -154,6 +154,15 @@ INSERT INTO ai_bot_permissions (id, bot_type, allowed_roles, allowed_departments
     (uuid_generate_v4()::text, 'multi',        'ROLE_ADMIN',              '系统管理',           'DEPARTMENT', 500000, TRUE)
 ON CONFLICT DO NOTHING;
 
+-- 通用助手权限
+INSERT INTO ai_bot_permissions (id, bot_type, allowed_roles, allowed_departments, data_scope, daily_token_limit, enabled) VALUES
+    (uuid_generate_v4()::text, 'weather',       'ROLE_USER,ROLE_ADMIN',              NULL,                 'DEPARTMENT', 100000, TRUE),
+    (uuid_generate_v4()::text, 'search',        'ROLE_USER,ROLE_ADMIN',              NULL,                 'DEPARTMENT', 100000, TRUE),
+    (uuid_generate_v4()::text, 'data-analysis', 'ROLE_RD,ROLE_FINANCE,ROLE_ADMIN',   '研发中心,财务部,系统管理', 'DEPARTMENT', 200000, TRUE),
+    (uuid_generate_v4()::text, 'code',          'ROLE_RD,ROLE_ADMIN',                '研发中心,系统管理',  'DEPARTMENT', 200000, TRUE),
+    (uuid_generate_v4()::text, 'mcp',           'ROLE_ADMIN',                        '系统管理',           'DEPARTMENT', 500000, FALSE)
+ON CONFLICT DO NOTHING;
+
 -- Default knowledge bases
 INSERT INTO knowledge_bases (id, name, description, department, created_by, chunk_size, chunk_overlap, status, document_count, total_chunks, created_at) VALUES
     ('kb-001', '企业通用知识库', '公司政策、HR规定、行政制度等通用知识', '全公司',  'system', 1000, 200, 'ACTIVE', 0, 0, NOW()),

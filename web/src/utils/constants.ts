@@ -12,6 +12,11 @@ export const AGENT_CONFIG: Record<string, AgentConfig> = {
   finance: { name: '财务助手', icon: '📊', color: '#f5a623', desc: '报表查询 · 收支分析 · 预算对比' },
   'supply-chain': { name: '供应链助手', icon: '📦', color: '#2dd4bf', desc: '库存查询 · 采购跟踪 · 补货建议' },
   qc: { name: '质控助手', icon: '🔍', color: '#f06060', desc: '不良品分析 · 质检报告 · 趋势预警' },
+  weather: { name: '天气助手', icon: '🌤️', color: '#38bdf8', desc: '实时天气 · 多日预报 · 出行建议' },
+  search: { name: '搜索助手', icon: '🔎', color: '#6366f1', desc: '网络搜索 · 网页摘要 · 信息整合' },
+  'data-analysis': { name: '数据分析助手', icon: '📈', color: '#f59e0b', desc: 'SQL查询 · 图表生成 · 数据统计' },
+  code: { name: '代码助手', icon: '💻', color: '#10b981', desc: '代码执行 · 代码搜索 · 代码审查' },
+  mcp: { name: 'MCP 助手', icon: '🔌', color: '#8b5cf6', desc: 'MCP协议 · 外部工具 · 动态能力' },
   multi: { name: 'Multi-Agent', icon: '🤝', color: '#f5a623', desc: '复杂跨域任务自动拆解' }
 }
 
@@ -22,6 +27,11 @@ export const AGENT_LABELS: Record<string, string> = {
   FinanceAssistantAgent: '财务助手',
   SupplyChainAssistantAgent: '供应链助手',
   QcAssistantAgent: '质控助手',
+  WeatherAssistantAgent: '天气助手',
+  SearchAssistantAgent: '搜索助手',
+  DataAnalysisAssistantAgent: '数据分析助手',
+  CodeAssistantAgent: '代码助手',
+  McpAssistantAgent: 'MCP助手',
   MultiAssistantAgent: '多Agent协作',
   rd: '研发助手',
   sales: '销售助手',
@@ -29,6 +39,11 @@ export const AGENT_LABELS: Record<string, string> = {
   finance: '财务助手',
   'supply-chain': '供应链助手',
   qc: '质控助手',
+  weather: '天气助手',
+  search: '搜索助手',
+  'data-analysis': '数据分析助手',
+  code: '代码助手',
+  mcp: 'MCP助手',
   multi: '多Agent协作'
 }
 
@@ -54,6 +69,11 @@ export const BOT_LABELS: Record<string, string> = {
   finance: '财务助手',
   'supply-chain': '供应链助手',
   qc: '质控助手',
+  weather: '天气助手',
+  search: '搜索助手',
+  'data-analysis': '数据分析助手',
+  code: '代码助手',
+  mcp: 'MCP助手',
   multi: '多Agent协作'
 }
 
@@ -121,7 +141,23 @@ export const MOCK_RESPONSES: Record<string, (msg: string) => string> = {
     if (/不良|质检|良率/i.test(msg)) return '**本月质检概况：**\n\n- 良率：98.6%（目标 99%）\n- 主要不良：焊接虚焊 0.8%、外观划痕 0.4%\n- 趋势：良率较上月下降 0.3%\n\n🔴 建议检查焊接工位温度参数。'
     return `质控助手已收到：「${msg.slice(0, 30)}」\n\n我可以帮你分析不良品、查看质检报告、预警趋势。`
   },
-  multi: () => '**多Agent协作模式启动**\n\n我会将你的任务自动拆解为子任务，分配给对应的专业Agent：\n\n1. 🔬 **Planner**: 分析任务，制定执行计划\n2. ⚡ **Executor**: 调用工具，执行具体操作\n3. 🔍 **Critic**: 检验结果，确保质量\n\n请描述你的复杂任务，我来协调处理。'
+  multi: () => '**多Agent协作模式启动**\n\n我会将你的任务自动拆解为子任务，分配给对应的专业Agent：\n\n1. 🔬 **Planner**: 分析任务，制定执行计划\n2. ⚡ **Executor**: 调用工具，执行具体操作\n3. 🔍 **Critic**: 检验结果，确保质量\n\n请描述你的复杂任务，我来协调处理。',
+  weather: (msg) => {
+    if (/天气|weather/i.test(msg)) return '**北京今日天气：**\n\n- 温度：26°C\n- 湿度：65%\n- 风力：东南风 3级\n- 天气：多云\n- 空气质量：良(AQI 72)\n\n适合外出，建议携带薄外套。'
+    return `天气助手已收到：「${msg.slice(0, 30)}」\n\n我可以帮你查询任意城市的实时天气和多日预报。`
+  },
+  search: (msg) => {
+    return `搜索助手已收到：「${msg.slice(0, 30)}」\n\n正在搜索相关信息...\n\n**搜索结果：**\n1. [Spring AI 官方文档](https://docs.spring.io/spring-ai) - 相关度 95%\n2. [MCP 协议详解](https://modelcontextprotocol.io) - 相关度 87%\n\n需要我深入分析某个结果吗？`
+  },
+  'data-analysis': (msg) => {
+    if (/sql|查询|query/i.test(msg)) return '**查询结果：**\n\n| 部门 | 销售额 | 同比增长 |\n|------|--------|--------|\n| 研发 | ¥520万 | +12.3% |\n| 销售 | ¥1,250万 | +8.7% |\n| 生产 | ¥380万 | +5.1% |\n\n共 3 条记录，耗时 23ms'
+    return `数据分析助手已收到：「${msg.slice(0, 30)}」\n\n我可以帮你执行 SQL 查询、生成图表、分析数据统计。`
+  },
+  code: (msg) => {
+    if (/review|审查/i.test(msg)) return '**代码审查结果：**\n\n- **高危** 第15行：SQL拼接，建议参数化查询\n- **中等** 第30行：方法过长，建议拆分\n- **低级** 第45行：循环内创建对象\n\n评分：6.5/10'
+    return `代码助手已收到：「${msg.slice(0, 30)}」\n\n我可以帮你执行代码、搜索仓库、审查代码质量。`
+  },
+  mcp: () => '**MCP 助手**\n\nMCP (Model Context Protocol) 助手通过 MCP 协议连接外部工具服务器，具备动态扩展能力。\n\n当前状态：需要管理员在服务端启用 MCP 配置。'
 }
 
 // Fallback demo knowledge bases

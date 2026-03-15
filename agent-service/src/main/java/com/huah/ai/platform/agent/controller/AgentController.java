@@ -6,17 +6,23 @@ import com.huah.ai.platform.agent.memory.ConversationMemoryService;
 import com.huah.ai.platform.agent.multi.MultiAgentOrchestrator;
 import com.huah.ai.platform.agent.security.AgentAccessChecker;
 import com.huah.ai.platform.agent.service.AgentChatResult;
+import com.huah.ai.platform.agent.service.CodeAssistantAgent;
+import com.huah.ai.platform.agent.service.DataAnalysisAssistantAgent;
 import com.huah.ai.platform.agent.service.FinanceAssistantAgent;
 import com.huah.ai.platform.agent.service.HrAssistantAgent;
+import com.huah.ai.platform.agent.service.McpAssistantAgent;
 import com.huah.ai.platform.agent.service.QcAssistantAgent;
 import com.huah.ai.platform.agent.service.RdAssistantAgent;
 import com.huah.ai.platform.agent.service.SalesAssistantAgent;
+import com.huah.ai.platform.agent.service.SearchAssistantAgent;
 import com.huah.ai.platform.agent.service.SupplyChainAgent;
+import com.huah.ai.platform.agent.service.WeatherAssistantAgent;
 import com.huah.ai.platform.common.dto.Result;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -40,7 +46,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Agent 统一入口控制器
- * 支持: rd | sales | hr | finance | supply-chain | qc | multi
+ * 支持: rd | sales | hr | finance | supply-chain | qc | weather | search | data-analysis | code | mcp | multi
  *
  * 安全机制:
  * 1. JWT 认证（JwtAuthFilter 拦截未携带/无效 Token 的请求）
@@ -59,11 +65,19 @@ public class AgentController {
     private final FinanceAssistantAgent financeAssistant;
     private final SupplyChainAgent supplyChainAgent;
     private final QcAssistantAgent qcAssistant;
+    private final WeatherAssistantAgent weatherAssistant;
+    private final SearchAssistantAgent searchAssistant;
+    private final DataAnalysisAssistantAgent dataAnalysisAssistant;
+    private final CodeAssistantAgent codeAssistant;
     private final MultiAgentOrchestrator multiAgentOrchestrator;
     private final ConversationMemoryService memoryService;
     private final AiAuditLogMapper auditLogMapper;
     private final AgentAccessChecker accessChecker;
     private final ExecutorService executor = Executors.newCachedThreadPool();
+
+    // MCP 助手（可选，仅在 MCP 启用时注入）
+    @Autowired(required = false)
+    private McpAssistantAgent mcpAssistant;
 
     // Token 预扣量（在 AI 调用前预扣，调用后按实际用量修正）
     private static final int PRE_DEDUCT_TOKENS = 500;
@@ -370,29 +384,45 @@ public class AgentController {
 
     private AgentChatResult routeToAgent(String type, String userId, String sessionId, String msg) {
         return switch (type) {
-            case "rd"           -> rdAssistant.chat(userId, sessionId, msg);
-            case "sales"        -> salesAssistant.chat(userId, sessionId, msg);
-            case "hr"           -> hrAssistant.chat(userId, sessionId, msg);
-            case "finance"      -> financeAssistant.chat(userId, sessionId, msg);
-            case "supply-chain" -> supplyChainAgent.chat(userId, sessionId, msg);
-            case "qc"           -> qcAssistant.chat(userId, sessionId, msg);
-            case "multi"        -> {
+            case "rd"            -> rdAssistant.chat(userId, sessionId, msg);
+            case "sales"         -> salesAssistant.chat(userId, sessionId, msg);
+            case "hr"            -> hrAssistant.chat(userId, sessionId, msg);
+            case "finance"       -> financeAssistant.chat(userId, sessionId, msg);
+            case "supply-chain"  -> supplyChainAgent.chat(userId, sessionId, msg);
+            case "qc"            -> qcAssistant.chat(userId, sessionId, msg);
+            case "weather"       -> weatherAssistant.chat(userId, sessionId, msg);
+            case "search"        -> searchAssistant.chat(userId, sessionId, msg);
+            case "data-analysis" -> dataAnalysisAssistant.chat(userId, sessionId, msg);
+            case "code"          -> codeAssistant.chat(userId, sessionId, msg);
+            case "mcp"           -> {
+                if (mcpAssistant == null) throw new IllegalArgumentException("MCP 未启用，请在配置中开启 spring.ai.mcp.client.enabled=true");
+                yield mcpAssistant.chat(userId, sessionId, msg);
+            }
+            case "multi"         -> {
                 String content = multiAgentOrchestrator.executeComplexTask(userId, sessionId, msg);
                 yield new AgentChatResult(content, 0, 0);
             }
-            default             -> throw new IllegalArgumentException("未知 Agent: " + type);
+            default              -> throw new IllegalArgumentException("未知 Agent: " + type);
         };
     }
 
     private Flux<ChatResponse> routeToAgentStream(String type, String userId, String sessionId, String msg) {
         return switch (type) {
-            case "rd"           -> rdAssistant.chatStream(userId, sessionId, msg);
-            case "sales"        -> salesAssistant.chatStream(userId, sessionId, msg);
-            case "hr"           -> hrAssistant.chatStream(userId, sessionId, msg);
-            case "finance"      -> financeAssistant.chatStream(userId, sessionId, msg);
-            case "supply-chain" -> supplyChainAgent.chatStream(userId, sessionId, msg);
-            case "qc"           -> qcAssistant.chatStream(userId, sessionId, msg);
-            default             -> throw new IllegalArgumentException("未知 Agent: " + type);
+            case "rd"            -> rdAssistant.chatStream(userId, sessionId, msg);
+            case "sales"         -> salesAssistant.chatStream(userId, sessionId, msg);
+            case "hr"            -> hrAssistant.chatStream(userId, sessionId, msg);
+            case "finance"       -> financeAssistant.chatStream(userId, sessionId, msg);
+            case "supply-chain"  -> supplyChainAgent.chatStream(userId, sessionId, msg);
+            case "qc"            -> qcAssistant.chatStream(userId, sessionId, msg);
+            case "weather"       -> weatherAssistant.chatStream(userId, sessionId, msg);
+            case "search"        -> searchAssistant.chatStream(userId, sessionId, msg);
+            case "data-analysis" -> dataAnalysisAssistant.chatStream(userId, sessionId, msg);
+            case "code"          -> codeAssistant.chatStream(userId, sessionId, msg);
+            case "mcp"           -> {
+                if (mcpAssistant == null) throw new IllegalArgumentException("MCP 未启用");
+                yield mcpAssistant.chatStream(userId, sessionId, msg);
+            }
+            default              -> throw new IllegalArgumentException("未知 Agent: " + type);
         };
     }
 

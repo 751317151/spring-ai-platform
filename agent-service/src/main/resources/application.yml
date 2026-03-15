@@ -16,6 +16,15 @@ spring:
           temperature: 0.7
           max-tokens: 4096
           stream-usage: true
+    mcp:
+      client:
+        enabled: true        # 设为 true 启用 MCP 助手
+        name: agent-service-mcp
+        version: 1.0.0
+        type: SYNC
+        request-timeout: 20s
+        stdio:
+          servers-configuration: classpath:mcp-servers.json
     chat:
       memory:
         repository:

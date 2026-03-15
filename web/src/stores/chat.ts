@@ -57,7 +57,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function generateSessionId(): string {
-    return 'sess-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6)
+    return authStore.userId + '-' + currentAgent.value + '-' + Date.now()
   }
 
   async function selectAgent(type: AgentType) {

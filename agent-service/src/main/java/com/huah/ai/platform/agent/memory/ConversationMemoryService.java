@@ -59,7 +59,7 @@ public class ConversationMemoryService {
         return messages.stream()
                 .filter(m -> m.getMessageType() == MessageType.USER || m.getMessageType() == MessageType.ASSISTANT)
                 .map(m -> Map.of(
-                        "role", m.getMessageType() == MessageType.USER ? "user" : "ai",
+                        "role", m.getMessageType() == MessageType.USER ? "user" : "assistant",
                         "content", m.getText()
                 ))
                 .toList();
