@@ -55,3 +55,23 @@ logging:
   level:
     org.springframework.ai: debug
     com.huah.ai.platform.agent: debug
+
+# --- Tool API 配置 ---
+tools:
+  search:
+    tavily:
+      api-key: ${TAVILY_API_KEY:}
+      base-url: https://api.tavily.com
+    google:
+      api-key: ${GOOGLE_SEARCH_API_KEY:}
+      cx: ${GOOGLE_SEARCH_CX:}
+    summarize:
+      timeout-ms: 15000
+      max-content-length: 5000
+  weather:
+    qweather:
+      api-key: ${QWEATHER_API_KEY:}
+      base-url: ${QWEATHER_BASE_URL:https://devapi.qweather.com}
+  data-analysis:
+    query-timeout-seconds: 30
+    max-rows: 1000

@@ -13,13 +13,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 @Configuration
 public class CommonConfiguration {
-
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
 
     @Autowired
     private RdTools rdTools;
@@ -269,14 +265,15 @@ public class CommonConfiguration {
             你是网络搜索智能助手，帮助用户：
             1. 搜索互联网获取最新信息
             2. 对搜索结果进行分析和总结
-            3. 获取并摘要指定网页内容
+            3. 获取并分析指定网页的内容
             4. 对比多个来源的信息
 
             你可以调用以下工具：
-            - webSearch: 搜索互联网，返回搜索结果列表
-            - summarizeUrl: 获取指定网页的内容摘要
+            - webSearch: 搜索互联网，返回真实搜索结果（标题、链接、摘要）
+            - summarizeUrl: 获取指定网页的文本内容（返回原始文本，由你进行总结分析）
 
             当用户需要搜索或获取网络信息时，主动调用工具获取数据并综合分析。
+            summarizeUrl 返回的是网页原始文本，请你根据用户需求提取关键信息并总结。
             当前用户: {userId}
             """;
 
@@ -295,17 +292,19 @@ public class CommonConfiguration {
 
     private static final String DATA_ANALYSIS_SYSTEM_PROMPT = """
             你是数据分析智能助手，帮助用户：
-            1. 编写和执行 SQL 查询
+            1. 编写和执行 SQL 查询（只读，仅支持 SELECT）
             2. 生成数据可视化图表配置
-            3. 分析数据集的统计特征
+            3. 分析数据表的统计特征
             4. 提供数据驱动的业务洞察
 
             你可以调用以下工具：
-            - executeQuery: 执行 SQL 查询，获取业务数据
-            - generateChart: 生成图表配置（柱状图、折线图、饼图等）
-            - analyzeDataset: 分析数据集统计特征（均值、中位数、标准差等）
+            - executeQuery: 执行只读 SQL 查询，获取业务数据库的真实数据（自动添加 LIMIT 防止数据量过大）
+            - generateChart: 生成图表配置建议（先用 executeQuery 获取数据，再生成图表配置）
+            - analyzeDataset: 分析数据表的统计特征（传入表名和数值列名，返回均值、最大最小值、标准差等）
 
-            当用户需要数据分析时，主动使用工具获取和处理数据，给出专业的分析结论和可视化建议。
+            注意事项：
+            - executeQuery 仅支持 SELECT 语句，不能执行 INSERT/UPDATE/DELETE 等修改操作
+            - 编写 SQL 时请注意表名和列名的准确性
             当前用户: {userId}
             """;
 
@@ -324,17 +323,17 @@ public class CommonConfiguration {
 
     private static final String CODE_SYSTEM_PROMPT = """
             你是代码开发智能助手，帮助开发人员：
-            1. 编写和执行代码片段
+            1. 分析代码片段，预测执行结果
             2. 在 Git 仓库中搜索代码
             3. 审查代码质量和安全问题
             4. 提供编程最佳实践建议
 
             你可以调用以下工具：
-            - executeCode: 执行代码片段（Java/Python/JavaScript/Go），返回运行结果
-            - searchGitRepo: 在 Git 仓库中搜索代码，定位函数和文件
-            - reviewCode: 审查代码的质量、规范和安全问题
+            - executeCode: 分析代码片段并预测执行结果（AI 分析模式，非实际执行，确保安全）
+            - searchGitRepo: 在 Git 仓库中搜索代码（暂未启用，需配置 GitHub Token）
+            - reviewCode: 深度审查代码的质量、规范和安全问题，返回结构化审查报告
 
-            当用户需要编程帮助时，主动调用工具辅助完成任务。代码审查要关注安全漏洞和性能问题。
+            代码审查要重点关注安全漏洞、性能问题和最佳实践。
             当前用户: {userId}
             """;
 
