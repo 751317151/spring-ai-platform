@@ -120,8 +120,11 @@ public class DocumentIngestionService {
                 case "doc", "docx", "ppt", "pptx", "html", "htm", "txt", "md" -> parseTika(resource);
                 default -> throw new BizException("不支持的文件格式: " + ext);
             };
-        } catch (IOException e) {
-            throw new BizException("文档读取失败: " + e.getMessage());
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("文档解析失败: filename={}, ext={}, error={}", file.getOriginalFilename(), ext, e.getMessage(), e);
+            throw new BizException("文档解析失败: " + e.getMessage());
         }
     }
 
