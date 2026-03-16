@@ -74,7 +74,7 @@ public class AuthController {
             if ("admin".equals(username) && "admin123".equals(password)) {
                 roles = "ROLE_ADMIN,ROLE_RD,ROLE_SALES,ROLE_HR,ROLE_USER";
                 department = "系统管理";
-                userId = "SYS-ADMIN-001";
+                userId = "admin";
                 log.info("演示用户登录: {}", username);
             } else {
                 log.warn("登录失败 - 用户不存在: username={}", username);
@@ -270,7 +270,7 @@ public class AuthController {
             return Result.fail(400, "用户名已存在");
         }
         AiUser user = AiUser.builder()
-                .id(UUID.randomUUID().toString())
+                .id(username)
                 .username(username)
                 .passwordHash(passwordEncoder.encode(password))
                 .department(body.getOrDefault("department", ""))
