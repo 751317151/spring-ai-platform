@@ -2,7 +2,7 @@
   <div class="sidebar">
     <div class="sidebar-logo">
       <div class="logo-icon">AI</div>
-      <span class="logo-text">Enterprise AI</span>
+      <span class="logo-text">AI 智能平台</span>
       <span class="logo-badge">v1.0</span>
     </div>
     <div class="sidebar-section" style="margin-top: 8px">

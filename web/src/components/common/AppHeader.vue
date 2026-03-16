@@ -1,7 +1,7 @@
 <template>
   <div class="header">
     <div class="breadcrumb">
-      <span>Enterprise AI</span>
+      <span>AI 智能平台</span>
       <span class="breadcrumb-sep">/</span>
       <span class="breadcrumb-cur">{{ currentTitle }}</span>
     </div>

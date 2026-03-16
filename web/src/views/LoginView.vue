@@ -4,12 +4,12 @@
       <div class="login-logo">
         <div class="logo-icon">AI</div>
         <div>
-          <div style="font-size: 14px; font-weight: 500; color: var(--text)">Enterprise AI</div>
+          <div style="font-size: 14px; font-weight: 500; color: var(--text)">AI 智能平台</div>
           <div style="font-size: 11px; color: var(--text3)">Platform v1.0</div>
         </div>
       </div>
       <div class="login-title">欢迎回来</div>
-      <div class="login-sub">登录企业 AI 平台</div>
+      <div class="login-sub">登录AI 智能平台</div>
       <div class="form-group">
         <label class="form-label">用户名</label>
         <input class="form-input" type="text" v-model="username" placeholder="admin" @keyup.enter="handleLogin">
