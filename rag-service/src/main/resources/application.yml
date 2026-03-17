@@ -16,9 +16,26 @@ spring:
 
   # Spring AI 配置
   ai:
-    openai:
+#    openai:
+#      api-key: ${aliQwen_api}
+#      base-url: ${LLM_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
+#      chat:
+#        options:
+#          model: ${LLM_MODEL:qwen3-vl-plus-2025-12-19}
+#          temperature: 0.7
+#          max-tokens: 4096
+#      embedding:
+#        options:
+#          model: qwen3-vl-embedding
+#    ollama:
+#      base-url: http://localhost:11434     # Ollama 服务地址
+#      embedding:
+#        options:
+#          model: bge-m3
+#    model:
+#      embedding: ollama
+    dashscope:
       api-key: ${aliQwen_api}
-      base-url: ${LLM_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
       chat:
         options:
           model: ${LLM_MODEL:qwen3-vl-plus-2025-12-19}
@@ -26,14 +43,8 @@ spring:
           max-tokens: 4096
       embedding:
         options:
-          model: qwen3-vl-embedding
-    ollama:
-      base-url: http://localhost:11434     # Ollama 服务地址
-      embedding:
-        options:
-          model: bge-m3
-    model:
-      embedding: ollama
+          model: ${LLM_EMBEDDING_MODEL:qwen3-vl-embedding}
+
     # PGVector 向量库
     vectorstore:
       pgvector:
