@@ -46,6 +46,15 @@ management:
     web:
       exposure:
         include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    distribution:
+      percentiles-histogram:
+        ai.request.latency: true
+      percentiles:
+        ai.request.latency: 0.5, 0.95, 0.99
 
 jwt:
   secret: ${JWT_SECRET:enterprise-ai-platform-secret-key-minimum-256-bits!!}

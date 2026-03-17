@@ -3,7 +3,7 @@ groups:
     rules:
       # 错误率超过 5%
       - alert: HighAiErrorRate
-        expr: rate(ai_requests_errors_total[5m]) / rate(ai_requests_total_total[5m]) > 0.05
+        expr: rate(ai_requests_errors_total[5m]) / rate(ai_requests_total[5m]) > 0.05
         for: 2m
         labels:
           severity: warning

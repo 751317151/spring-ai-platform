@@ -3,6 +3,7 @@ package com.huah.ai.platform.agent.controller;
 import com.huah.ai.platform.agent.audit.AiAuditLog;
 import com.huah.ai.platform.agent.audit.AiAuditLogMapper;
 import com.huah.ai.platform.agent.memory.ConversationMemoryService;
+import com.huah.ai.platform.agent.metrics.AiMetricsCollector;
 import com.huah.ai.platform.agent.multi.MultiAgentOrchestrator;
 import com.huah.ai.platform.agent.security.AgentAccessChecker;
 import com.huah.ai.platform.agent.service.AgentChatResult;
@@ -73,6 +74,7 @@ public class AgentController {
     private final ConversationMemoryService memoryService;
     private final AiAuditLogMapper auditLogMapper;
     private final AgentAccessChecker accessChecker;
+    private final AiMetricsCollector metricsCollector;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     // MCP 助手（可选，仅在 MCP 启用时注入）
@@ -192,6 +194,8 @@ public class AgentController {
         AtomicInteger totalPromptTokens = new AtomicInteger(0);
         AtomicInteger totalCompletionTokens = new AtomicInteger(0);
 
+        metricsCollector.incrementActive();
+
         executor.submit(() -> {
             try {
                 if ("multi".equals(agentType)) {
@@ -215,8 +219,10 @@ public class AgentController {
 
                     memoryService.saveExchange(sessionId, message, finalResult);
 
+                    metricsCollector.decrementActive();
                     long latency = System.currentTimeMillis() - startTime;
                     log.info("[Stream] Multi-Agent 完成 userId={}, latency={}ms", userId, latency);
+                    metricsCollector.recordRequest(null, "multi", latency, true, 0, 0);
                     saveAuditLog(userId, sessionId, "multi", message, truncate(finalResult, 500), latency, true, null, 0, 0);
                     accessChecker.recordActualTokens(userId, 0, PRE_DEDUCT_TOKENS);
                     sendDone(emitter);
@@ -244,6 +250,7 @@ public class AgentController {
                                 }
                             })
                             .doOnComplete(() -> {
+                                metricsCollector.decrementActive();
                                 long latency = System.currentTimeMillis() - startTime;
                                 String resp = fullResponse.toString();
                                 log.info("[Stream] 模型输出 agent={}, userId={}, latency={}ms, chunks={}, responseLength={}, promptTokens={}, completionTokens={}, response={}",
@@ -251,16 +258,19 @@ public class AgentController {
                                         resp.length(), totalPromptTokens.get(), totalCompletionTokens.get(),
                                         truncate(resp, 500));
                                 int actual = totalPromptTokens.get() + totalCompletionTokens.get();
+                                metricsCollector.recordRequest(null, agentType, latency, true, totalPromptTokens.get(), totalCompletionTokens.get());
                                 accessChecker.recordActualTokens(userId, actual, PRE_DEDUCT_TOKENS);
                                 saveAuditLog(userId, sessionId, agentType, message, resp, latency, true, null,
                                         totalPromptTokens.get(), totalCompletionTokens.get());
                                 sendDone(emitter);
                             })
                             .doOnError(e -> {
+                                metricsCollector.decrementActive();
                                 long latency = System.currentTimeMillis() - startTime;
                                 log.error("[Stream] 流式异常 agent={}, userId={}, latency={}ms, chunks={}, partialResponse={}, error={}",
                                         agentType, userId, latency, chunkCount.get(),
                                         truncate(fullResponse.toString(), 200), e.getMessage(), e);
+                                metricsCollector.recordRequest(null, agentType, latency, false, 0, 0);
                                 accessChecker.recordActualTokens(userId, 0, PRE_DEDUCT_TOKENS);
                                 saveAuditLog(userId, sessionId, agentType, message, null, latency, false, e.getMessage(), 0, 0);
                                 memoryService.rollbackLastUserMessage(sessionId);
@@ -270,9 +280,11 @@ public class AgentController {
                             .subscribe();
                 }
             } catch (Exception e) {
+                metricsCollector.decrementActive();
                 long latency = System.currentTimeMillis() - startTime;
                 log.error("[Stream] 执行异常 agent={}, userId={}, latency={}ms, error={}",
                         agentType, userId, latency, e.getMessage(), e);
+                metricsCollector.recordRequest(null, agentType, latency, false, 0, 0);
                 accessChecker.recordActualTokens(userId, 0, PRE_DEDUCT_TOKENS);
                 if (!"multi".equals(agentType)) {
                     memoryService.rollbackLastUserMessage(sessionId);

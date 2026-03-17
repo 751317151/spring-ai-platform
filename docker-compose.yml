@@ -121,16 +121,11 @@ services:
       - "9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.retention.time=15d'
-    depends_on:
-      - gateway-service
-      - rag-service
-      - agent-service
-      - auth-service
-      - monitor-service
 
   grafana:
     image: grafana/grafana:latest

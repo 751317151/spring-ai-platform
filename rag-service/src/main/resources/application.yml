@@ -70,6 +70,16 @@ storage:
     secret-key: ${S3_SECRET_KEY:mltBO0bOnAXxXKvPCtFh4obvSrqavJz}
     presigned-url-expiry: 3600
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
 logging:
   level:
     org.springframework.ai: debug

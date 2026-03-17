@@ -11,27 +11,31 @@ rule_files:
   - "alert_rules.yml"
 
 scrape_configs:
+  # ====== 本地开发模式（Prometheus 和服务都在本机运行）======
+  # 如果 Prometheus 在 Docker 中运行、服务在宿主机上，将 localhost 替换为 host.docker.internal
+  # 如果全部服务都在 Docker 中运行，将 localhost 替换为对应的 Docker 服务名
+
   - job_name: 'gateway-service'
     static_configs:
-      - targets: ['gateway-service:8080']
+      - targets: ['localhost:8080']
     metrics_path: '/actuator/prometheus'
 
   - job_name: 'rag-service'
     static_configs:
-      - targets: ['rag-service:8081']
+      - targets: ['localhost:8081']
     metrics_path: '/actuator/prometheus'
 
   - job_name: 'agent-service'
     static_configs:
-      - targets: ['agent-service:8082']
+      - targets: ['localhost:8082']
     metrics_path: '/actuator/prometheus'
 
   - job_name: 'auth-service'
     static_configs:
-      - targets: ['auth-service:8083']
+      - targets: ['localhost:8083']
     metrics_path: '/actuator/prometheus'
 
   - job_name: 'monitor-service'
     static_configs:
-      - targets: ['monitor-service:8084']
+      - targets: ['localhost:8084']
     metrics_path: '/actuator/prometheus'
