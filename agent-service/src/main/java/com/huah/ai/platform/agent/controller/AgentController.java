@@ -201,30 +201,39 @@ public class AgentController {
                 if ("multi".equals(agentType)) {
                     log.info("[Stream] Multi-Agent 分步流式, userId={}", userId);
                     String internalId = sessionId + "-";
+                    int totalPrompt = 0;
+                    int totalCompletion = 0;
 
                     // Step 1: Planner
                     sendChunk(emitter, "**[Planner] 正在分析任务...**\n\n");
-                    String plan = multiAgentOrchestrator.planTask(message, internalId + "-planner");
-                    sendChunk(emitter, plan + "\n\n---\n\n");
+                    var planResult = multiAgentOrchestrator.planTask(message, internalId + "-planner");
+                    sendChunk(emitter, planResult.getContent() + "\n\n---\n\n");
+                    totalPrompt += planResult.getPromptTokens();
+                    totalCompletion += planResult.getCompletionTokens();
 
                     // Step 2: Executor
                     sendChunk(emitter, "**[Executor] 正在执行任务...**\n\n");
-                    String executionResult = multiAgentOrchestrator.executeWithTools(message, plan, internalId + "-executor");
-                    sendChunk(emitter, executionResult + "\n\n---\n\n");
+                    var execResult = multiAgentOrchestrator.executeWithTools(message, planResult.getContent(), internalId + "-executor");
+                    sendChunk(emitter, execResult.getContent() + "\n\n---\n\n");
+                    totalPrompt += execResult.getPromptTokens();
+                    totalCompletion += execResult.getCompletionTokens();
 
                     // Step 3: Critic
                     sendChunk(emitter, "**[Critic] 正在评审结果...**\n\n");
-                    String finalResult = multiAgentOrchestrator.critique(message, executionResult, internalId + "-critic");
-                    sendChunk(emitter, finalResult);
+                    var criticResult = multiAgentOrchestrator.critique(message, execResult.getContent(), internalId + "-critic");
+                    sendChunk(emitter, criticResult.getContent());
+                    totalPrompt += criticResult.getPromptTokens();
+                    totalCompletion += criticResult.getCompletionTokens();
 
-                    memoryService.saveExchange(sessionId, message, finalResult);
+                    memoryService.saveExchange(sessionId, message, criticResult.getContent());
 
                     metricsCollector.decrementActive();
                     long latency = System.currentTimeMillis() - startTime;
-                    log.info("[Stream] Multi-Agent 完成 userId={}, latency={}ms", userId, latency);
-                    metricsCollector.recordRequest(null, "multi", latency, true, 0, 0);
-                    saveAuditLog(userId, sessionId, "multi", message, truncate(finalResult, 500), latency, true, null, 0, 0);
-                    accessChecker.recordActualTokens(userId, 0, PRE_DEDUCT_TOKENS);
+                    log.info("[Stream] Multi-Agent 完成 userId={}, latency={}ms, tokens={}/{}", userId, latency, totalPrompt, totalCompletion);
+                    metricsCollector.recordRequest(null, "multi", latency, true, totalPrompt, totalCompletion);
+                    saveAuditLog(userId, sessionId, "multi", message, truncate(criticResult.getContent(), 500), latency, true, null, totalPrompt, totalCompletion);
+                    int actualTokens = totalPrompt + totalCompletion;
+                    accessChecker.recordActualTokens(userId, actualTokens, PRE_DEDUCT_TOKENS);
                     sendDone(emitter);
                 } else {
                     Flux<ChatResponse> flux = routeToAgentStream(agentType, userId, sessionId, message);
@@ -326,13 +335,14 @@ public class AgentController {
         log.info("[Multi] 用户输入 userId={}, task={}", userId, truncate(task, 500));
         long startTime = System.currentTimeMillis();
         try {
-            String result = multiAgentOrchestrator.executeComplexTask(userId, sessionId, task);
+            var result = multiAgentOrchestrator.executeComplexTask(userId, sessionId, task);
             long latency = System.currentTimeMillis() - startTime;
-            log.info("[Multi] 模型输出 userId={}, latency={}ms, responseLength={}, response={}",
+            log.info("[Multi] 模型输出 userId={}, latency={}ms, responseLength={}, tokens={}/{}, response={}",
                     userId, latency,
-                    result != null ? result.length() : 0,
-                    truncate(result, 500));
-            return Result.ok(result);
+                    result.getContent() != null ? result.getContent().length() : 0,
+                    result.getPromptTokens(), result.getCompletionTokens(),
+                    truncate(result.getContent(), 500));
+            return Result.ok(result.getContent());
         } catch (Exception e) {
             long latency = System.currentTimeMillis() - startTime;
             log.error("[Multi] 任务失败 userId={}, latency={}ms, error={}",
@@ -411,8 +421,8 @@ public class AgentController {
                 yield mcpAssistant.chat(userId, sessionId, msg);
             }
             case "multi"         -> {
-                String content = multiAgentOrchestrator.executeComplexTask(userId, sessionId, msg);
-                yield new AgentChatResult(content, 0, 0);
+                var result = multiAgentOrchestrator.executeComplexTask(userId, sessionId, msg);
+                yield new AgentChatResult(result.getContent(), result.getPromptTokens(), result.getCompletionTokens());
             }
             default              -> throw new IllegalArgumentException("未知 Agent: " + type);
         };
