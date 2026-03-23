@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as ragApi from '@/api/rag'
-import type { KnowledgeBase, DocumentMeta, SourceDocument } from '@/api/types'
+import type { DocumentChunkPreview, DocumentMeta, KnowledgeBase, SourceDocument, SSEChunk } from '@/api/types'
 import { DEMO_KNOWLEDGE_BASES, MOCK_RAG_RESPONSES, MOCK_RAG_SOURCES } from '@/utils/constants'
 import { useAuthStore } from './auth'
 import { useRuntimeStore } from './runtime'
@@ -11,8 +11,12 @@ export const useRagStore = defineStore('rag', () => {
   const currentKb = ref('kb-001')
   const currentKbName = ref('')
   const documents = ref<DocumentMeta[]>([])
+  const activeDocumentChunks = ref<DocumentChunkPreview[]>([])
+  const activeChunkDocument = ref<DocumentMeta | null>(null)
   const queryResult = ref('')
   const querySources = ref<SourceDocument[]>([])
+  const queryResponseId = ref('')
+  const queryFeedback = ref<'up' | 'down' | null>(null)
   const isQuerying = ref(false)
 
   const authStore = useAuthStore()
@@ -58,15 +62,18 @@ export const useRagStore = defineStore('rag', () => {
       runtimeStore.markServiceAvailable('rag')
     } catch {
       documents.value = []
-      runtimeStore.markServiceUnavailable('rag', runtimeStore.demoMode
-        ? '文档列表接口不可用，当前仅展示演示知识库摘要。'
-        : '文档列表加载失败，请稍后重试。')
+      runtimeStore.markServiceUnavailable(
+        'rag',
+        runtimeStore.demoMode
+          ? '文档列表接口不可用，当前仅展示演示知识库摘要。'
+          : '文档列表加载失败，请稍后重试。'
+      )
     }
   }
 
-  async function uploadFile(file: File): Promise<DocumentMeta | null> {
+  async function uploadFile(file: File, replaceExisting = false): Promise<DocumentMeta | null> {
     try {
-      const meta = await ragApi.uploadDocument(file, currentKb.value, authStore.userId)
+      const meta = await ragApi.uploadDocument(file, currentKb.value, authStore.userId, replaceExisting)
       runtimeStore.markServiceAvailable('rag')
       await loadDocuments()
       await loadKnowledgeBases()
@@ -83,8 +90,36 @@ export const useRagStore = defineStore('rag', () => {
       runtimeStore.markServiceAvailable('rag')
       await loadDocuments()
       await loadKnowledgeBases()
+      return true
     } catch {
       runtimeStore.markServiceUnavailable('rag', '删除文档失败，请稍后重试。')
+      return false
+    }
+  }
+
+  async function retryDocument(docId: string) {
+    try {
+      await ragApi.retryDocument(docId)
+      runtimeStore.markServiceAvailable('rag')
+      await loadDocuments()
+      await loadKnowledgeBases()
+      return true
+    } catch {
+      runtimeStore.markServiceUnavailable('rag', '文档重试失败，请稍后重试。')
+      return false
+    }
+  }
+
+  async function reindexDocument(docId: string) {
+    try {
+      await ragApi.reindexDocument(docId)
+      runtimeStore.markServiceAvailable('rag')
+      await loadDocuments()
+      await loadKnowledgeBases()
+      return true
+    } catch {
+      runtimeStore.markServiceUnavailable('rag', '重建索引失败，请稍后重试。')
+      return false
     }
   }
 
@@ -98,8 +133,10 @@ export const useRagStore = defineStore('rag', () => {
       a.click()
       URL.revokeObjectURL(url)
       runtimeStore.markServiceAvailable('rag')
+      return true
     } catch {
       runtimeStore.markServiceUnavailable('rag', '下载文档失败，请稍后重试。')
+      return false
     }
   }
 
@@ -110,9 +147,31 @@ export const useRagStore = defineStore('rag', () => {
         window.open(data.previewUrl, '_blank')
       }
       runtimeStore.markServiceAvailable('rag')
+      return true
     } catch {
       runtimeStore.markServiceUnavailable('rag', '文档预览失败，请稍后重试。')
+      return false
     }
+  }
+
+  async function loadDocumentChunks(doc: DocumentMeta) {
+    try {
+      const data = await ragApi.listDocumentChunks(doc.id)
+      activeDocumentChunks.value = data || []
+      activeChunkDocument.value = doc
+      runtimeStore.markServiceAvailable('rag')
+      return true
+    } catch {
+      activeDocumentChunks.value = []
+      activeChunkDocument.value = null
+      runtimeStore.markServiceUnavailable('rag', '文档分块加载失败，请稍后重试。')
+      return false
+    }
+  }
+
+  function clearDocumentChunks() {
+    activeDocumentChunks.value = []
+    activeChunkDocument.value = null
   }
 
   async function ragQuery(question: string, stream = false, topK = 5) {
@@ -122,6 +181,8 @@ export const useRagStore = defineStore('rag', () => {
 
     queryResult.value = ''
     querySources.value = []
+    queryResponseId.value = ''
+    queryFeedback.value = null
     isQuerying.value = true
 
     try {
@@ -158,9 +219,15 @@ export const useRagStore = defineStore('rag', () => {
               continue
             }
             try {
-              const data = JSON.parse(jsonStr)
+              const data = JSON.parse(jsonStr) as SSEChunk
               if (data.chunk) {
                 queryResult.value += data.chunk
+              }
+              if (Array.isArray(data.sources)) {
+                querySources.value = data.sources.map((item) => ({ ...item, feedback: null }))
+              }
+              if (data.done && data.responseId) {
+                queryResponseId.value = data.responseId
               }
             } catch {
               queryResult.value += jsonStr
@@ -174,25 +241,51 @@ export const useRagStore = defineStore('rag', () => {
           topK
         })
         queryResult.value = data.answer || ''
-        querySources.value = data.sources || []
+        querySources.value = (data.sources || []).map((item) => ({ ...item, feedback: null }))
+        queryResponseId.value = data.responseId || ''
       }
 
       runtimeStore.markServiceAvailable('rag')
     } catch {
-      runtimeStore.markServiceUnavailable('rag', runtimeStore.demoMode
-        ? '知识库问答后端不可用，当前返回的是演示答案。'
-        : '知识库问答服务不可用，请检查 rag-service 状态。')
+      runtimeStore.markServiceUnavailable(
+        'rag',
+        runtimeStore.demoMode
+          ? '知识库问答后端不可用，当前返回的是演示答案。'
+          : '知识库问答服务不可用，请检查 rag-service 状态。'
+      )
 
       if (runtimeStore.demoMode) {
         queryResult.value = MOCK_RAG_RESPONSES[currentKb.value] || '当前为演示模式，暂未找到对应的模拟答案。'
-        querySources.value = MOCK_RAG_SOURCES
+        querySources.value = MOCK_RAG_SOURCES.map((item) => ({ ...item, feedback: null }))
       } else {
         queryResult.value = '知识库服务暂不可用，请稍后重试。当前页面不会自动切换到模拟答案。'
         querySources.value = []
       }
+      queryResponseId.value = ''
+      queryFeedback.value = null
     } finally {
       isQuerying.value = false
     }
+  }
+
+  async function submitQueryFeedback(feedback: 'up' | 'down') {
+    if (!queryResponseId.value) {
+      return false
+    }
+    await ragApi.submitFeedback(queryResponseId.value, feedback)
+    queryFeedback.value = feedback
+    return true
+  }
+
+  async function submitEvidenceFeedback(chunkId: string, feedback: 'up' | 'down') {
+    if (!queryResponseId.value || !chunkId) {
+      return false
+    }
+    await ragApi.submitEvidenceFeedback(queryResponseId.value, chunkId, currentKb.value, feedback)
+    querySources.value = querySources.value.map((item) =>
+      item.chunkId === chunkId ? { ...item, feedback } : item
+    )
+    return true
   }
 
   return {
@@ -200,16 +293,26 @@ export const useRagStore = defineStore('rag', () => {
     currentKb,
     currentKbName,
     documents,
+    activeDocumentChunks,
+    activeChunkDocument,
     queryResult,
     querySources,
+    queryResponseId,
+    queryFeedback,
     isQuerying,
     loadKnowledgeBases,
     selectKb,
     loadDocuments,
     uploadFile,
     deleteDocument,
+    retryDocument,
+    reindexDocument,
     downloadDocument,
     previewDocument,
-    ragQuery
+    loadDocumentChunks,
+    clearDocumentChunks,
+    ragQuery,
+    submitQueryFeedback,
+    submitEvidenceFeedback
   }
 })

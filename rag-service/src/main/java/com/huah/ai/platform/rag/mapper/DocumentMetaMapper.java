@@ -25,4 +25,14 @@ public interface DocumentMetaMapper extends BaseMapper<DocumentMeta> {
             LIMIT #{limit}
             """)
     List<DocumentMeta> selectRetryCandidates(@Param("limit") int limit);
+
+    @Select("""
+            SELECT * FROM document_meta
+            WHERE knowledge_base_id = #{kbId}
+              AND filename = #{filename}
+            ORDER BY created_at DESC
+            LIMIT 1
+            """)
+    DocumentMeta selectLatestByKnowledgeBaseIdAndFilename(@Param("kbId") String knowledgeBaseId,
+                                                          @Param("filename") String filename);
 }

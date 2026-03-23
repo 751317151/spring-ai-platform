@@ -1,13 +1,14 @@
+import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
 import * as agentApi from '@/api/agent'
 import * as authApi from '@/api/auth'
-import type { AgentType, ChatMessage, SessionInfo, BotPermission } from '@/api/types'
+import type { AgentType, BotPermission, ChatMessage, SessionInfo, SSEChunk } from '@/api/types'
 import { AGENT_CONFIG, MOCK_RESPONSES } from '@/utils/constants'
 import type { AgentConfig } from '@/utils/constants'
 import { useAuthStore } from './auth'
 import { useRuntimeStore } from './runtime'
-import { buildHeaders } from '@/api/client'
+
+const DEFAULT_SESSION_TITLE = '新对话'
 
 export const useChatStore = defineStore('chat', () => {
   const currentAgent = ref<AgentType>('rd')
@@ -16,6 +17,7 @@ export const useChatStore = defineStore('chat', () => {
   const chatHistory = ref<ChatMessage[]>([])
   const isThinking = ref(false)
   const availableBots = ref<BotPermission[]>([])
+  const showArchivedSessions = ref(false)
 
   const authStore = useAuthStore()
   const runtimeStore = useRuntimeStore()
@@ -33,12 +35,20 @@ export const useChatStore = defineStore('chat', () => {
       return {
         type: bot.botType,
         name: staticConfig?.name || bot.botType,
-        icon: staticConfig?.icon || '🤖',
+        icon: staticConfig?.icon || 'AI',
         color: staticConfig?.color || '#6b7280',
         desc: staticConfig?.desc || ''
       }
     })
   })
+
+  const activeSessions = computed(() =>
+    sessionList.value.filter((session) => !isArchived(session))
+  )
+
+  const archivedSessions = computed(() =>
+    sessionList.value.filter((session) => isArchived(session))
+  )
 
   function getAgentConfig(): AgentConfig {
     const found = agentList.value.find((agent) => agent.type === currentAgent.value)
@@ -46,6 +56,32 @@ export const useChatStore = defineStore('chat', () => {
       return { name: found.name, icon: found.icon, color: found.color, desc: found.desc }
     }
     return AGENT_CONFIG[currentAgent.value] || AGENT_CONFIG.rd
+  }
+
+  function isPinned(session: SessionInfo): boolean {
+    return session.pinned === true || session.pinned === 'true'
+  }
+
+  function isArchived(session: SessionInfo): boolean {
+    return session.archived === true || session.archived === 'true'
+  }
+
+  function sortSessions(sessions: SessionInfo[]): SessionInfo[] {
+    return [...sessions].sort((left, right) => {
+      const leftArchived = isArchived(left)
+      const rightArchived = isArchived(right)
+      if (leftArchived !== rightArchived) {
+        return leftArchived ? 1 : -1
+      }
+
+      const leftPinned = isPinned(left)
+      const rightPinned = isPinned(right)
+      if (leftPinned !== rightPinned) {
+        return leftPinned ? -1 : 1
+      }
+
+      return Number(right.updatedAt || 0) - Number(left.updatedAt || 0)
+    })
   }
 
   async function loadAvailableBots() {
@@ -58,9 +94,12 @@ export const useChatStore = defineStore('chat', () => {
       }
     } catch {
       availableBots.value = []
-      runtimeStore.markServiceUnavailable('chat', runtimeStore.demoMode
-        ? '助手权限接口不可用，当前使用演示配置。'
-        : '助手权限接口不可用，当前无法展示真实可用助手列表。')
+      runtimeStore.markServiceUnavailable(
+        'chat',
+        runtimeStore.demoMode
+          ? '助手权限接口不可用，当前使用演示配置。'
+          : '助手权限接口不可用，当前无法展示真实可用助手列表。'
+      )
     }
   }
 
@@ -79,17 +118,22 @@ export const useChatStore = defineStore('chat', () => {
   async function loadSessions() {
     try {
       const data = await agentApi.getSessions(currentAgent.value)
-      sessionList.value = data || []
+      sessionList.value = sortSessions(data || [])
       runtimeStore.markServiceAvailable('chat')
-      if (sessionList.value.length > 0) {
+      if (activeSessions.value.length > 0) {
+        await switchSession(activeSessions.value[0].sessionId)
+      } else if (sessionList.value.length > 0) {
         await switchSession(sessionList.value[0].sessionId)
       } else {
         createNewSession()
       }
     } catch {
-      runtimeStore.markServiceUnavailable('chat', runtimeStore.demoMode
-        ? '会话服务不可用，当前使用本地演示会话。'
-        : '会话服务不可用，当前仅保留本地临时会话。')
+      runtimeStore.markServiceUnavailable(
+        'chat',
+        runtimeStore.demoMode
+          ? '会话服务不可用，当前使用本地演示会话。'
+          : '会话服务不可用，当前仅保留本地临时会话。'
+      )
       createNewSession()
     }
   }
@@ -100,7 +144,10 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const data = await agentApi.getHistory(currentAgent.value, sessionId)
       if (data && Array.isArray(data)) {
-        chatHistory.value = data
+        chatHistory.value = data.map((item) => ({
+          ...item,
+          feedback: item.feedback ?? null
+        }))
       }
       runtimeStore.markServiceAvailable('chat')
     } catch {
@@ -112,7 +159,115 @@ export const useChatStore = defineStore('chat', () => {
     const sid = generateSessionId()
     currentSessionId.value = sid
     chatHistory.value = []
-    sessionList.value.unshift({ sessionId: sid, summary: '新对话' })
+    sessionList.value = sortSessions([
+      {
+        sessionId: sid,
+        summary: DEFAULT_SESSION_TITLE,
+        updatedAt: String(Date.now()),
+        pinned: false,
+        archived: false
+      },
+      ...sessionList.value
+    ])
+  }
+
+  async function renameSession(sessionId: string, title: string) {
+    const normalizedTitle = title.trim()
+    if (!normalizedTitle) {
+      return
+    }
+
+    const session = sessionList.value.find((item) => item.sessionId === sessionId)
+    if (session) {
+      session.summary = normalizedTitle
+      session.updatedAt = String(Date.now())
+      sessionList.value = sortSessions(sessionList.value)
+    }
+
+    try {
+      await agentApi.renameSessionTitle(currentAgent.value, sessionId, normalizedTitle)
+      runtimeStore.markServiceAvailable('chat')
+    } catch {
+      runtimeStore.markServiceUnavailable('chat', '会话标题更新失败，请稍后重试。')
+      await loadSessions()
+    }
+  }
+
+  async function togglePinSession(sessionId: string) {
+    const session = sessionList.value.find((item) => item.sessionId === sessionId)
+    if (!session) {
+      return
+    }
+
+    const currentPinned = isPinned(session)
+    session.pinned = !currentPinned
+    session.updatedAt = String(Date.now())
+    sessionList.value = sortSessions(sessionList.value)
+
+    try {
+      await agentApi.pinSession(currentAgent.value, sessionId, !currentPinned)
+      runtimeStore.markServiceAvailable('chat')
+    } catch {
+      runtimeStore.markServiceUnavailable('chat', '会话置顶更新失败，请稍后重试。')
+      await loadSessions()
+    }
+  }
+
+  async function toggleArchiveSession(sessionId: string) {
+    const session = sessionList.value.find((item) => item.sessionId === sessionId)
+    if (!session) {
+      return
+    }
+
+    const currentArchived = isArchived(session)
+    session.archived = !currentArchived
+    session.updatedAt = String(Date.now())
+    sessionList.value = sortSessions(sessionList.value)
+
+    if (currentSessionId.value === sessionId && !currentArchived) {
+      const nextSession = activeSessions.value.find((item) => item.sessionId !== sessionId)
+      if (nextSession) {
+        await switchSession(nextSession.sessionId)
+      } else {
+        createNewSession()
+      }
+    }
+
+    try {
+      await agentApi.archiveSession(currentAgent.value, sessionId, !currentArchived)
+      runtimeStore.markServiceAvailable('chat')
+    } catch {
+      runtimeStore.markServiceUnavailable('chat', '会话归档更新失败，请稍后重试。')
+      await loadSessions()
+    }
+  }
+
+  async function deleteSession(sessionId: string) {
+    try {
+      await agentApi.deleteSession(currentAgent.value, sessionId)
+      sessionList.value = sessionList.value.filter((item) => item.sessionId !== sessionId)
+
+      if (currentSessionId.value === sessionId) {
+        chatHistory.value = []
+        currentSessionId.value = null
+        if (activeSessions.value.length > 0) {
+          await switchSession(activeSessions.value[0].sessionId)
+        } else if (sessionList.value.length > 0) {
+          await switchSession(sessionList.value[0].sessionId)
+        } else {
+          createNewSession()
+        }
+      }
+
+      runtimeStore.markServiceAvailable('chat')
+    } catch {
+      runtimeStore.markServiceUnavailable('chat', '删除会话失败，请稍后重试。')
+      await loadSessions()
+    }
+  }
+
+  function toggleArchivedVisibility() {
+    showArchivedSessions.value = !showArchivedSessions.value
   }
 
   async function sendMessage(message: string): Promise<string> {
@@ -129,29 +284,27 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     const session = sessionList.value.find((item) => item.sessionId === sessionId)
-    if (session && session.summary === '新对话') {
-      session.summary = message.slice(0, 20) + (message.length > 20 ? '...' : '')
+    if (session) {
+      if (session.summary === DEFAULT_SESSION_TITLE) {
+        session.summary = message.slice(0, 20) + (message.length > 20 ? '...' : '')
+      }
+      session.updatedAt = String(Date.now())
+      session.archived = false
+      sessionList.value = sortSessions(sessionList.value)
     }
 
     let fullResponse = ''
 
     try {
-      const headers = buildHeaders({
-        'X-Session-Id': sessionId
-      })
-
-      const res = await fetch(`/api/v1/agent/${currentAgent.value}/chat/stream`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ message })
-      })
+      const { response } = agentApi.chatStream(currentAgent.value, message, sessionId)
+      const res = await response
 
       if (!res.ok || !res.body) {
         throw new Error(`HTTP ${res.status}`)
       }
 
-      chatHistory.value.push({ role: 'assistant', content: '' })
-      const msgIndex = chatHistory.value.length - 1
+      chatHistory.value.push({ role: 'assistant', content: '', feedback: null })
+      const messageIndex = chatHistory.value.length - 1
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
@@ -172,38 +325,61 @@ export const useChatStore = defineStore('chat', () => {
           if (!trimmed || !trimmed.startsWith('data:')) {
             continue
           }
+
           const jsonStr = trimmed.slice(5).trim()
           if (!jsonStr || jsonStr === '[DONE]') {
             continue
           }
+
           try {
-            const data = JSON.parse(jsonStr)
+            const data = JSON.parse(jsonStr) as SSEChunk
             if (data.chunk) {
               fullResponse += data.chunk
-              chatHistory.value[msgIndex] = { role: 'assistant', content: fullResponse }
+              chatHistory.value[messageIndex] = {
+                ...chatHistory.value[messageIndex],
+                role: 'assistant',
+                content: fullResponse
+              }
+            }
+            if (data.done && data.responseId) {
+              chatHistory.value[messageIndex] = {
+                ...chatHistory.value[messageIndex],
+                role: 'assistant',
+                content: fullResponse,
+                responseId: data.responseId,
+                feedback: chatHistory.value[messageIndex]?.feedback ?? null
+              }
             }
           } catch {
             fullResponse += jsonStr
-            chatHistory.value[msgIndex] = { role: 'assistant', content: fullResponse }
+            chatHistory.value[messageIndex] = {
+              ...chatHistory.value[messageIndex],
+              role: 'assistant',
+              content: fullResponse
+            }
           }
         }
       }
 
       runtimeStore.markServiceAvailable('chat')
     } catch {
-      runtimeStore.markServiceUnavailable('chat', runtimeStore.demoMode
-        ? '聊天后端不可用，当前返回的是本地演示回答。'
-        : '聊天后端不可用，请检查 agent-service 或网关状态。')
+      runtimeStore.markServiceUnavailable(
+        'chat',
+        runtimeStore.demoMode
+          ? '聊天后端不可用，当前返回的是本地演示回答。'
+          : '聊天后端不可用，请检查 agent-service 或网关状态。'
+      )
 
       if (runtimeStore.demoMode) {
         const mockFn = MOCK_RESPONSES[currentAgent.value] || MOCK_RESPONSES.rd
         fullResponse = mockFn(message)
         await new Promise((resolve) => setTimeout(resolve, 500))
-        chatHistory.value.push({ role: 'assistant', content: fullResponse })
+        chatHistory.value.push({ role: 'assistant', content: fullResponse, feedback: null })
       } else {
         chatHistory.value.push({
           role: 'assistant',
-          content: '聊天服务暂不可用，请稍后重试。当前页面不会自动切换到模拟回答。'
+          content: '聊天服务暂不可用，请稍后重试。当前页面不会自动切换到模拟回答。',
+          feedback: null
         })
       }
     } finally {
@@ -211,6 +387,20 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     return fullResponse
+  }
+
+  async function submitFeedback(messageIndex: number, feedback: 'up' | 'down') {
+    const message = chatHistory.value[messageIndex]
+    if (!message?.responseId) {
+      return false
+    }
+
+    await agentApi.submitFeedback(message.responseId, feedback)
+    chatHistory.value[messageIndex] = {
+      ...message,
+      feedback
+    }
+    return true
   }
 
   async function clearChat() {
@@ -229,6 +419,9 @@ export const useChatStore = defineStore('chat', () => {
     currentAgent,
     currentSessionId,
     sessionList,
+    activeSessions,
+    archivedSessions,
+    showArchivedSessions,
     chatHistory,
     isThinking,
     availableBots,
@@ -239,7 +432,13 @@ export const useChatStore = defineStore('chat', () => {
     loadSessions,
     switchSession,
     createNewSession,
+    renameSession,
+    togglePinSession,
+    toggleArchiveSession,
+    toggleArchivedVisibility,
+    deleteSession,
     sendMessage,
+    submitFeedback,
     clearChat
   }
 })

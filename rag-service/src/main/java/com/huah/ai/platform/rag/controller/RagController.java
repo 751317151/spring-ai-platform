@@ -3,14 +3,19 @@ package com.huah.ai.platform.rag.controller;
 import com.huah.ai.platform.common.dto.Result;
 import com.huah.ai.platform.common.exception.BizException;
 import com.huah.ai.platform.rag.config.S3Properties;
+import com.huah.ai.platform.rag.model.DocumentChunkPreview;
+import com.huah.ai.platform.rag.model.EvidenceFeedbackRequest;
 import com.huah.ai.platform.rag.model.DocumentMeta;
 import com.huah.ai.platform.rag.model.KnowledgeBase;
 import com.huah.ai.platform.rag.model.RagQueryRequest;
 import com.huah.ai.platform.rag.model.RagQueryResponse;
+import com.huah.ai.platform.rag.model.ResponseFeedbackRequest;
 import com.huah.ai.platform.rag.service.DocumentIngestionService;
+import com.huah.ai.platform.rag.service.RagAuditService;
 import com.huah.ai.platform.rag.service.DocumentMetaService;
 import com.huah.ai.platform.rag.service.FileStorageService;
 import com.huah.ai.platform.rag.service.RagService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
@@ -34,14 +39,13 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * RAG 知识库接口。
- */
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/rag")
@@ -52,45 +56,61 @@ public class RagController {
     private final DocumentIngestionService ingestionService;
     private final DocumentMetaService metaService;
     private final FileStorageService fileStorageService;
+    private final RagAuditService ragAuditService;
     private final S3Properties s3Properties;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     @PostMapping("/query")
-    public Result<RagQueryResponse> query(@RequestBody RagQueryRequest req) {
+    public Result<RagQueryResponse> query(@RequestBody RagQueryRequest req, HttpServletRequest request) {
         long start = System.currentTimeMillis();
         int topK = req.getTopK() != null ? req.getTopK() : 5;
+        String userId = resolveUserId(request);
 
-        String answer = ragService.query(req.getQuestion(), req.getKnowledgeBaseId(), topK);
-        List<Document> sourceDocs = ragService.search(req.getQuestion(), req.getKnowledgeBaseId(), topK);
+        try {
+            String answer = ragService.query(req.getQuestion(), req.getKnowledgeBaseId(), topK);
+            List<RagQueryResponse.SourceDocument> sources = mapSourceDocuments(
+                    ragService.search(req.getQuestion(), req.getKnowledgeBaseId(), topK)
+            );
+            long latency = System.currentTimeMillis() - start;
+            String responseId = ragAuditService.saveQueryLog(
+                    userId,
+                    req.getKnowledgeBaseId(),
+                    req.getQuestion(),
+                    answer,
+                    latency,
+                    true,
+                    null
+            );
 
-        List<RagQueryResponse.SourceDocument> sources = sourceDocs.stream()
-                .map(doc -> {
-                    Object scoreObj = doc.getMetadata().getOrDefault("distance", 0.0);
-                    double score = (scoreObj instanceof Number) ? ((Number) scoreObj).doubleValue() : 0.0;
-
-                    return RagQueryResponse.SourceDocument.builder()
-                            .filename((String) doc.getMetadata().getOrDefault("filename", "未知文件"))
-                            .content(doc.getText() != null ? doc.getText().substring(0, Math.min(200, doc.getText().length())) : "")
-                            .score(score)
-                            .build();
-                })
-                .toList();
-
-        return Result.ok(RagQueryResponse.builder()
-                .answer(answer)
-                .sources(sources)
-                .latencyMs(System.currentTimeMillis() - start)
-                .build());
+            return Result.ok(RagQueryResponse.builder()
+                    .responseId(responseId)
+                    .answer(answer)
+                    .sources(sources)
+                    .latencyMs(latency)
+                    .build());
+        } catch (Exception e) {
+            long latency = System.currentTimeMillis() - start;
+            ragAuditService.saveQueryLog(userId, req.getKnowledgeBaseId(), req.getQuestion(), null, latency, false, e.getMessage());
+            throw e;
+        }
     }
 
     @PostMapping(value = "/query/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter queryStream(@RequestBody RagQueryRequest req) {
+    public SseEmitter queryStream(@RequestBody RagQueryRequest req, HttpServletRequest request) {
         SseEmitter emitter = new SseEmitter(60_000L);
+        String userId = resolveUserId(request);
         executor.submit(() -> {
             try {
                 int topK = req.getTopK() != null ? req.getTopK() : 5;
+                long start = System.currentTimeMillis();
+                List<RagQueryResponse.SourceDocument> sources = mapSourceDocuments(
+                        ragService.search(req.getQuestion(), req.getKnowledgeBaseId(), topK)
+                );
+                List<String> chunks = new ArrayList<>();
+
                 ragService.queryStream(req.getQuestion(), req.getKnowledgeBaseId(), topK)
                         .doOnNext(chunk -> {
+                            chunks.add(chunk);
                             try {
                                 emitter.send(SseEmitter.event().data(Map.of("chunk", chunk, "done", false)));
                             } catch (IOException e) {
@@ -99,19 +119,73 @@ public class RagController {
                         })
                         .doOnComplete(() -> {
                             try {
-                                emitter.send(SseEmitter.event().data(Map.of("chunk", "", "done", true)));
+                                String answer = String.join("", chunks);
+                                String responseId = ragAuditService.saveQueryLog(
+                                        userId,
+                                        req.getKnowledgeBaseId(),
+                                        req.getQuestion(),
+                                        answer,
+                                        System.currentTimeMillis() - start,
+                                        true,
+                                        null
+                                );
+                                emitter.send(SseEmitter.event().data(Map.of(
+                                        "chunk", "",
+                                        "done", true,
+                                        "sources", sources,
+                                        "responseId", responseId
+                                )));
                                 emitter.complete();
                             } catch (IOException e) {
                                 emitter.completeWithError(e);
                             }
                         })
-                        .doOnError(emitter::completeWithError)
+                        .doOnError(error -> {
+                            ragAuditService.saveQueryLog(
+                                    userId,
+                                    req.getKnowledgeBaseId(),
+                                    req.getQuestion(),
+                                    null,
+                                    System.currentTimeMillis() - start,
+                                    false,
+                                    error.getMessage()
+                            );
+                            emitter.completeWithError(error);
+                        })
                         .subscribe();
             } catch (Exception e) {
+                ragAuditService.saveQueryLog(
+                        userId,
+                        req.getKnowledgeBaseId(),
+                        req.getQuestion(),
+                        null,
+                        0,
+                        false,
+                        e.getMessage()
+                );
                 emitter.completeWithError(e);
             }
         });
         return emitter;
+    }
+
+    @PostMapping("/feedback")
+    public Result<String> submitFeedback(@RequestBody ResponseFeedbackRequest req, HttpServletRequest request) {
+        ragAuditService.submitFeedback(resolveUserId(request), req.getResponseId(), null, req.getFeedback(), req.getComment());
+        return Result.ok("反馈已提交");
+    }
+
+    @PostMapping("/feedback/evidence")
+    public Result<String> submitEvidenceFeedback(@RequestBody EvidenceFeedbackRequest req, HttpServletRequest request) {
+        ragAuditService.submitEvidenceFeedback(
+                resolveUserId(request),
+                req.getResponseId(),
+                req.getChunkId(),
+                req.getKnowledgeBaseId(),
+                req.getFeedback(),
+                req.getComment()
+        );
+        return Result.ok("证据反馈已提交");
     }
 
     @PostMapping("/search")
@@ -156,9 +230,9 @@ public class RagController {
     public Result<DocumentMeta> uploadDocument(
             @RequestParam("file") MultipartFile file,
             @RequestParam("knowledgeBaseId") String knowledgeBaseId,
+            @RequestParam(name = "replaceExisting", defaultValue = "false") boolean replaceExisting,
             @RequestHeader(value = "X-User-Id", defaultValue = "anonymous") String userId) {
-        DocumentMeta meta = ingestionService.ingestDocument(file, knowledgeBaseId, userId);
-        return Result.ok(meta);
+        return Result.ok(ingestionService.ingestDocument(file, knowledgeBaseId, userId, replaceExisting));
     }
 
     @PostMapping("/documents/batch-upload")
@@ -166,11 +240,11 @@ public class RagController {
     public Result<List<DocumentMeta>> batchUpload(
             @RequestParam("files") List<MultipartFile> files,
             @RequestParam("knowledgeBaseId") String knowledgeBaseId,
+            @RequestParam(name = "replaceExisting", defaultValue = "false") boolean replaceExisting,
             @RequestHeader(value = "X-User-Id", defaultValue = "anonymous") String userId) {
-        List<DocumentMeta> results = files.stream()
-                .map(f -> ingestionService.ingestDocument(f, knowledgeBaseId, userId))
-                .toList();
-        return Result.ok(results);
+        return Result.ok(files.stream()
+                .map(f -> ingestionService.ingestDocument(f, knowledgeBaseId, userId, replaceExisting))
+                .toList());
     }
 
     @GetMapping("/documents")
@@ -183,10 +257,21 @@ public class RagController {
         return Result.ok(metaService.getDocument(id));
     }
 
+    @GetMapping("/documents/{id}/chunks")
+    public Result<List<DocumentChunkPreview>> listDocumentChunks(@PathVariable("id") String id) {
+        return Result.ok(metaService.listDocumentChunks(id));
+    }
+
     @PostMapping("/documents/{id}/retry")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<DocumentMeta> retryDocument(@PathVariable("id") String id) {
         return Result.ok(ingestionService.retryDocument(id));
+    }
+
+    @PostMapping("/documents/{id}/reindex")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<DocumentMeta> reindexDocument(@PathVariable("id") String id) {
+        return Result.ok(ingestionService.reindexDocument(id));
     }
 
     @GetMapping("/documents/retry-candidates")
@@ -199,7 +284,7 @@ public class RagController {
     public ResponseEntity<InputStreamResource> downloadDocument(@PathVariable("id") String id) {
         DocumentMeta doc = metaService.getDocument(id);
         if (doc.getStoragePath() == null) {
-            throw new BizException("该文档没有原始文件存储记录");
+            throw new BizException("Document source file is not available.");
         }
         InputStream inputStream = fileStorageService.download(doc.getStoragePath());
         String contentType = doc.getContentType() != null ? doc.getContentType() : "application/octet-stream";
@@ -214,7 +299,7 @@ public class RagController {
     public Result<Map<String, String>> previewDocument(@PathVariable("id") String id) {
         DocumentMeta doc = metaService.getDocument(id);
         if (doc.getStoragePath() == null) {
-            throw new BizException("该文档没有原始文件存储记录");
+            throw new BizException("Document source file is not available.");
         }
         String url = fileStorageService.generatePresignedUrl(doc.getStoragePath(), s3Properties.getPresignedUrlExpiry());
         return Result.ok(Map.of(
@@ -229,5 +314,47 @@ public class RagController {
     public Result<Void> deleteDocument(@PathVariable("id") String id) {
         metaService.deleteDocument(id);
         return Result.ok(null);
+    }
+
+    private List<RagQueryResponse.SourceDocument> mapSourceDocuments(List<Document> sourceDocs) {
+        return sourceDocs.stream()
+                .map(doc -> {
+                    Object scoreObj = doc.getMetadata().getOrDefault("distance", 0.0);
+                    double score = scoreObj instanceof Number number ? number.doubleValue() : 0.0;
+
+                    return RagQueryResponse.SourceDocument.builder()
+                            .documentId(asString(doc.getMetadata().get("doc_id")))
+                            .chunkId(asString(doc.getId() != null ? doc.getId() : UUID.randomUUID()))
+                            .chunkIndex(asInteger(doc.getMetadata().get("chunk_index")))
+                            .filename(asString(doc.getMetadata().getOrDefault("filename", "unknown")))
+                            .preview(asString(doc.getMetadata().get("chunk_preview")))
+                            .content(doc.getText() != null ? doc.getText() : "")
+                            .score(score)
+                            .build();
+                })
+                .toList();
+    }
+
+    private String asString(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private Integer asInteger(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            return Integer.parseInt(text);
+        }
+        return null;
+    }
+
+    private String resolveUserId(HttpServletRequest request) {
+        Object value = request.getAttribute("X-User-Id");
+        if (value != null) {
+            return String.valueOf(value);
+        }
+        String header = request.getHeader("X-User-Id");
+        return header != null && !header.isBlank() ? header : "anonymous";
     }
 }

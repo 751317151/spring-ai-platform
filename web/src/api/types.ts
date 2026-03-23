@@ -1,4 +1,3 @@
-// Backend unified response envelope
 export interface Result<T> {
   code: number
   message: string
@@ -7,7 +6,6 @@ export interface Result<T> {
   traceId?: string
 }
 
-// Auth types
 export interface LoginRequest {
   username: string
   password: string
@@ -23,6 +21,15 @@ export interface LoginResponse {
   username: string
   roles: string
   department: string
+}
+
+export interface UserUpsertRequest {
+  username?: string
+  password?: string
+  employeeId?: string
+  department?: string
+  roles?: string
+  enabled?: string
 }
 
 export interface AiUser {
@@ -47,25 +54,40 @@ export interface BotPermission {
   enabled: boolean
 }
 
-// Agent types
+export interface BotPermissionUpsertRequest {
+  botType?: string
+  allowedRoles?: string
+  allowedDepartments?: string
+  dataScope?: string
+  allowedOperations?: string
+  dailyTokenLimit?: number
+  enabled?: boolean
+}
+
 export type AgentType = string
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  responseId?: string
+  feedback?: 'up' | 'down' | null
 }
 
 export interface SessionInfo {
   sessionId: string
   summary: string
+  updatedAt?: string
+  pinned?: string | boolean
+  archived?: string | boolean
 }
 
 export interface SSEChunk {
   chunk: string
   done: boolean
+  responseId?: string
+  sources?: SourceDocument[]
 }
 
-// RAG types
 export interface KnowledgeBase {
   id: string
   name: string
@@ -95,6 +117,14 @@ export interface DocumentMeta {
   errorMessage?: string
 }
 
+export interface DocumentChunkPreview {
+  id: string
+  chunkIndex: number
+  content: string
+  preview?: string
+  charCount?: number
+}
+
 export interface RagQueryRequest {
   question: string
   knowledgeBaseId: string
@@ -104,18 +134,23 @@ export interface RagQueryRequest {
 }
 
 export interface RagQueryResponse {
+  responseId?: string
   answer: string
   sources: SourceDocument[]
   latencyMs: number
 }
 
 export interface SourceDocument {
+  documentId?: string
+  chunkId?: string
+  chunkIndex?: number
   filename: string
+  preview?: string
   content: string
   score: number
+  feedback?: 'up' | 'down' | null
 }
 
-// Monitor types
 export interface MonitorOverview {
   totalRequests: number
   errorRequests: number
@@ -145,6 +180,13 @@ export interface AgentStat {
   errors?: number
 }
 
+export interface ModelStat {
+  model_id: string
+  count: number
+  avg_latency?: number
+  errors?: number
+}
+
 export interface AlertEvent {
   level: string
   type: string
@@ -168,12 +210,63 @@ export interface AuditLog {
   id: string
   user_id: string
   agent_type: string
+  model_id?: string
+  error_message?: string
+  session_id?: string
   latency_ms: number
   success: boolean
   created_at: string
 }
 
-// Gateway types
+export interface SlowRequestSample {
+  id: string
+  user_id: string
+  agent_type: string
+  model_id?: string
+  latency_ms: number
+  success: boolean
+  created_at: string
+}
+
+export interface FailureSample {
+  id: string
+  user_id: string
+  agent_type: string
+  model_id?: string
+  error_message?: string
+  latency_ms: number
+  session_id?: string
+  created_at: string
+}
+
+export interface FeedbackOverview {
+  totalCount: number
+  positiveCount: number
+  negativeCount: number
+  positiveRate: number
+}
+
+export interface FeedbackSample {
+  responseId: string
+  userId?: string
+  sourceType: string
+  agentType?: string
+  knowledgeBaseId?: string
+  feedback: 'up' | 'down'
+  comment?: string
+  createdAt: string
+}
+
+export interface EvidenceFeedbackSample {
+  responseId: string
+  chunkId: string
+  userId?: string
+  knowledgeBaseId?: string
+  feedback: 'up' | 'down'
+  comment?: string
+  createdAt: string
+}
+
 export interface ModelInfo {
   id: string
   name: string
@@ -193,4 +286,20 @@ export interface GatewayModelsResponse {
   count: number
   sceneRoutes: Record<string, string[]>
   loadBalanceStrategy: string
+}
+
+export interface McpServerInfo {
+  code: string
+  command: string
+  args: string[]
+  enabled: boolean
+  clientEnabled: boolean
+  source: string
+}
+
+export interface McpServerListResponse {
+  clientEnabled: boolean
+  source: string
+  count: number
+  servers: McpServerInfo[]
 }

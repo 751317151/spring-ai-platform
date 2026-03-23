@@ -4,6 +4,7 @@ import com.huah.ai.platform.common.exception.BizException;
 import com.huah.ai.platform.rag.mapper.DocumentMetaMapper;
 import com.huah.ai.platform.rag.mapper.KnowledgeBaseMapper;
 import com.huah.ai.platform.rag.metrics.RagMetricsService;
+import com.huah.ai.platform.rag.model.DocumentChunkPreview;
 import com.huah.ai.platform.rag.model.DocumentMeta;
 import com.huah.ai.platform.rag.model.KnowledgeBase;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +19,8 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -49,7 +52,7 @@ class DocumentMetaServiceTest {
 
     @Test
     void deleteKnowledgeBaseRejectsWhenDocumentsStillExist() {
-        KnowledgeBase kb = KnowledgeBase.builder().id("kb-1").name("测试库").build();
+        KnowledgeBase kb = KnowledgeBase.builder().id("kb-1").name("test").build();
         when(kbMapper.selectById("kb-1")).thenReturn(kb);
         when(docMapper.selectByKnowledgeBaseId("kb-1")).thenReturn(List.of(
                 DocumentMeta.builder().id("doc-1").build()
@@ -57,7 +60,7 @@ class DocumentMetaServiceTest {
 
         BizException exception = assertThrows(BizException.class, () -> service.deleteKnowledgeBase("kb-1"));
 
-        assertEquals("知识库下还有 1 个文档，请先删除文档。", exception.getMessage());
+        assertEquals("Knowledge base still contains 1 documents. Delete them first.", exception.getMessage());
         verify(kbMapper, never()).deleteById("kb-1");
     }
 
@@ -96,11 +99,11 @@ class DocumentMetaServiceTest {
                 .build();
         when(docMapper.selectById("doc-1")).thenReturn(doc);
 
-        DocumentMeta result = service.markDocumentFailed("doc-1", "向量化失败");
+        DocumentMeta result = service.markDocumentFailed("doc-1", "vectorization failed");
 
         verify(docMapper).updateById(doc);
         assertEquals(DocumentMeta.STATUS_FAILED, result.getStatus());
-        assertEquals("向量化失败", result.getErrorMessage());
+        assertEquals("vectorization failed", result.getErrorMessage());
         assertNull(result.getIndexedAt());
     }
 
@@ -111,7 +114,7 @@ class DocumentMetaServiceTest {
                 .status(DocumentMeta.STATUS_FAILED)
                 .storagePath("kb-1/doc-1/test.pdf")
                 .chunkCount(5)
-                .errorMessage("旧错误")
+                .errorMessage("old error")
                 .build();
         when(docMapper.selectById("doc-1")).thenReturn(doc);
 
@@ -121,6 +124,16 @@ class DocumentMetaServiceTest {
         assertEquals(DocumentMeta.STATUS_PROCESSING, result.getStatus());
         assertEquals(0, result.getChunkCount());
         assertNull(result.getErrorMessage());
+    }
+
+    @Test
+    void findLatestByKnowledgeBaseAndFilenameDelegatesToMapper() {
+        DocumentMeta doc = DocumentMeta.builder().id("doc-1").filename("test.pdf").build();
+        when(docMapper.selectLatestByKnowledgeBaseIdAndFilename("kb-1", "test.pdf")).thenReturn(doc);
+
+        DocumentMeta result = service.findLatestByKnowledgeBaseAndFilename("kb-1", "test.pdf");
+
+        assertEquals(doc, result);
     }
 
     @Test
@@ -150,5 +163,61 @@ class DocumentMetaServiceTest {
         verify(docMapper).deleteById("doc-1");
         assertEquals(4, kb.getDocumentCount());
         assertEquals(17, kb.getTotalChunks());
+    }
+
+    @Test
+    void prepareDocumentForReindexClearsVectorsAndResetsIndexedDocument() {
+        DocumentMeta doc = DocumentMeta.builder()
+                .id("doc-1")
+                .knowledgeBaseId("kb-1")
+                .storagePath("kb-1/doc-1/test.pdf")
+                .status(DocumentMeta.STATUS_INDEXED)
+                .chunkCount(3)
+                .errorMessage("old")
+                .build();
+        KnowledgeBase kb = KnowledgeBase.builder()
+                .id("kb-1")
+                .documentCount(5)
+                .totalChunks(20)
+                .build();
+
+        when(docMapper.selectById("doc-1")).thenReturn(doc);
+        when(kbMapper.selectById("kb-1")).thenReturn(kb);
+
+        DocumentMeta result = service.prepareDocumentForReindex("doc-1");
+
+        verify(jdbcTemplate).update("DELETE FROM vector_store WHERE metadata->>'doc_id' = ?", "doc-1");
+        verify(kbMapper).updateById(kb);
+        verify(docMapper).updateById(doc);
+        assertEquals(DocumentMeta.STATUS_PROCESSING, result.getStatus());
+        assertEquals(0, result.getChunkCount());
+        assertNull(result.getErrorMessage());
+        assertEquals(4, kb.getDocumentCount());
+        assertEquals(17, kb.getTotalChunks());
+    }
+
+    @Test
+    void listDocumentChunksReturnsChunkPreviewsOrderedFromVectorStore() {
+        DocumentMeta doc = DocumentMeta.builder()
+                .id("doc-1")
+                .build();
+        List<DocumentChunkPreview> expected = List.of(
+                DocumentChunkPreview.builder()
+                        .id("chunk-1")
+                        .chunkIndex(1)
+                        .preview("preview")
+                        .content("full content")
+                        .charCount(12)
+                        .build()
+        );
+
+        when(docMapper.selectById("doc-1")).thenReturn(doc);
+        when(jdbcTemplate.query(any(String.class), any(org.springframework.jdbc.core.RowMapper.class), eq("doc-1")))
+                .thenReturn(expected);
+
+        List<DocumentChunkPreview> result = service.listDocumentChunks("doc-1");
+
+        assertEquals(expected, result);
+        verify(jdbcTemplate).query(any(String.class), any(org.springframework.jdbc.core.RowMapper.class), eq("doc-1"));
     }
 }

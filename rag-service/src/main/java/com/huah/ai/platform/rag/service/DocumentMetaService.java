@@ -4,6 +4,7 @@ import com.huah.ai.platform.common.exception.BizException;
 import com.huah.ai.platform.rag.mapper.DocumentMetaMapper;
 import com.huah.ai.platform.rag.mapper.KnowledgeBaseMapper;
 import com.huah.ai.platform.rag.metrics.RagMetricsService;
+import com.huah.ai.platform.rag.model.DocumentChunkPreview;
 import com.huah.ai.platform.rag.model.DocumentMeta;
 import com.huah.ai.platform.rag.model.KnowledgeBase;
 import lombok.RequiredArgsConstructor;
@@ -14,9 +15,6 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/**
- * 文档元数据和知识库管理服务。
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -31,7 +29,7 @@ public class DocumentMetaService {
     public KnowledgeBase getKnowledgeBase(String id) {
         KnowledgeBase kb = kbMapper.selectById(id);
         if (kb == null) {
-            throw new BizException("知识库不存在: " + id);
+            throw new BizException("Knowledge base not found: " + id);
         }
         return kb;
     }
@@ -73,7 +71,7 @@ public class DocumentMetaService {
         KnowledgeBase kb = getKnowledgeBase(id);
         List<DocumentMeta> docs = docMapper.selectByKnowledgeBaseId(id);
         if (!docs.isEmpty()) {
-            throw new BizException("知识库下还有 " + docs.size() + " 个文档，请先删除文档。");
+            throw new BizException("Knowledge base still contains " + docs.size() + " documents. Delete them first.");
         }
         kbMapper.deleteById(kb.getId());
     }
@@ -81,9 +79,13 @@ public class DocumentMetaService {
     public DocumentMeta getDocument(String docId) {
         DocumentMeta doc = docMapper.selectById(docId);
         if (doc == null) {
-            throw new BizException("文档不存在: " + docId);
+            throw new BizException("Document not found: " + docId);
         }
         return doc;
+    }
+
+    public DocumentMeta findLatestByKnowledgeBaseAndFilename(String knowledgeBaseId, String filename) {
+        return docMapper.selectLatestByKnowledgeBaseIdAndFilename(knowledgeBaseId, filename);
     }
 
     public DocumentMeta createProcessingDocumentMeta(DocumentMeta meta) {
@@ -97,11 +99,32 @@ public class DocumentMetaService {
     public DocumentMeta resetFailedDocumentForRetry(String docId) {
         DocumentMeta meta = getDocument(docId);
         if (!DocumentMeta.STATUS_FAILED.equals(meta.getStatus())) {
-            throw new BizException("只有失败状态的文档才允许重试: " + docId);
+            throw new BizException("Only failed documents can be retried: " + docId);
         }
-        if (meta.getStoragePath() == null || meta.getStoragePath().isBlank()) {
-            throw new BizException("文档缺少原始文件存储路径，无法重试: " + docId);
+        ensureSourceFileExists(meta, "retry");
+        meta.setStatus(DocumentMeta.STATUS_PROCESSING);
+        meta.setErrorMessage(null);
+        meta.setIndexedAt(null);
+        meta.setChunkCount(0);
+        docMapper.updateById(meta);
+        return meta;
+    }
+
+    public DocumentMeta prepareDocumentForReindex(String docId) {
+        DocumentMeta meta = getDocument(docId);
+        ensureSourceFileExists(meta, "reindex");
+
+        if (DocumentMeta.STATUS_INDEXED.equals(meta.getStatus())) {
+            deleteDocumentVectors(docId, "delete-vectors-for-reindex");
+
+            KnowledgeBase kb = kbMapper.selectById(meta.getKnowledgeBaseId());
+            if (kb != null) {
+                kb.setDocumentCount(Math.max(0, kb.getDocumentCount() - 1));
+                kb.setTotalChunks(Math.max(0, kb.getTotalChunks() - meta.getChunkCount()));
+                kbMapper.updateById(kb);
+            }
         }
+
         meta.setStatus(DocumentMeta.STATUS_PROCESSING);
         meta.setErrorMessage(null);
         meta.setIndexedAt(null);
@@ -150,6 +173,30 @@ public class DocumentMetaService {
         return docMapper.selectRetryCandidates(limit);
     }
 
+    public List<DocumentChunkPreview> listDocumentChunks(String docId) {
+        getDocument(docId);
+        return jdbcTemplate.query("""
+                        SELECT
+                            id::text AS id,
+                            content,
+                            COALESCE((metadata->>'chunk_index')::int, 0) AS chunk_index,
+                            metadata->>'chunk_preview' AS chunk_preview,
+                            COALESCE((metadata->>'char_count')::int, char_length(content)) AS char_count
+                        FROM vector_store
+                        WHERE metadata->>'doc_id' = ?
+                        ORDER BY COALESCE((metadata->>'chunk_index')::int, 0), id
+                        """,
+                (rs, rowNum) -> DocumentChunkPreview.builder()
+                        .id(rs.getString("id"))
+                        .chunkIndex(rs.getInt("chunk_index"))
+                        .content(rs.getString("content"))
+                        .preview(rs.getString("chunk_preview"))
+                        .charCount(rs.getInt("char_count"))
+                        .build(),
+                docId
+        );
+    }
+
     public void deleteDocument(String docId) {
         DocumentMeta doc = getDocument(docId);
 
@@ -157,13 +204,7 @@ public class DocumentMetaService {
             fileStorageService.delete(doc.getStoragePath());
         }
 
-        try {
-            jdbcTemplate.update("DELETE FROM vector_store WHERE metadata->>'doc_id' = ?", docId);
-            log.info("向量数据删除完成: docId={}", docId);
-        } catch (Exception e) {
-            metricsService.recordDependencyFailure("database", "delete-vectors");
-            log.error("向量数据删除失败: docId={}, error={}", docId, e.getMessage());
-        }
+        deleteDocumentVectors(docId, "delete-vectors");
 
         KnowledgeBase kb = kbMapper.selectById(doc.getKnowledgeBaseId());
         if (kb != null && DocumentMeta.STATUS_INDEXED.equals(doc.getStatus())) {
@@ -173,6 +214,23 @@ public class DocumentMetaService {
         }
 
         docMapper.deleteById(docId);
-        log.info("文档删除完成: id={}, file={}", docId, doc.getFilename());
+        log.info("Document deleted: id={}, file={}", docId, doc.getFilename());
+    }
+
+    private void ensureSourceFileExists(DocumentMeta meta, String action) {
+        if (meta.getStoragePath() == null || meta.getStoragePath().isBlank()) {
+            throw new BizException("Document source file is missing and cannot " + action + ": " + meta.getId());
+        }
+    }
+
+    private void deleteDocumentVectors(String docId, String metricAction) {
+        try {
+            jdbcTemplate.update("DELETE FROM vector_store WHERE metadata->>'doc_id' = ?", docId);
+            log.info("Document vectors deleted: docId={}", docId);
+        } catch (Exception e) {
+            metricsService.recordDependencyFailure("database", metricAction);
+            log.error("Document vector deletion failed: docId={}, error={}", docId, e.getMessage());
+            throw new BizException("Failed to clean document vectors: " + e.getMessage());
+        }
     }
 }

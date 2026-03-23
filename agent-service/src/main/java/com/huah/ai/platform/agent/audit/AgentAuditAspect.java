@@ -8,6 +8,7 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.RequestContextHolder;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -30,6 +31,9 @@ public class AgentAuditAspect {
 
     @Around("execution(* com.huah.ai.platform.agent.service.*.chat(String, String, String))")
     public Object auditChat(ProceedingJoinPoint pjp) throws Throwable {
+        if (RequestContextHolder.getRequestAttributes() != null) {
+            return pjp.proceed();
+        }
         long start = System.currentTimeMillis();
         Object[] args = pjp.getArgs();
         String userId    = args.length > 0 ? (String) args[0] : "unknown";

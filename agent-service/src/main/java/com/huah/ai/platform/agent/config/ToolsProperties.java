@@ -12,6 +12,7 @@ public class ToolsProperties {
     private SearchConfig search = new SearchConfig();
     private WeatherConfig weather = new WeatherConfig();
     private DataAnalysisConfig dataAnalysis = new DataAnalysisConfig();
+    private InternalApiConfig internalApi = new InternalApiConfig();
 
     @Data
     public static class SearchConfig {
@@ -54,5 +55,24 @@ public class ToolsProperties {
     public static class DataAnalysisConfig {
         private int queryTimeoutSeconds = 30;
         private int maxRows = 1000;
+        private String defaultSchema = "public";
+        private java.util.List<String> allowedTables = new java.util.ArrayList<>();
+        private java.util.List<String> blockedTables = new java.util.ArrayList<>();
+    }
+
+    @Data
+    public static class InternalApiConfig {
+        private java.util.Map<String, ConnectorDefinition> connectors = new java.util.LinkedHashMap<>();
+    }
+
+    @Data
+    public static class ConnectorDefinition {
+        private boolean enabled = false;
+        private String name;
+        private String baseUrl;
+        private String authHeaderName;
+        private String authHeaderValue;
+        private int timeoutMs = 5000;
+        private java.util.List<String> allowedPathPrefixes = new java.util.ArrayList<>();
     }
 }

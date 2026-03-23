@@ -1,5 +1,5 @@
 import client from './client'
-import type { LoginRequest, LoginResponse, AiUser, BotPermission } from './types'
+import type { LoginRequest, LoginResponse, AiUser, BotPermission, BotPermissionUpsertRequest, UserUpsertRequest } from './types'
 
 const BASE = '/api/v1/auth'
 
@@ -23,11 +23,11 @@ export function getUser(id: string): Promise<AiUser> {
   return client.get(`${BASE}/users/${id}`)
 }
 
-export function createUser(data: Record<string, string>): Promise<AiUser> {
+export function createUser(data: UserUpsertRequest): Promise<AiUser> {
   return client.post(`${BASE}/users`, data)
 }
 
-export function updateUser(id: string, data: Record<string, unknown>): Promise<AiUser> {
+export function updateUser(id: string, data: UserUpsertRequest): Promise<AiUser> {
   return client.put(`${BASE}/users/${id}`, data)
 }
 
@@ -43,11 +43,11 @@ export function getPermission(id: string): Promise<BotPermission> {
   return client.get(`${BASE}/permissions/${id}`)
 }
 
-export function createPermission(data: Partial<BotPermission>): Promise<BotPermission> {
+export function createPermission(data: BotPermissionUpsertRequest): Promise<BotPermission> {
   return client.post(`${BASE}/permissions`, data)
 }
 
-export function updatePermission(id: string, data: Partial<BotPermission>): Promise<BotPermission> {
+export function updatePermission(id: string, data: BotPermissionUpsertRequest): Promise<BotPermission> {
   return client.put(`${BASE}/permissions/${id}`, data)
 }
 

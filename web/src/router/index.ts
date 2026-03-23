@@ -32,12 +32,23 @@ const router = createRouter({
           component: () => import("@/views/RagView.vue"),
           meta: { title: "知识库" },
         },
-        // { path: 'gateway', name: 'gateway', component: () => import('@/views/GatewayView.vue'), meta: { title: '模型网关', requiresAdmin: true } },
+        {
+          path: "gateway",
+          name: "gateway",
+          component: () => import("@/views/GatewayView.vue"),
+          meta: { title: "模型网关", requiresAdmin: true },
+        },
         {
           path: "monitor",
           name: "monitor",
           component: () => import("@/views/MonitorView.vue"),
           meta: { title: "监控告警", requiresAdmin: true },
+        },
+        {
+          path: "mcp",
+          name: "mcp",
+          component: () => import("@/views/McpView.vue"),
+          meta: { title: "MCP 管理", requiresAdmin: true },
         },
         {
           path: "users",

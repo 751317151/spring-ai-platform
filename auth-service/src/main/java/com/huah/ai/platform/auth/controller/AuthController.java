@@ -1,5 +1,12 @@
 package com.huah.ai.platform.auth.controller;
 
+import com.huah.ai.platform.auth.dto.BotPermissionUpsertRequest;
+import com.huah.ai.platform.auth.dto.LoginRequest;
+import com.huah.ai.platform.auth.dto.LogoutRequest;
+import com.huah.ai.platform.auth.dto.RefreshTokenRequest;
+import com.huah.ai.platform.auth.dto.TokenResponse;
+import com.huah.ai.platform.auth.dto.TokenValidationResponse;
+import com.huah.ai.platform.auth.dto.UserUpsertRequest;
 import com.huah.ai.platform.auth.mapper.AiUserMapper;
 import com.huah.ai.platform.auth.mapper.BotPermissionMapper;
 import com.huah.ai.platform.auth.model.AiUser;
@@ -11,8 +18,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,7 +32,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -39,17 +45,6 @@ public class AuthController {
 
     private static final String TOKEN_BLACKLIST_PREFIX = "ai:token:blacklist:";
     private static final String TOKEN_JTI_BLACKLIST_PREFIX = "ai:token:blacklist:jti:";
-    private static final String MSG_USERNAME_PASSWORD_REQUIRED = "用户名和密码不能为空";
-    private static final String MSG_INVALID_CREDENTIALS = "用户名或密码错误";
-    private static final String MSG_TOKEN_INVALID_OR_EXPIRED = "Token 无效或已过期";
-    private static final String MSG_TOKEN_REVOKED = "Token 已失效";
-    private static final String MSG_AUTH_HEADER_MISSING = "Authorization header 缺失";
-    private static final String MSG_TOKEN_INVALID = "Token 无效";
-    private static final String MSG_USER_NOT_FOUND = "用户不存在";
-    private static final String MSG_USERNAME_EXISTS = "用户名已存在";
-    private static final String MSG_PERMISSION_NOT_FOUND = "权限配置不存在";
-    private static final String MSG_BOT_TYPE_REQUIRED = "botType 不能为空";
-    private static final String MSG_DEMO_USERS_INITIALIZED = "演示用户初始化完成";
 
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
@@ -64,98 +59,80 @@ public class AuthController {
     private long refreshExpirationMs = 604_800_000L;
 
     @PostMapping("/login")
-    public Result<Map<String, Object>> login(@RequestBody Map<String, String> body) {
-        String username = body.get("username");
-        String password = body.get("password");
-
-        if (username == null || password == null) {
-            return Result.fail(400, MSG_USERNAME_PASSWORD_REQUIRED);
+    public Result<TokenResponse> login(@RequestBody LoginRequest request) {
+        if (isBlank(request.getUsername()) || isBlank(request.getPassword())) {
+            return Result.fail(400, "用户名和密码不能为空");
         }
 
-        AiUser user = userMapper.selectByUsernameAndEnabled(username);
-        if (user == null) {
-            log.warn("登录失败，用户不存在或已禁用: username={}", username);
-            return Result.fail(401, MSG_INVALID_CREDENTIALS);
+        AiUser user = userMapper.selectByUsernameAndEnabled(request.getUsername());
+        if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            log.warn("Login failed, username={}", request.getUsername());
+            return Result.fail(401, "用户名或密码错误");
         }
-        if (!passwordEncoder.matches(password, user.getPasswordHash())) {
-            log.warn("登录失败，密码错误: username={}", username);
-            return Result.fail(401, MSG_INVALID_CREDENTIALS);
-        }
-
-        String roles = user.getRoles() != null ? user.getRoles() : "ROLE_USER";
-        String department = user.getDepartment() != null ? user.getDepartment() : "";
-        String userId = user.getId();
 
         user.setLastLoginAt(LocalDateTime.now());
         userMapper.updateById(user);
 
-        Map<String, Object> claims = buildUserClaims(username, department, roles, userId);
-        Map<String, Object> tokenPayload = buildTokenPayload(username, department, roles, userId, claims);
-        log.info("登录成功: username={}, roles={}", username, roles);
-        return Result.ok(tokenPayload);
+        String roles = defaultString(user.getRoles(), "ROLE_USER");
+        String department = defaultString(user.getDepartment(), "");
+        TokenResponse payload = buildTokenPayload(user.getUsername(), department, roles, user.getId());
+        log.info("Login success: username={}, roles={}", user.getUsername(), roles);
+        return Result.ok(payload);
     }
 
     @PostMapping("/logout")
     public Result<Void> logout(
             @RequestHeader(value = "Authorization", defaultValue = "") String authorization,
-            @RequestBody(required = false) Map<String, String> body) {
+            @RequestBody(required = false) LogoutRequest request) {
         if (authorization.startsWith("Bearer ")) {
             blacklistToken(authorization.substring(7));
         }
-        if (body != null) {
-            blacklistToken(body.get("refreshToken"));
+        if (request != null) {
+            blacklistToken(request.getRefreshToken());
         }
         return Result.ok();
     }
 
     @PostMapping("/refresh")
-    public Result<Map<String, Object>> refresh(@RequestBody Map<String, String> body) {
-        String refreshToken = body.getOrDefault("refreshToken", body.get("token"));
-        if (refreshToken == null || !jwtUtil.validateToken(refreshToken)) {
-            return Result.fail(401, MSG_TOKEN_INVALID_OR_EXPIRED);
-        }
-        if (!"refresh".equals(jwtUtil.getTokenType(refreshToken))) {
-            return Result.fail(401, MSG_TOKEN_INVALID_OR_EXPIRED);
+    public Result<TokenResponse> refresh(@RequestBody RefreshTokenRequest request) {
+        String refreshToken = request.getRefreshToken() != null ? request.getRefreshToken() : request.getToken();
+        if (isBlank(refreshToken) || !jwtUtil.validateToken(refreshToken) || !"refresh".equals(jwtUtil.getTokenType(refreshToken))) {
+            return Result.fail(401, "Token 无效或已过期");
         }
         if (isTokenBlacklisted(refreshToken)) {
-            return Result.fail(401, MSG_TOKEN_REVOKED);
+            return Result.fail(401, "Token 已失效");
         }
 
-        String subject = jwtUtil.getSubject(refreshToken);
+        String username = jwtUtil.getSubject(refreshToken);
         String department = stringify(jwtUtil.getClaim(refreshToken, "department"));
         String roles = stringify(jwtUtil.getClaim(refreshToken, "roles"));
         String userId = stringify(jwtUtil.getClaim(refreshToken, "userId"));
-        Map<String, Object> claims = buildUserClaims(subject, department, roles, userId);
 
         blacklistToken(refreshToken);
-        return Result.ok(buildTokenPayload(subject, department, roles, userId, claims));
+        return Result.ok(buildTokenPayload(username, department, roles, userId));
     }
 
     @GetMapping("/validate")
-    public Result<Map<String, Object>> validate(
+    public Result<TokenValidationResponse> validate(
             @RequestHeader(value = "Authorization", defaultValue = "") String authorization) {
         if (!authorization.startsWith("Bearer ")) {
-            return Result.fail(401, MSG_AUTH_HEADER_MISSING);
+            return Result.fail(401, "Authorization header 缺失");
         }
 
         String token = authorization.substring(7);
         if (isTokenBlacklisted(token)) {
-            return Result.fail(401, MSG_TOKEN_REVOKED);
+            return Result.fail(401, "Token 已失效");
         }
         if (!jwtUtil.validateToken(token)) {
-            return Result.fail(401, MSG_TOKEN_INVALID);
+            return Result.fail(401, "Token 无效");
         }
 
         Object userIdClaim = jwtUtil.getClaim(token, "userId");
-        String userId = userIdClaim != null ? userIdClaim.toString() : jwtUtil.getSubject(token);
-        Object roles = jwtUtil.getClaim(token, "roles");
-        Object dept = jwtUtil.getClaim(token, "department");
-
-        return Result.ok(Map.of(
-                "userId", userId != null ? userId : "",
-                "roles", roles != null ? roles : "",
-                "department", dept != null ? dept : ""
-        ));
+        return Result.ok(TokenValidationResponse.builder()
+                .userId(userIdClaim != null ? userIdClaim.toString() : jwtUtil.getSubject(token))
+                .roles(stringify(jwtUtil.getClaim(token, "roles")))
+                .department(stringify(jwtUtil.getClaim(token, "department")))
+                .build());
     }
 
     @GetMapping("/my-bots")
@@ -168,29 +145,9 @@ public class AuthController {
                 : (String) request.getAttribute("X-Roles");
         String department = (String) request.getAttribute("X-Department");
 
-        List<BotPermission> all = botPermissionMapper.selectList(null);
-        List<BotPermission> available = all.stream()
+        List<BotPermission> available = botPermissionMapper.selectList(null).stream()
                 .filter(BotPermission::isEnabled)
-                .filter(permission -> {
-                    if (roles != null && roles.contains("ROLE_ADMIN")) {
-                        return true;
-                    }
-                    if (permission.getAllowedRoles() != null
-                            && !permission.getAllowedRoles().isBlank()
-                            && roles != null) {
-                        for (String role : roles.split(",")) {
-                            if (permission.getAllowedRoles().contains(role.trim())) {
-                                return true;
-                            }
-                        }
-                    }
-                    if (permission.getAllowedDepartments() != null
-                            && !permission.getAllowedDepartments().isBlank()
-                            && department != null) {
-                        return permission.getAllowedDepartments().contains(department.trim());
-                    }
-                    return false;
-                })
+                .filter(permission -> hasBotAccess(permission, roles, department))
                 .toList();
 
         return Result.ok(available);
@@ -207,13 +164,7 @@ public class AuthController {
                 "ROLE_HR,ROLE_USER",
                 "ROLE_FINANCE,ROLE_USER"
         };
-        String[] departments = {
-                "系统管理",
-                "研发中心",
-                "销售部",
-                "人力资源部",
-                "财务部"
-        };
+        String[] departments = {"系统管理", "研发中心", "销售部", "人力资源部", "财务部"};
 
         for (int i = 0; i < users.length; i++) {
             if (userMapper.selectByUsername(users[i]) == null) {
@@ -227,14 +178,14 @@ public class AuthController {
                         .build());
             }
         }
-        return Result.ok(MSG_DEMO_USERS_INITIALIZED);
+        return Result.ok("演示用户初始化完成");
     }
 
     @GetMapping("/users")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<List<AiUser>> listUsers() {
         List<AiUser> users = userMapper.selectList(null);
-        users.forEach(user -> user.setPasswordHash(null));
+        users.forEach(this::sanitizeUser);
         return Result.ok(users);
     }
 
@@ -243,67 +194,64 @@ public class AuthController {
     public Result<AiUser> getUser(@PathVariable(name = "id") String id) {
         AiUser user = userMapper.selectById(id);
         if (user == null) {
-            return Result.fail(404, MSG_USER_NOT_FOUND);
+            return Result.fail(404, "用户不存在");
         }
-        user.setPasswordHash(null);
+        sanitizeUser(user);
         return Result.ok(user);
     }
 
     @PostMapping("/users")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public Result<AiUser> createUser(@RequestBody Map<String, String> body) {
-        String username = body.get("username");
-        String password = body.get("password");
-        if (username == null || username.isBlank() || password == null || password.isBlank()) {
-            return Result.fail(400, MSG_USERNAME_PASSWORD_REQUIRED);
+    public Result<AiUser> createUser(@RequestBody UserUpsertRequest request) {
+        if (isBlank(request.getUsername()) || isBlank(request.getPassword())) {
+            return Result.fail(400, "用户名和密码不能为空");
         }
-        if (userMapper.selectByUsername(username) != null) {
-            return Result.fail(400, MSG_USERNAME_EXISTS);
+        if (userMapper.selectByUsername(request.getUsername()) != null) {
+            return Result.fail(400, "用户名已存在");
         }
 
         AiUser user = AiUser.builder()
-                .id(username)
-                .username(username)
-                .passwordHash(passwordEncoder.encode(password))
-                .department(body.getOrDefault("department", ""))
-                .employeeId(body.getOrDefault("employeeId", ""))
-                .roles(body.getOrDefault("roles", "ROLE_USER"))
+                .id(request.getUsername())
+                .username(request.getUsername())
+                .passwordHash(passwordEncoder.encode(request.getPassword()))
+                .department(defaultString(request.getDepartment(), ""))
+                .employeeId(defaultString(request.getEmployeeId(), ""))
+                .roles(defaultString(request.getRoles(), "ROLE_USER"))
+                .enabled(parseEnabled(request.getEnabled(), true))
                 .build();
         userMapper.insert(user);
-        user.setPasswordHash(null);
-        log.info("创建用户: username={}", username);
+        sanitizeUser(user);
+        log.info("Create user: username={}", request.getUsername());
         return Result.ok(user);
     }
 
     @PutMapping("/users/{id}")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public Result<AiUser> updateUser(@PathVariable(name = "id") String id, @RequestBody Map<String, String> body) {
+    public Result<AiUser> updateUser(@PathVariable(name = "id") String id, @RequestBody UserUpsertRequest request) {
         AiUser user = userMapper.selectById(id);
         if (user == null) {
-            return Result.fail(404, MSG_USER_NOT_FOUND);
+            return Result.fail(404, "用户不存在");
         }
 
-        if (body.containsKey("department")) {
-            user.setDepartment(body.get("department"));
+        if (request.getDepartment() != null) {
+            user.setDepartment(request.getDepartment());
         }
-        if (body.containsKey("employeeId")) {
-            user.setEmployeeId(body.get("employeeId"));
+        if (request.getEmployeeId() != null) {
+            user.setEmployeeId(request.getEmployeeId());
         }
-        if (body.containsKey("roles")) {
-            user.setRoles(body.get("roles"));
+        if (request.getRoles() != null) {
+            user.setRoles(request.getRoles());
         }
-        if (body.containsKey("enabled")) {
-            user.setEnabled(Boolean.parseBoolean(body.get("enabled")));
+        if (request.getEnabled() != null) {
+            user.setEnabled(parseEnabled(request.getEnabled(), user.isEnabled()));
         }
-
-        String password = body.get("password");
-        if (password != null && !password.isBlank()) {
-            user.setPasswordHash(passwordEncoder.encode(password));
+        if (!isBlank(request.getPassword())) {
+            user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         }
 
         userMapper.updateById(user);
-        user.setPasswordHash(null);
-        log.info("更新用户: id={}, username={}", id, user.getUsername());
+        sanitizeUser(user);
+        log.info("Update user: id={}, username={}", id, user.getUsername());
         return Result.ok(user);
     }
 
@@ -312,10 +260,10 @@ public class AuthController {
     public Result<Void> deleteUser(@PathVariable(name = "id") String id) {
         AiUser user = userMapper.selectById(id);
         if (user == null) {
-            return Result.fail(404, MSG_USER_NOT_FOUND);
+            return Result.fail(404, "用户不存在");
         }
         userMapper.deleteById(id);
-        log.info("删除用户: id={}, username={}", id, user.getUsername());
+        log.info("Delete user: id={}, username={}", id, user.getUsername());
         return Result.ok();
     }
 
@@ -330,38 +278,35 @@ public class AuthController {
     public Result<BotPermission> getPermission(@PathVariable(name = "id") String id) {
         BotPermission permission = botPermissionMapper.selectById(id);
         if (permission == null) {
-            return Result.fail(404, MSG_PERMISSION_NOT_FOUND);
+            return Result.fail(404, "权限配置不存在");
         }
         return Result.ok(permission);
     }
 
     @PostMapping("/permissions")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public Result<BotPermission> createPermission(@RequestBody Map<String, Object> body) {
-        String botType = (String) body.get("botType");
-        if (botType == null || botType.isBlank()) {
-            return Result.fail(400, MSG_BOT_TYPE_REQUIRED);
+    public Result<BotPermission> createPermission(@RequestBody BotPermissionUpsertRequest request) {
+        if (isBlank(request.getBotType())) {
+            return Result.fail(400, "botType 不能为空");
         }
 
-        BotPermission existing = botPermissionMapper.selectByBotTypeAndEnabled(botType);
+        BotPermission existing = botPermissionMapper.selectByBotTypeAndEnabled(request.getBotType());
         if (existing != null) {
-            return Result.fail(400, "Bot 类型 '" + botType + "' 的权限配置已存在");
+            return Result.fail(400, "Bot 类型 '" + request.getBotType() + "' 的权限配置已存在");
         }
 
         BotPermission permission = BotPermission.builder()
-                .botType(botType)
-                .allowedRoles(body.containsKey("allowedRoles") ? (String) body.get("allowedRoles") : "ROLE_ADMIN")
-                .allowedDepartments(body.containsKey("allowedDepartments") ? (String) body.get("allowedDepartments") : null)
-                .dataScope(body.containsKey("dataScope") ? (String) body.get("dataScope") : "DEPARTMENT")
-                .allowedOperations(body.containsKey("allowedOperations") ? (String) body.get("allowedOperations") : "READ,WRITE")
-                .dailyTokenLimit(body.containsKey("dailyTokenLimit")
-                        ? ((Number) body.get("dailyTokenLimit")).intValue()
-                        : 100000)
-                .enabled(body.containsKey("enabled") ? (Boolean) body.get("enabled") : true)
+                .botType(request.getBotType())
+                .allowedRoles(defaultString(request.getAllowedRoles(), "ROLE_ADMIN"))
+                .allowedDepartments(request.getAllowedDepartments())
+                .dataScope(defaultString(request.getDataScope(), "DEPARTMENT"))
+                .allowedOperations(defaultString(request.getAllowedOperations(), "READ,WRITE"))
+                .dailyTokenLimit(request.getDailyTokenLimit() != null ? request.getDailyTokenLimit() : 100000)
+                .enabled(request.getEnabled() != null ? request.getEnabled() : true)
                 .build();
 
         botPermissionMapper.insert(permission);
-        log.info("新增 Bot 权限: botType={}, allowedRoles={}", botType, permission.getAllowedRoles());
+        log.info("Create bot permission: botType={}, allowedRoles={}", permission.getBotType(), permission.getAllowedRoles());
         return Result.ok(permission);
     }
 
@@ -369,33 +314,33 @@ public class AuthController {
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<BotPermission> updatePermission(
             @PathVariable(name = "id") String id,
-            @RequestBody Map<String, Object> body) {
+            @RequestBody BotPermissionUpsertRequest request) {
         BotPermission permission = botPermissionMapper.selectById(id);
         if (permission == null) {
-            return Result.fail(404, MSG_PERMISSION_NOT_FOUND);
+            return Result.fail(404, "权限配置不存在");
         }
 
-        if (body.containsKey("allowedRoles")) {
-            permission.setAllowedRoles((String) body.get("allowedRoles"));
+        if (request.getAllowedRoles() != null) {
+            permission.setAllowedRoles(request.getAllowedRoles());
         }
-        if (body.containsKey("allowedDepartments")) {
-            permission.setAllowedDepartments((String) body.get("allowedDepartments"));
+        if (request.getAllowedDepartments() != null) {
+            permission.setAllowedDepartments(request.getAllowedDepartments());
         }
-        if (body.containsKey("dataScope")) {
-            permission.setDataScope((String) body.get("dataScope"));
+        if (request.getDataScope() != null) {
+            permission.setDataScope(request.getDataScope());
         }
-        if (body.containsKey("allowedOperations")) {
-            permission.setAllowedOperations((String) body.get("allowedOperations"));
+        if (request.getAllowedOperations() != null) {
+            permission.setAllowedOperations(request.getAllowedOperations());
         }
-        if (body.containsKey("dailyTokenLimit")) {
-            permission.setDailyTokenLimit(((Number) body.get("dailyTokenLimit")).intValue());
+        if (request.getDailyTokenLimit() != null) {
+            permission.setDailyTokenLimit(request.getDailyTokenLimit());
         }
-        if (body.containsKey("enabled")) {
-            permission.setEnabled((Boolean) body.get("enabled"));
+        if (request.getEnabled() != null) {
+            permission.setEnabled(request.getEnabled());
         }
 
         botPermissionMapper.updateById(permission);
-        log.info("更新 Bot 权限: id={}, botType={}", id, permission.getBotType());
+        log.info("Update bot permission: id={}, botType={}", id, permission.getBotType());
         return Result.ok(permission);
     }
 
@@ -404,47 +349,61 @@ public class AuthController {
     public Result<Void> deletePermission(@PathVariable(name = "id") String id) {
         BotPermission permission = botPermissionMapper.selectById(id);
         if (permission == null) {
-            return Result.fail(404, MSG_PERMISSION_NOT_FOUND);
+            return Result.fail(404, "权限配置不存在");
         }
         botPermissionMapper.deleteById(id);
-        log.info("删除 Bot 权限: id={}, botType={}", id, permission.getBotType());
+        log.info("Delete bot permission: id={}, botType={}", id, permission.getBotType());
         return Result.ok();
     }
 
-    private Map<String, Object> buildUserClaims(String username, String department, String roles, String userId) {
-        return Map.of(
+    private TokenResponse buildTokenPayload(String username, String department, String roles, String userId) {
+        Map<String, Object> claims = Map.of(
                 "username", username,
-                "department", department != null ? department : "",
-                "roles", roles != null ? roles : "",
-                "userId", userId != null ? userId : ""
+                "department", defaultString(department, ""),
+                "roles", defaultString(roles, ""),
+                "userId", defaultString(userId, "")
         );
-    }
 
-    private Map<String, Object> buildTokenPayload(String username,
-                                                  String department,
-                                                  String roles,
-                                                  String userId,
-                                                  Map<String, Object> claims) {
         String accessToken = jwtUtil.generateToken(
                 username, claims, accessExpirationMs, "access", UUID.randomUUID().toString());
         String refreshToken = jwtUtil.generateToken(
                 username, claims, refreshExpirationMs, "refresh", UUID.randomUUID().toString());
 
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("token", accessToken);
-        payload.put("refreshToken", refreshToken);
-        payload.put("tokenType", "Bearer");
-        payload.put("expiresIn", accessExpirationMs / 1000);
-        payload.put("refreshExpiresIn", refreshExpirationMs / 1000);
-        payload.put("userId", userId);
-        payload.put("username", username);
-        payload.put("roles", roles);
-        payload.put("department", department);
-        return payload;
+        return TokenResponse.builder()
+                .token(accessToken)
+                .refreshToken(refreshToken)
+                .tokenType("Bearer")
+                .expiresIn(accessExpirationMs / 1000)
+                .refreshExpiresIn(refreshExpirationMs / 1000)
+                .userId(userId)
+                .username(username)
+                .roles(roles)
+                .department(department)
+                .build();
+    }
+
+    private boolean hasBotAccess(BotPermission permission, String roles, String department) {
+        if (roles != null && roles.contains("ROLE_ADMIN")) {
+            return true;
+        }
+        if (!isBlank(permission.getAllowedRoles()) && roles != null) {
+            for (String role : roles.split(",")) {
+                if (permission.getAllowedRoles().contains(role.trim())) {
+                    return true;
+                }
+            }
+        }
+        return !isBlank(permission.getAllowedDepartments())
+                && department != null
+                && permission.getAllowedDepartments().contains(department.trim());
+    }
+
+    private void sanitizeUser(AiUser user) {
+        user.setPasswordHash(null);
     }
 
     private boolean isTokenBlacklisted(String token) {
-        if (token == null || token.isBlank()) {
+        if (isBlank(token)) {
             return false;
         }
         if (Boolean.TRUE.equals(redisTemplate.hasKey(TOKEN_BLACKLIST_PREFIX + token))) {
@@ -458,20 +417,32 @@ public class AuthController {
     }
 
     private void blacklistToken(String token) {
-        if (token == null || token.isBlank() || !jwtUtil.validateToken(token)) {
+        if (isBlank(token) || !jwtUtil.validateToken(token)) {
             return;
         }
         long ttlMillis = jwtUtil.parseToken(token).getExpiration().getTime() - System.currentTimeMillis();
         long ttlSeconds = Math.max(1, TimeUnit.MILLISECONDS.toSeconds(ttlMillis));
         redisTemplate.opsForValue().set(TOKEN_BLACKLIST_PREFIX + token, "1", ttlSeconds, TimeUnit.SECONDS);
         String jti = jwtUtil.getJti(token);
-        if (jti != null && !jti.isBlank()) {
+        if (!isBlank(jti)) {
             redisTemplate.opsForValue().set(TOKEN_JTI_BLACKLIST_PREFIX + jti, "1", ttlSeconds, TimeUnit.SECONDS);
         }
-        log.info("Token 已加入黑名单: tokenType={}, jti={}", jwtUtil.getTokenType(token), jti);
+        log.info("Token blacklisted: tokenType={}, jti={}", jwtUtil.getTokenType(token), jti);
+    }
+
+    private Boolean parseEnabled(String enabled, Boolean defaultValue) {
+        return enabled != null ? Boolean.parseBoolean(enabled) : defaultValue;
     }
 
     private String stringify(Object value) {
         return value != null ? value.toString() : "";
+    }
+
+    private String defaultString(String value, String defaultValue) {
+        return value != null ? value : defaultValue;
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }

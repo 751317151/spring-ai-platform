@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as authApi from '@/api/auth'
-import type { AiUser, BotPermission } from '@/api/types'
+import type { AiUser, BotPermission, BotPermissionUpsertRequest, UserUpsertRequest } from '@/api/types'
 
 export const useUserStore = defineStore('user', () => {
   const users = ref<AiUser[]>([])
@@ -29,7 +29,7 @@ export const useUserStore = defineStore('user', () => {
     await Promise.all([loadUsers(), loadPermissions()])
   }
 
-  async function createUser(data: Record<string, string>): Promise<boolean> {
+  async function createUser(data: UserUpsertRequest): Promise<boolean> {
     try {
       await authApi.createUser(data)
       await loadUsers()
@@ -39,7 +39,7 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  async function updateUser(id: string, data: Record<string, unknown>): Promise<boolean> {
+  async function updateUser(id: string, data: UserUpsertRequest): Promise<boolean> {
     try {
       await authApi.updateUser(id, data)
       await loadUsers()
@@ -59,7 +59,7 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  async function createPermission(data: Partial<import('@/api/types').BotPermission>): Promise<boolean> {
+  async function createPermission(data: BotPermissionUpsertRequest): Promise<boolean> {
     try {
       await authApi.createPermission(data)
       await loadPermissions()
@@ -69,7 +69,7 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  async function updatePermission(id: string, data: Partial<import('@/api/types').BotPermission>): Promise<boolean> {
+  async function updatePermission(id: string, data: BotPermissionUpsertRequest): Promise<boolean> {
     try {
       await authApi.updatePermission(id, data)
       await loadPermissions()

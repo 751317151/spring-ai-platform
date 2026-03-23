@@ -9,49 +9,57 @@ import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.ToolCallbackProvider;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import lombok.RequiredArgsConstructor;
 
 @Configuration
+@RequiredArgsConstructor
 public class CommonConfiguration {
 
-    @Autowired
-    private RdTools rdTools;
-
-    @Autowired
-    private SalesTools salesTools;
-
-    @Autowired
-    private HrTools hrTools;
-
-    @Autowired
-    private FinanceTools financeTools;
-
-    @Autowired
-    private SupplyChainTools supplyChainTools;
-
-    @Autowired
-    private QcTools qcTools;
-
-    @Autowired
-    private WeatherTools weatherTools;
-
-    @Autowired
-    private SearchTools searchTools;
-
-    @Autowired
-    private DataAnalysisTools dataAnalysisTools;
-
-    @Autowired
-    private CodeTools codeTools;
+    private final RdTools rdTools;
+    private final SalesTools salesTools;
+    private final HrTools hrTools;
+    private final FinanceTools financeTools;
+    private final SupplyChainTools supplyChainTools;
+    private final QcTools qcTools;
+    private final WeatherTools weatherTools;
+    private final SearchTools searchTools;
+    private final DataAnalysisTools dataAnalysisTools;
+    private final CodeTools codeTools;
+    private final InternalApiTools internalApiTools;
 
     @Bean
     public ChatMemory chatMemory(ChatMemoryRepository chatMemoryRepository) {
         return MessageWindowChatMemory.builder()
                 .chatMemoryRepository(chatMemoryRepository)
                 .maxMessages(10)
+                .build();
+    }
+
+    private ChatClient buildChatClient(ChatModel model, ChatMemory chatMemory, String systemPrompt, Object... tools) {
+        return ChatClient
+                .builder(model)
+                .defaultSystem(systemPrompt)
+                .defaultTools(tools)
+                .defaultAdvisors(
+                        new SimpleLoggerAdvisor(),
+                        MessageChatMemoryAdvisor.builder(chatMemory).build()
+                )
+                .build();
+    }
+
+    private ChatClient buildMcpChatClient(ChatModel model, ChatMemory chatMemory,
+                                          ToolCallbackProvider toolCallbackProvider, String systemPrompt) {
+        return ChatClient
+                .builder(model)
+                .defaultSystem(systemPrompt)
+                .defaultToolCallbacks(toolCallbackProvider)
+                .defaultAdvisors(
+                        new SimpleLoggerAdvisor(),
+                        MessageChatMemoryAdvisor.builder(chatMemory).build()
+                )
                 .build();
     }
 
@@ -70,6 +78,7 @@ public class CommonConfiguration {
             - queryJira: 查询 Jira 缺陷系统，获取 Bug 列表或 Issue 详情
             - queryConfluence: 搜索 Confluence 技术文档
             - querySonar: 查询 SonarQube 代码质量报告
+            - listConnectors / callConnector: 调用已配置的内部 API connector，获取平台内部系统数据
 
             当用户询问项目缺陷、技术文档、代码质量等问题时，主动调用对应工具获取数据，
             基于工具返回的真实数据进行分析和回答。回答要技术准确、简洁，提供可操作的建议。
@@ -78,15 +87,7 @@ public class CommonConfiguration {
 
     @Bean
     public ChatClient rdChatClient(ChatModel model, ChatMemory chatMemory) {
-        return ChatClient
-                .builder(model)
-                .defaultSystem(RD_SYSTEM_PROMPT)
-                .defaultTools(rdTools)
-                .defaultAdvisors(
-                        new SimpleLoggerAdvisor(),
-                        MessageChatMemoryAdvisor.builder(chatMemory).build()
-                )
-                .build();
+        return buildChatClient(model, chatMemory, RD_SYSTEM_PROMPT, rdTools, internalApiTools);
     }
 
     private static final String SALES_SYSTEM_PROMPT = """
@@ -106,15 +107,7 @@ public class CommonConfiguration {
 
     @Bean
     public ChatClient salesChatClient(ChatModel model, ChatMemory chatMemory) {
-        return ChatClient
-                .builder(model)
-                .defaultSystem(SALES_SYSTEM_PROMPT)
-                .defaultTools(salesTools)
-                .defaultAdvisors(
-                        new SimpleLoggerAdvisor(),
-                        MessageChatMemoryAdvisor.builder(chatMemory).build()
-                )
-                .build();
+        return buildChatClient(model, chatMemory, SALES_SYSTEM_PROMPT, salesTools);
     }
 
     private static final String SUPPLY_CHAIN_SYSTEM_PROMPT = """
@@ -135,15 +128,7 @@ public class CommonConfiguration {
 
     @Bean
     public ChatClient supplyChainChatClient(ChatModel model, ChatMemory chatMemory) {
-        return ChatClient
-                .builder(model)
-                .defaultSystem(SUPPLY_CHAIN_SYSTEM_PROMPT)
-                .defaultTools(supplyChainTools)
-                .defaultAdvisors(
-                        new SimpleLoggerAdvisor(),
-                        MessageChatMemoryAdvisor.builder(chatMemory).build()
-                )
-                .build();
+        return buildChatClient(model, chatMemory, SUPPLY_CHAIN_SYSTEM_PROMPT, supplyChainTools);
     }
 
     private static final String FINANCE_SYSTEM_PROMPT = """
@@ -162,15 +147,7 @@ public class CommonConfiguration {
 
     @Bean
     public ChatClient financeChatClient(ChatModel model, ChatMemory chatMemory) {
-        return ChatClient
-                .builder(model)
-                .defaultSystem(FINANCE_SYSTEM_PROMPT)
-                .defaultTools(financeTools)
-                .defaultAdvisors(
-                        new SimpleLoggerAdvisor(),
-                        MessageChatMemoryAdvisor.builder(chatMemory).build()
-                )
-                .build();
+        return buildChatClient(model, chatMemory, FINANCE_SYSTEM_PROMPT, financeTools);
     }
 
     private static final String QC_SYSTEM_PROMPT = """
@@ -191,15 +168,7 @@ public class CommonConfiguration {
 
     @Bean
     public ChatClient qcChatClient(ChatModel model, ChatMemory chatMemory) {
-        return ChatClient
-                .builder(model)
-                .defaultSystem(QC_SYSTEM_PROMPT)
-                .defaultTools(qcTools)
-                .defaultAdvisors(
-                        new SimpleLoggerAdvisor(),
-                        MessageChatMemoryAdvisor.builder(chatMemory).build()
-                )
-                .build();
+        return buildChatClient(model, chatMemory, QC_SYSTEM_PROMPT, qcTools);
     }
 
     private static final String HR_SYSTEM_PROMPT = """
@@ -220,15 +189,7 @@ public class CommonConfiguration {
 
     @Bean
     public ChatClient hrChatClient(ChatModel model, ChatMemory chatMemory) {
-        return ChatClient
-                .builder(model)
-                .defaultSystem(HR_SYSTEM_PROMPT)
-                .defaultTools(hrTools)
-                .defaultAdvisors(
-                        new SimpleLoggerAdvisor(),
-                        MessageChatMemoryAdvisor.builder(chatMemory).build()
-                )
-                .build();
+        return buildChatClient(model, chatMemory, HR_SYSTEM_PROMPT, hrTools);
     }
 
     // ===== 通用助手 =====
@@ -250,15 +211,7 @@ public class CommonConfiguration {
 
     @Bean
     public ChatClient weatherChatClient(ChatModel model, ChatMemory chatMemory) {
-        return ChatClient
-                .builder(model)
-                .defaultSystem(WEATHER_SYSTEM_PROMPT)
-                .defaultTools(weatherTools)
-                .defaultAdvisors(
-                        new SimpleLoggerAdvisor(),
-                        MessageChatMemoryAdvisor.builder(chatMemory).build()
-                )
-                .build();
+        return buildChatClient(model, chatMemory, WEATHER_SYSTEM_PROMPT, weatherTools);
     }
 
     private static final String SEARCH_SYSTEM_PROMPT = """
@@ -279,46 +232,37 @@ public class CommonConfiguration {
 
     @Bean
     public ChatClient searchChatClient(ChatModel model, ChatMemory chatMemory) {
-        return ChatClient
-                .builder(model)
-                .defaultSystem(SEARCH_SYSTEM_PROMPT)
-                .defaultTools(searchTools)
-                .defaultAdvisors(
-                        new SimpleLoggerAdvisor(),
-                        MessageChatMemoryAdvisor.builder(chatMemory).build()
-                )
-                .build();
+        return buildChatClient(model, chatMemory, SEARCH_SYSTEM_PROMPT, searchTools);
     }
 
     private static final String DATA_ANALYSIS_SYSTEM_PROMPT = """
             你是数据分析智能助手，帮助用户：
-            1. 编写和执行 SQL 查询（只读，仅支持 SELECT）
-            2. 生成数据可视化图表配置
-            3. 分析数据表的统计特征
-            4. 提供数据驱动的业务洞察
+            1. 先查看可访问的数据表和字段，再编写 SQL
+            2. 编写和执行 SQL 查询（只读，仅支持 SELECT 或 WITH）
+            3. 在正式执行前预览 SQL 执行计划
+            4. 生成数据可视化图表配置建议
+            5. 分析数据表的统计特征
+            6. 提供数据驱动的业务洞察
 
             你可以调用以下工具：
-            - executeQuery: 执行只读 SQL 查询，获取业务数据库的真实数据（自动添加 LIMIT 防止数据量过大）
-            - generateChart: 生成图表配置建议（先用 executeQuery 获取数据，再生成图表配置）
-            - analyzeDataset: 分析数据表的统计特征（传入表名和数值列名，返回均值、最大最小值、标准差等）
+            - listAccessibleTables: 查看当前可访问的数据表和视图
+            - describeTable: 查看指定表的字段定义和类型
+            - explainQuery: 预览 SQL 的执行计划，检查扫描范围和性能风险
+            - executeQuery: 执行只读 SQL 查询，自动补充 LIMIT，避免一次取回过多数据
+            - generateChart: 基于查询结果生成图表配置建议
+            - analyzeDataset: 计算指定表数值列的统计特征
 
             注意事项：
-            - executeQuery 仅支持 SELECT 语句，不能执行 INSERT/UPDATE/DELETE 等修改操作
-            - 编写 SQL 时请注意表名和列名的准确性
+            - 不确定表名或字段时，优先调用 listAccessibleTables 和 describeTable，不要猜
+            - executeQuery 仅支持只读查询，不能执行 INSERT、UPDATE、DELETE、DDL 等修改操作
+            - 对复杂查询优先使用 explainQuery 检查执行计划，再执行正式查询
+            - 结论必须基于工具返回的真实结果，不要凭空编造字段、表名和统计值
             当前用户: {userId}
             """;
 
     @Bean
     public ChatClient dataAnalysisChatClient(ChatModel model, ChatMemory chatMemory) {
-        return ChatClient
-                .builder(model)
-                .defaultSystem(DATA_ANALYSIS_SYSTEM_PROMPT)
-                .defaultTools(dataAnalysisTools)
-                .defaultAdvisors(
-                        new SimpleLoggerAdvisor(),
-                        MessageChatMemoryAdvisor.builder(chatMemory).build()
-                )
-                .build();
+        return buildChatClient(model, chatMemory, DATA_ANALYSIS_SYSTEM_PROMPT, dataAnalysisTools);
     }
 
     private static final String CODE_SYSTEM_PROMPT = """
@@ -339,15 +283,7 @@ public class CommonConfiguration {
 
     @Bean
     public ChatClient codeChatClient(ChatModel model, ChatMemory chatMemory) {
-        return ChatClient
-                .builder(model)
-                .defaultSystem(CODE_SYSTEM_PROMPT)
-                .defaultTools(codeTools)
-                .defaultAdvisors(
-                        new SimpleLoggerAdvisor(),
-                        MessageChatMemoryAdvisor.builder(chatMemory).build()
-                )
-                .build();
+        return buildChatClient(model, chatMemory, CODE_SYSTEM_PROMPT, codeTools);
     }
 
     // ===== MCP 助手（条件加载） =====
@@ -364,15 +300,7 @@ public class CommonConfiguration {
     @Bean
     @ConditionalOnProperty(name = "spring.ai.mcp.client.enabled", havingValue = "true")
     public ChatClient mcpChatClient(ChatModel model, ChatMemory chatMemory, ToolCallbackProvider toolCallbackProvider) {
-        return ChatClient
-                .builder(model)
-                .defaultSystem(MCP_SYSTEM_PROMPT)
-                .defaultToolCallbacks(toolCallbackProvider)
-                .defaultAdvisors(
-                        new SimpleLoggerAdvisor(),
-                        MessageChatMemoryAdvisor.builder(chatMemory).build()
-                )
-                .build();
+        return buildMcpChatClient(model, chatMemory, toolCallbackProvider, MCP_SYSTEM_PROMPT);
     }
 
 }

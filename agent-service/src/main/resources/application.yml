@@ -83,3 +83,18 @@ tools:
   data-analysis:
     query-timeout-seconds: 30
     max-rows: 1000
+    default-schema: public
+    allowed-tables: []
+    blocked-tables:
+      - ai_users
+  internal-api:
+    connectors:
+      issue-center:
+        enabled: false
+        name: Issue Center
+        base-url: ${ISSUE_CENTER_BASE_URL:http://localhost:8090}
+        auth-header-name: X-Internal-Token
+        auth-header-value: ${ISSUE_CENTER_TOKEN:}
+        timeout-ms: 5000
+        allowed-path-prefixes:
+          - /api/issues

@@ -1,6 +1,5 @@
-import client from './client'
-import { buildHeaders } from './client'
-import type { AgentType, ChatMessage, SessionInfo } from './types'
+import client, { buildHeaders } from './client'
+import type { AgentType, ChatMessage, McpServerListResponse, SessionInfo } from './types'
 
 const BASE = '/api/v1/agent'
 
@@ -38,4 +37,36 @@ export function clearMemory(agentType: AgentType, sessionId: string): Promise<vo
 
 export function getSessions(agentType: AgentType): Promise<SessionInfo[]> {
   return client.get(`${BASE}/${agentType}/sessions`)
+}
+
+export function renameSessionTitle(agentType: AgentType, sessionId: string, title: string): Promise<void> {
+  return client.post(`${BASE}/${agentType}/sessions/title`, { title }, {
+    headers: { 'X-Session-Id': sessionId }
+  })
+}
+
+export function pinSession(agentType: AgentType, sessionId: string, pinned: boolean): Promise<void> {
+  return client.post(`${BASE}/${agentType}/sessions/pin`, { pinned }, {
+    headers: { 'X-Session-Id': sessionId }
+  })
+}
+
+export function archiveSession(agentType: AgentType, sessionId: string, archived: boolean): Promise<void> {
+  return client.post(`${BASE}/${agentType}/sessions/archive`, { archived }, {
+    headers: { 'X-Session-Id': sessionId }
+  })
+}
+
+export function deleteSession(agentType: AgentType, sessionId: string): Promise<void> {
+  return client.delete(`${BASE}/${agentType}/sessions`, {
+    headers: { 'X-Session-Id': sessionId }
+  })
+}
+
+export function submitFeedback(responseId: string, feedback: 'up' | 'down', comment?: string): Promise<void> {
+  return client.post(`${BASE}/feedback`, { responseId, feedback, comment })
+}
+
+export function getMcpServers(): Promise<McpServerListResponse> {
+  return client.get(`${BASE}/mcp/servers`)
 }

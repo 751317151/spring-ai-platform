@@ -1,6 +1,6 @@
 import client from './client'
 import { buildHeaders } from './client'
-import type { KnowledgeBase, DocumentMeta, RagQueryRequest, RagQueryResponse } from './types'
+import type { KnowledgeBase, DocumentChunkPreview, DocumentMeta, RagQueryRequest, RagQueryResponse } from './types'
 
 const BASE = '/api/v1/rag'
 
@@ -34,14 +34,20 @@ export function getDocument(id: string): Promise<DocumentMeta> {
   return client.get(`${BASE}/documents/${id}`)
 }
 
+export function listDocumentChunks(id: string): Promise<DocumentChunkPreview[]> {
+  return client.get(`${BASE}/documents/${id}/chunks`)
+}
+
 export function uploadDocument(
   file: File,
   knowledgeBaseId: string,
-  userId: string
+  userId: string,
+  replaceExisting = false
 ): Promise<DocumentMeta> {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('knowledgeBaseId', knowledgeBaseId)
+  formData.append('replaceExisting', String(replaceExisting))
   return client.post(`${BASE}/documents/upload`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
@@ -66,9 +72,31 @@ export function previewDocument(id: string): Promise<{ previewUrl: string; filen
   return client.get(`${BASE}/documents/${id}/preview`)
 }
 
+export function retryDocument(id: string): Promise<DocumentMeta> {
+  return client.post(`${BASE}/documents/${id}/retry`)
+}
+
+export function reindexDocument(id: string): Promise<DocumentMeta> {
+  return client.post(`${BASE}/documents/${id}/reindex`)
+}
+
 // RAG query
 export function ragQuery(data: RagQueryRequest): Promise<RagQueryResponse> {
   return client.post(`${BASE}/query`, data, { timeout: 120000 })
+}
+
+export function submitFeedback(responseId: string, feedback: 'up' | 'down', comment?: string): Promise<void> {
+  return client.post(`${BASE}/feedback`, { responseId, feedback, comment })
+}
+
+export function submitEvidenceFeedback(
+  responseId: string,
+  chunkId: string,
+  knowledgeBaseId: string,
+  feedback: 'up' | 'down',
+  comment?: string
+): Promise<void> {
+  return client.post(`${BASE}/feedback/evidence`, { responseId, chunkId, knowledgeBaseId, feedback, comment })
 }
 
 export function ragQueryStream(

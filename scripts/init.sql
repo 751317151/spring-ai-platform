@@ -92,9 +92,36 @@ CREATE TABLE IF NOT EXISTS ai_audit_logs (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS ai_response_feedback (
+    id VARCHAR(36) PRIMARY KEY,
+    response_id VARCHAR(36) NOT NULL UNIQUE,
+    source_type VARCHAR(32) NOT NULL,
+    knowledge_base_id VARCHAR(64),
+    feedback VARCHAR(16) NOT NULL,
+    comment VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ai_evidence_feedback (
+    id VARCHAR(36) PRIMARY KEY,
+    response_id VARCHAR(36) NOT NULL,
+    chunk_id VARCHAR(128) NOT NULL,
+    knowledge_base_id VARCHAR(64),
+    feedback VARCHAR(16) NOT NULL,
+    comment VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT uk_evidence_feedback UNIQUE (response_id, chunk_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_audit_user_id ON ai_audit_logs (user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON ai_audit_logs (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_agent ON ai_audit_logs (agent_type);
+CREATE INDEX IF NOT EXISTS idx_feedback_created ON ai_response_feedback (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_feedback_source ON ai_response_feedback (source_type, feedback);
+CREATE INDEX IF NOT EXISTS idx_evidence_feedback_created ON ai_evidence_feedback (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_evidence_feedback_chunk ON ai_evidence_feedback (chunk_id);
 
 CREATE TABLE IF NOT EXISTS gateway_model_stats (
     model_id VARCHAR(64) PRIMARY KEY,
