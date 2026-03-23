@@ -1,5 +1,6 @@
 package com.huah.ai.platform.agent.security;
 
+import com.huah.ai.platform.agent.metrics.AiMetricsCollector;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -15,118 +16,99 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
- * Agent 访问权限检查器
- * 基于 ai_bot_permissions 表检查用户角色/部门是否有权访问指定 Agent
- * 基于 Redis 检查 Token 每日配额
+ * Agent 访问权限和 Token 配额检查器。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AgentAccessChecker {
 
+    private static final String TOKEN_DAILY_KEY = "ai:token:daily:%s:%s";
+    private static final String QUERY_PERMISSION =
+            "SELECT allowed_roles, allowed_departments, enabled FROM ai_bot_permissions WHERE bot_type = ?";
+    private static final String QUERY_DAILY_LIMIT =
+            "SELECT daily_token_limit FROM ai_bot_permissions WHERE bot_type = ? AND enabled = true";
+
     private final JdbcTemplate jdbcTemplate;
     private final StringRedisTemplate redisTemplate;
+    private final AiMetricsCollector metricsCollector;
 
-    private static final String TOKEN_DAILY_KEY = "ai:token:daily:%s:%s";
-
-    /**
-     * 检查用户是否有权访问指定 Agent
-     *
-     * @param agentType  agent 类型 (rd, sales, hr, finance, supply-chain, qc, multi)
-     * @param userRoles  用户角色（逗号分隔，如 "ROLE_RD,ROLE_USER"）
-     * @param department 用户部门
-     * @return null 表示允许; 非 null 为拒绝原因
-     */
     public String checkPermission(String agentType, String userRoles, String department) {
-        if (userRoles == null) {
+        if (userRoles == null || userRoles.isBlank()) {
             return "用户未分配角色";
         }
 
         Set<String> roles = Arrays.stream(userRoles.split(","))
                 .map(String::trim)
-                .filter(s -> !s.isEmpty())
+                .filter(role -> !role.isEmpty())
                 .collect(Collectors.toSet());
 
-        // ADMIN 拥有所有权限
         if (roles.contains("ROLE_ADMIN")) {
             return null;
         }
 
         try {
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                    "SELECT allowed_roles, allowed_departments, enabled " +
-                    "FROM ai_bot_permissions WHERE bot_type = ?",
-                    agentType
-            );
-
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(QUERY_PERMISSION, agentType);
             if (rows.isEmpty()) {
-                // 没有配置权限记录，默认允许
-                return null;
+                log.warn("Agent 权限配置缺失，拒绝访问: agentType={}", agentType);
+                return "未找到该 Agent 的权限配置";
             }
 
-            Map<String, Object> perm = rows.get(0);
-
-            // 检查是否启用
-            Boolean enabled = (Boolean) perm.get("enabled");
+            Map<String, Object> permission = rows.get(0);
+            Boolean enabled = (Boolean) permission.get("enabled");
             if (enabled != null && !enabled) {
                 return "该 Agent 已被禁用";
             }
 
-            // 检查角色
-            String allowedRolesStr = (String) perm.get("allowed_roles");
+            String allowedRolesStr = (String) permission.get("allowed_roles");
             if (allowedRolesStr != null && !allowedRolesStr.isBlank()) {
                 Set<String> allowedRoles = Arrays.stream(allowedRolesStr.split(","))
                         .map(String::trim)
+                        .filter(role -> !role.isEmpty())
                         .collect(Collectors.toSet());
                 boolean hasRole = roles.stream().anyMatch(allowedRoles::contains);
                 if (!hasRole) {
-                    return "您的角色无权使用此 Agent（需要: " + allowedRolesStr + "）";
+                    return "您的角色无权使用该 Agent，需要角色: " + allowedRolesStr;
                 }
             }
 
-            // 检查部门
-            String allowedDepts = (String) perm.get("allowed_departments");
-            if (allowedDepts != null && !allowedDepts.isBlank() && department != null) {
-                Set<String> deptSet = Arrays.stream(allowedDepts.split(","))
+            String allowedDepartments = (String) permission.get("allowed_departments");
+            if (allowedDepartments != null && !allowedDepartments.isBlank()) {
+                if (department == null || department.isBlank()) {
+                    return "当前用户缺少部门信息，无法访问该 Agent";
+                }
+
+                Set<String> departmentSet = Arrays.stream(allowedDepartments.split(","))
                         .map(String::trim)
+                        .filter(value -> !value.isEmpty())
                         .collect(Collectors.toSet());
-                if (!deptSet.contains(department)) {
-                    log.debug("部门检查: user={}, allowed={}", department, allowedDepts);
-                    // 部门检查仅作日志记录，不阻止访问（角色匹配即可）
+                if (!departmentSet.contains(department.trim())) {
+                    return "您的部门无权使用该 Agent，需要部门: " + allowedDepartments;
                 }
             }
 
             return null;
         } catch (Exception e) {
-            log.warn("权限检查异常，默认允许: {}", e.getMessage());
-            return null;
+            metricsCollector.recordDependencyFailure("database", "permission-query");
+            log.warn("Agent 权限检查失败，拒绝访问: agentType={}, error={}", agentType, e.getMessage());
+            return "权限校验失败，请稍后重试";
         }
     }
 
-    /**
-     * 获取指定 Agent 的每日 Token 限额
-     */
     public int getDailyTokenLimit(String agentType) {
         try {
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                    "SELECT daily_token_limit FROM ai_bot_permissions WHERE bot_type = ? AND enabled = true",
-                    agentType
-            );
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(QUERY_DAILY_LIMIT, agentType);
             if (!rows.isEmpty()) {
                 Number limit = (Number) rows.get(0).get("daily_token_limit");
                 return limit != null ? limit.intValue() : Integer.MAX_VALUE;
             }
         } catch (Exception e) {
-            log.warn("获取 Token 限额异常: {}", e.getMessage());
+            metricsCollector.recordDependencyFailure("database", "token-limit-query");
+            log.warn("获取 Token 限额失败: agentType={}, error={}", agentType, e.getMessage());
         }
         return Integer.MAX_VALUE;
     }
 
-    /**
-     * 检查并消耗 Token 配额
-     *
-     * @return null 表示允许; 非 null 为拒绝原因
-     */
     public String checkAndConsumeTokens(String userId, String agentType, int tokens) {
         int limit = getDailyTokenLimit(agentType);
         if (limit == Integer.MAX_VALUE) {
@@ -136,32 +118,41 @@ public class AgentAccessChecker {
         String today = LocalDate.now().toString();
         String key = String.format(TOKEN_DAILY_KEY, userId, today);
 
-        Long current = redisTemplate.opsForValue().increment(key, tokens);
-        redisTemplate.expire(key, 2, TimeUnit.DAYS);
+        try {
+            Long current = redisTemplate.opsForValue().increment(key, tokens);
+            redisTemplate.expire(key, 2, TimeUnit.DAYS);
 
-        if (current != null && current > limit) {
-            // 回滚
-            redisTemplate.opsForValue().decrement(key, tokens);
-            log.warn("Token 超限: userId={}, agent={}, usage={}, limit={}",
-                    userId, agentType, current, limit);
-            return "今日 Token 配额已用完（限额: " + limit + "）";
+            if (current != null && current > limit) {
+                redisTemplate.opsForValue().decrement(key, tokens);
+                metricsCollector.recordTokenLimitExceeded(agentType);
+                log.warn("Token 超限: userId={}, agentType={}, usage={}, limit={}", userId, agentType, current, limit);
+                return "今日 Token 配额已用完，限额: " + limit;
+            }
+        } catch (Exception e) {
+            metricsCollector.recordDependencyFailure("redis", "token-quota-check");
+            log.warn("Redis Token 配额检查失败: userId={}, agentType={}, error={}", userId, agentType, e.getMessage());
+            return "Token 配额检查失败，请稍后重试";
         }
 
         return null;
     }
 
-    /**
-     * 记录实际 Token 消耗（在 AI 调用完成后调用，补正预扣量）
-     */
     public void recordActualTokens(String userId, int actualTokens, int preDeducted) {
-        if (actualTokens == preDeducted) return;
+        if (actualTokens == preDeducted) {
+            return;
+        }
         String today = LocalDate.now().toString();
         String key = String.format(TOKEN_DAILY_KEY, userId, today);
         int diff = actualTokens - preDeducted;
-        if (diff > 0) {
-            redisTemplate.opsForValue().increment(key, diff);
-        } else {
-            redisTemplate.opsForValue().decrement(key, -diff);
+        try {
+            if (diff > 0) {
+                redisTemplate.opsForValue().increment(key, diff);
+            } else {
+                redisTemplate.opsForValue().decrement(key, -diff);
+            }
+        } catch (Exception e) {
+            metricsCollector.recordDependencyFailure("redis", "token-quota-adjust");
+            log.warn("Redis Token 配额修正失败: userId={}, error={}", userId, e.getMessage());
         }
     }
 }

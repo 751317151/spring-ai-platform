@@ -10,8 +10,8 @@ spring:
       port: 6379
   datasource:
     url: jdbc:postgresql://localhost:5432/ai-platform
-    username: ${DB_USER:postgres}
-    password: ${DB_PASS:blackstar}
+    username: ${DB_USER}
+    password: ${DB_PASS}
     driver-class-name: org.postgresql.Driver
 
   # 关闭各 AI starter 的自动 ChatModel 注册，避免多 starter 并存时 bean 名称冲突
@@ -128,7 +128,7 @@ resilience4j:
 
 # ======== JWT 配置 ========
 jwt:
-  secret: ${JWT_SECRET:enterprise-ai-platform-secret-key-minimum-256-bits!!}
+  secret: ${JWT_SECRET}
   expiration-ms: 86400000  # 24h
 
 # ======== Actuator ========

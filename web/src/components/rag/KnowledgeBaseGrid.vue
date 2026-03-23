@@ -10,7 +10,7 @@
       <div class="kb-card-head">
         <div class="kb-icon">{{ kbIcons[kb.id] || '📚' }}</div>
         <span class="kb-status" :class="kb.status === 'active' ? 'active' : ''">
-          {{ kb.status === 'active' ? '运行中' : kb.status || '—' }}
+          {{ kb.status === 'active' ? '运行中' : kb.status || '未知' }}
         </span>
       </div>
       <div class="kb-name">{{ kb.name }}</div>

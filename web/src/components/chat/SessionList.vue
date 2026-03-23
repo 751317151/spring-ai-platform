@@ -1,5 +1,5 @@
 <template>
-  <div class="session-list" v-if="chatStore.sessionList.length > 0">
+  <div v-if="chatStore.sessionList.length > 0" class="session-list">
     <div class="session-list-label">
       <span>对话列表</span>
       <button class="btn-new-chat" @click="chatStore.createNewSession()">+ 新对话</button>

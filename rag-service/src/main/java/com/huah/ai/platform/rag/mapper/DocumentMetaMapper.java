@@ -16,4 +16,13 @@ public interface DocumentMetaMapper extends BaseMapper<DocumentMeta> {
 
     @Select("SELECT COUNT(*) FROM document_meta WHERE knowledge_base_id = #{kbId}")
     long countByKnowledgeBaseId(@Param("kbId") String knowledgeBaseId);
+
+    @Select("""
+            SELECT * FROM document_meta
+            WHERE status = 'FAILED'
+              AND storage_path IS NOT NULL
+            ORDER BY created_at ASC
+            LIMIT #{limit}
+            """)
+    List<DocumentMeta> selectRetryCandidates(@Param("limit") int limit);
 }

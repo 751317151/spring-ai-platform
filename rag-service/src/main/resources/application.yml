@@ -6,36 +6,16 @@ spring:
     name: rag-service
   datasource:
     url: jdbc:postgresql://localhost:5432/ai-platform
-    username: ${DB_USER:postgres}
-    password: ${DB_PASS:blackstar}
+    username: ${DB_USER}
+    password: ${DB_PASS}
     driver-class-name: org.postgresql.Driver
   data:
     redis:
       host: localhost
       port: 6379
-
-  # Spring AI 配置
   ai:
-#    openai:
-#      api-key: ${aliQwen_api}
-#      base-url: ${LLM_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
-#      chat:
-#        options:
-#          model: ${LLM_MODEL:qwen3-vl-plus-2025-12-19}
-#          temperature: 0.7
-#          max-tokens: 4096
-#      embedding:
-#        options:
-#          model: qwen3-vl-embedding
-#    ollama:
-#      base-url: http://localhost:11434     # Ollama 服务地址
-#      embedding:
-#        options:
-#          model: bge-m3
-#    model:
-#      embedding: ollama
     dashscope:
-      api-key: ${aliQwen_api}
+      api-key: ${ALI_QWEN_API_KEY}
       chat:
         options:
           model: ${LLM_MODEL:qwen3-vl-plus-2025-12-19}
@@ -44,31 +24,33 @@ spring:
       embedding:
         options:
           model: ${LLM_EMBEDDING_MODEL:qwen3-vl-embedding}
-
-    # PGVector 向量库
     vectorstore:
       pgvector:
         index-type: HNSW
         distance-type: COSINE_DISTANCE
-#        dimensions: 1536
         schema-name: public
-#        table-name: document_embeddings
-        initialize-schema: true
-
+        initialize-schema: false
   servlet:
     multipart:
       max-file-size: 50MB
       max-request-size: 100MB
 
-# S3 文件存储配置
 storage:
   s3:
     endpoint: ${S3_ENDPOINT:http://localhost:9000}
     region: ${S3_REGION:us-east-1}
-    bucket: ${S3_BUCKET:blackstar}
-    access-key: ${S3_ACCESS_KEY:CtqsQz02BLuHIt555PMjoM4d}
-    secret-key: ${S3_SECRET_KEY:mltBO0bOnAXxXKvPCtFh4obvSrqavJz}
+    bucket: ${S3_BUCKET}
+    access-key: ${S3_ACCESS_KEY}
+    secret-key: ${S3_SECRET_KEY}
     presigned-url-expiry: 3600
+
+rag:
+  retry:
+    failed:
+      enabled: ${RAG_RETRY_FAILED_ENABLED:false}
+      batch-size: ${RAG_RETRY_FAILED_BATCH_SIZE:5}
+      initial-delay-ms: ${RAG_RETRY_FAILED_INITIAL_DELAY_MS:60000}
+      fixed-delay-ms: ${RAG_RETRY_FAILED_FIXED_DELAY_MS:300000}
 
 management:
   endpoints:
@@ -87,5 +69,5 @@ logging:
     org.springframework.jdbc: info
 
 jwt:
-  secret: ${JWT_SECRET:enterprise-ai-platform-secret-key-minimum-256-bits!!}
+  secret: ${JWT_SECRET}
   expiration-ms: 86400000

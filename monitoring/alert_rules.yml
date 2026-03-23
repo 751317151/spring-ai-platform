@@ -1,7 +1,6 @@
 groups:
   - name: ai_platform_alerts
     rules:
-      # 错误率超过 5%
       - alert: HighAiErrorRate
         expr: rate(ai_requests_errors_total[5m]) / rate(ai_requests_total[5m]) > 0.05
         for: 2m
@@ -9,9 +8,8 @@ groups:
           severity: warning
         annotations:
           summary: "AI 请求错误率过高"
-          description: "错误率 {{ $value | humanizePercentage }} 超过 5%，持续 2 分钟"
+          description: "错误率 {{ $value | humanizePercentage }} 超过 5%，并持续 2 分钟"
 
-      # P95 延迟超过 5 秒
       - alert: HighAiLatency
         expr: histogram_quantile(0.95, rate(ai_request_latency_seconds_bucket[5m])) > 5
         for: 3m
@@ -21,7 +19,6 @@ groups:
           summary: "AI 响应 P95 延迟过高"
           description: "P95 延迟 {{ $value }}s 超过 5 秒阈值"
 
-      # 服务实例宕机
       - alert: AiServiceDown
         expr: up{job=~".*-service"} == 0
         for: 1m
@@ -29,9 +26,8 @@ groups:
           severity: critical
         annotations:
           summary: "AI 服务实例宕机"
-          description: "服务 {{ $labels.job }} 已下线超过 1 分钟"
+          description: "服务 {{ $labels.job }} 已离线超过 1 分钟"
 
-      # Token 超限次数异常
       - alert: TokenLimitBreach
         expr: increase(ai_token_limit_exceeded_total[10m]) > 10
         for: 0m
@@ -41,7 +37,6 @@ groups:
           summary: "Token 配额超限频繁"
           description: "过去 10 分钟内 Token 超限 {{ $value }} 次"
 
-      # 活跃并发请求数过高
       - alert: HighConcurrency
         expr: ai_requests_active > 50
         for: 1m

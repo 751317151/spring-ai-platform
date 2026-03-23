@@ -9,25 +9,47 @@ import com.huah.ai.platform.common.util.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
-/**
- * 认证接口 -- JWT 登录 / 登出 / 刷新 / 验证
- */
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
 public class AuthController {
+
+    private static final String TOKEN_BLACKLIST_PREFIX = "ai:token:blacklist:";
+    private static final String TOKEN_JTI_BLACKLIST_PREFIX = "ai:token:blacklist:jti:";
+    private static final String MSG_USERNAME_PASSWORD_REQUIRED = "用户名和密码不能为空";
+    private static final String MSG_INVALID_CREDENTIALS = "用户名或密码错误";
+    private static final String MSG_TOKEN_INVALID_OR_EXPIRED = "Token 无效或已过期";
+    private static final String MSG_TOKEN_REVOKED = "Token 已失效";
+    private static final String MSG_AUTH_HEADER_MISSING = "Authorization header 缺失";
+    private static final String MSG_TOKEN_INVALID = "Token 无效";
+    private static final String MSG_USER_NOT_FOUND = "用户不存在";
+    private static final String MSG_USERNAME_EXISTS = "用户名已存在";
+    private static final String MSG_PERMISSION_NOT_FOUND = "权限配置不存在";
+    private static final String MSG_BOT_TYPE_REQUIRED = "botType 不能为空";
+    private static final String MSG_DEMO_USERS_INITIALIZED = "演示用户初始化完成";
 
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
@@ -35,160 +57,137 @@ public class AuthController {
     private final AiUserMapper userMapper;
     private final BotPermissionMapper botPermissionMapper;
 
-    private static final String TOKEN_BLACKLIST_PREFIX = "ai:token:blacklist:";
+    @Value("${jwt.access-expiration-ms:${jwt.expiration-ms:900000}}")
+    private long accessExpirationMs = 900_000L;
 
-    /**
-     * 登录 -- 支持数据库用户 + 演示 fallback（admin/admin123）
-     */
+    @Value("${jwt.refresh-expiration-ms:604800000}")
+    private long refreshExpirationMs = 604_800_000L;
+
     @PostMapping("/login")
     public Result<Map<String, Object>> login(@RequestBody Map<String, String> body) {
         String username = body.get("username");
         String password = body.get("password");
 
         if (username == null || password == null) {
-            return Result.fail(400, "用户名和密码不能为空");
+            return Result.fail(400, MSG_USERNAME_PASSWORD_REQUIRED);
         }
 
-        // 1. 尝试从数据库查询用户
         AiUser user = userMapper.selectByUsernameAndEnabled(username);
-
-        String roles;
-        String department;
-        String userId;
-
-        if (user != null) {
-            // 数据库用户 - 验证密码
-            if (!passwordEncoder.matches(password, user.getPasswordHash())) {
-                log.warn("登录失败 - 密码错误: username={}", username);
-                return Result.fail(401, "用户名或密码错误");
-            }
-            roles = user.getRoles() != null ? user.getRoles() : "ROLE_USER";
-            department = user.getDepartment() != null ? user.getDepartment() : "未知部门";
-            userId = user.getId();
-
-            // 更新最后登录时间
-            user.setLastLoginAt(LocalDateTime.now());
-            userMapper.updateById(user);
-        } else {
-            // 演示 fallback -- admin/admin123 直接通过
-            if ("admin".equals(username) && "admin123".equals(password)) {
-                roles = "ROLE_ADMIN,ROLE_RD,ROLE_SALES,ROLE_HR,ROLE_USER";
-                department = "系统管理";
-                userId = "admin";
-                log.info("演示用户登录: {}", username);
-            } else {
-                log.warn("登录失败 - 用户不存在: username={}", username);
-                return Result.fail(401, "用户名或密码错误");
-            }
+        if (user == null) {
+            log.warn("登录失败，用户不存在或已禁用: username={}", username);
+            return Result.fail(401, MSG_INVALID_CREDENTIALS);
+        }
+        if (!passwordEncoder.matches(password, user.getPasswordHash())) {
+            log.warn("登录失败，密码错误: username={}", username);
+            return Result.fail(401, MSG_INVALID_CREDENTIALS);
         }
 
-        // 2. 生成 JWT
-        Map<String, Object> claims = Map.of(
-                "username",   username,
-                "department", department,
-                "roles",      roles,
-                "userId",     userId
-        );
-        String token = jwtUtil.generateToken(username, claims);
-        log.info("用户登录成功: username={}, roles={}", username, roles);
+        String roles = user.getRoles() != null ? user.getRoles() : "ROLE_USER";
+        String department = user.getDepartment() != null ? user.getDepartment() : "";
+        String userId = user.getId();
 
-        return Result.ok(Map.of(
-                "token",     token,
-                "tokenType", "Bearer",
-                "expiresIn", 86400,
-                "userId",    userId,
-                "username",  username,
-                "roles",     roles,
-                "department",department
-        ));
+        user.setLastLoginAt(LocalDateTime.now());
+        userMapper.updateById(user);
+
+        Map<String, Object> claims = buildUserClaims(username, department, roles, userId);
+        Map<String, Object> tokenPayload = buildTokenPayload(username, department, roles, userId, claims);
+        log.info("登录成功: username={}, roles={}", username, roles);
+        return Result.ok(tokenPayload);
     }
 
-    /**
-     * 登出 -- Token 加入 Redis 黑名单
-     */
     @PostMapping("/logout")
     public Result<Void> logout(
-            @RequestHeader(value = "Authorization", defaultValue = "") String authorization) {
+            @RequestHeader(value = "Authorization", defaultValue = "") String authorization,
+            @RequestBody(required = false) Map<String, String> body) {
         if (authorization.startsWith("Bearer ")) {
-            String token = authorization.substring(7);
-            redisTemplate.opsForValue().set(
-                    TOKEN_BLACKLIST_PREFIX + token, "1", 24, TimeUnit.HOURS);
-            log.info("Token 已加入黑名单");
+            blacklistToken(authorization.substring(7));
+        }
+        if (body != null) {
+            blacklistToken(body.get("refreshToken"));
         }
         return Result.ok();
     }
 
-    /**
-     * 刷新 Token
-     */
     @PostMapping("/refresh")
-    public Result<Map<String, String>> refresh(@RequestBody Map<String, String> body) {
-        String oldToken = body.get("token");
-        if (!jwtUtil.validateToken(oldToken)) {
-            return Result.fail(401, "Token 无效或已过期");
+    public Result<Map<String, Object>> refresh(@RequestBody Map<String, String> body) {
+        String refreshToken = body.getOrDefault("refreshToken", body.get("token"));
+        if (refreshToken == null || !jwtUtil.validateToken(refreshToken)) {
+            return Result.fail(401, MSG_TOKEN_INVALID_OR_EXPIRED);
         }
-        // 检查黑名单
-        if (Boolean.TRUE.equals(redisTemplate.hasKey(TOKEN_BLACKLIST_PREFIX + oldToken))) {
-            return Result.fail(401, "Token 已失效");
+        if (!"refresh".equals(jwtUtil.getTokenType(refreshToken))) {
+            return Result.fail(401, MSG_TOKEN_INVALID_OR_EXPIRED);
         }
-        String subject = jwtUtil.getSubject(oldToken);
-        String newToken = jwtUtil.generateToken(subject, Map.of());
-        return Result.ok(Map.of("token", newToken));
+        if (isTokenBlacklisted(refreshToken)) {
+            return Result.fail(401, MSG_TOKEN_REVOKED);
+        }
+
+        String subject = jwtUtil.getSubject(refreshToken);
+        String department = stringify(jwtUtil.getClaim(refreshToken, "department"));
+        String roles = stringify(jwtUtil.getClaim(refreshToken, "roles"));
+        String userId = stringify(jwtUtil.getClaim(refreshToken, "userId"));
+        Map<String, Object> claims = buildUserClaims(subject, department, roles, userId);
+
+        blacklistToken(refreshToken);
+        return Result.ok(buildTokenPayload(subject, department, roles, userId, claims));
     }
 
-    /**
-     * 验证 Token（供其他微服务内部调用）
-     */
     @GetMapping("/validate")
     public Result<Map<String, Object>> validate(
             @RequestHeader(value = "Authorization", defaultValue = "") String authorization) {
         if (!authorization.startsWith("Bearer ")) {
-            return Result.fail(401, "Authorization header 缺失");
+            return Result.fail(401, MSG_AUTH_HEADER_MISSING);
         }
-        String token = authorization.substring(7);
 
-        if (Boolean.TRUE.equals(redisTemplate.hasKey(TOKEN_BLACKLIST_PREFIX + token))) {
-            return Result.fail(401, "Token 已失效");
+        String token = authorization.substring(7);
+        if (isTokenBlacklisted(token)) {
+            return Result.fail(401, MSG_TOKEN_REVOKED);
         }
         if (!jwtUtil.validateToken(token)) {
-            return Result.fail(401, "Token 无效");
+            return Result.fail(401, MSG_TOKEN_INVALID);
         }
 
-        String userId = jwtUtil.getSubject(token);
+        Object userIdClaim = jwtUtil.getClaim(token, "userId");
+        String userId = userIdClaim != null ? userIdClaim.toString() : jwtUtil.getSubject(token);
         Object roles = jwtUtil.getClaim(token, "roles");
-        Object dept  = jwtUtil.getClaim(token, "department");
+        Object dept = jwtUtil.getClaim(token, "department");
 
         return Result.ok(Map.of(
-                "userId",     userId != null ? userId : "",
-                "roles",      roles != null ? roles : "",
-                "department", dept  != null ? dept  : ""
+                "userId", userId != null ? userId : "",
+                "roles", roles != null ? roles : "",
+                "department", dept != null ? dept : ""
         ));
     }
 
-    /**
-     * 获取当前用户可用的 Bot 列表（任何已认证用户均可调用）
-     * ADMIN 可见所有已启用 Bot，其他用户按角色/部门过滤
-     */
     @GetMapping("/my-bots")
-    public Result<List<BotPermission>> myBots(HttpServletRequest request) {
-        String roles = (String) request.getAttribute("X-Roles");
+    public Result<List<BotPermission>> myBots(HttpServletRequest request, Authentication authentication) {
+        String roles = authentication != null
+                ? authentication.getAuthorities().stream()
+                .map(authority -> authority.getAuthority())
+                .reduce((left, right) -> left + "," + right)
+                .orElse((String) request.getAttribute("X-Roles"))
+                : (String) request.getAttribute("X-Roles");
         String department = (String) request.getAttribute("X-Department");
 
         List<BotPermission> all = botPermissionMapper.selectList(null);
         List<BotPermission> available = all.stream()
                 .filter(BotPermission::isEnabled)
-                .filter(p -> {
-                    // ADMIN 可见全部
-                    if (roles != null && roles.contains("ROLE_ADMIN")) return true;
-                    // 角色匹配
-                    if (p.getAllowedRoles() != null && !p.getAllowedRoles().isBlank() && roles != null) {
-                        for (String r : roles.split(",")) {
-                            if (p.getAllowedRoles().contains(r.trim())) return true;
+                .filter(permission -> {
+                    if (roles != null && roles.contains("ROLE_ADMIN")) {
+                        return true;
+                    }
+                    if (permission.getAllowedRoles() != null
+                            && !permission.getAllowedRoles().isBlank()
+                            && roles != null) {
+                        for (String role : roles.split(",")) {
+                            if (permission.getAllowedRoles().contains(role.trim())) {
+                                return true;
+                            }
                         }
                     }
-                    // 部门匹配
-                    if (p.getAllowedDepartments() != null && !p.getAllowedDepartments().isBlank() && department != null) {
-                        if (p.getAllowedDepartments().contains(department.trim())) return true;
+                    if (permission.getAllowedDepartments() != null
+                            && !permission.getAllowedDepartments().isBlank()
+                            && department != null) {
+                        return permission.getAllowedDepartments().contains(department.trim());
                     }
                     return false;
                 })
@@ -197,21 +196,24 @@ public class AuthController {
         return Result.ok(available);
     }
 
-    /**
-     * 初始化演示用户（首次部署调用一次）
-     */
     @PostMapping("/init-demo-users")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<String> initDemoUsers() {
         String[] users = {"admin", "rd_user", "sales_user", "hr_user", "finance_user"};
         String[] roles = {
-            "ROLE_ADMIN,ROLE_RD,ROLE_SALES,ROLE_HR,ROLE_USER",
-            "ROLE_RD,ROLE_USER",
-            "ROLE_SALES,ROLE_USER",
-            "ROLE_HR,ROLE_USER",
-            "ROLE_FINANCE,ROLE_USER"
+                "ROLE_ADMIN,ROLE_RD,ROLE_SALES,ROLE_HR,ROLE_USER",
+                "ROLE_RD,ROLE_USER",
+                "ROLE_SALES,ROLE_USER",
+                "ROLE_HR,ROLE_USER",
+                "ROLE_FINANCE,ROLE_USER"
         };
-        String[] depts = {"系统管理", "研发中心", "销售部", "人力资源部", "财务部"};
+        String[] departments = {
+                "系统管理",
+                "研发中心",
+                "销售部",
+                "人力资源部",
+                "财务部"
+        };
 
         for (int i = 0; i < users.length; i++) {
             if (userMapper.selectByUsername(users[i]) == null) {
@@ -220,55 +222,45 @@ public class AuthController {
                         .username(users[i])
                         .passwordHash(passwordEncoder.encode("admin123"))
                         .roles(roles[i])
-                        .department(depts[i])
+                        .department(departments[i])
                         .employeeId("EMP00" + (i + 1))
                         .build());
             }
         }
-        return Result.ok("演示用户初始化完成");
+        return Result.ok(MSG_DEMO_USERS_INITIALIZED);
     }
 
-    // ===== User Management (ADMIN only) =====
-
-    /**
-     * 获取所有用户列表
-     */
     @GetMapping("/users")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<List<AiUser>> listUsers() {
         List<AiUser> users = userMapper.selectList(null);
-        users.forEach(u -> u.setPasswordHash(null));
+        users.forEach(user -> user.setPasswordHash(null));
         return Result.ok(users);
     }
 
-    /**
-     * 获取单个用户
-     */
     @GetMapping("/users/{id}")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<AiUser> getUser(@PathVariable(name = "id") String id) {
         AiUser user = userMapper.selectById(id);
         if (user == null) {
-            return Result.fail(404, "用户不存在");
+            return Result.fail(404, MSG_USER_NOT_FOUND);
         }
         user.setPasswordHash(null);
         return Result.ok(user);
     }
 
-    /**
-     * 创建用户
-     */
     @PostMapping("/users")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<AiUser> createUser(@RequestBody Map<String, String> body) {
         String username = body.get("username");
         String password = body.get("password");
         if (username == null || username.isBlank() || password == null || password.isBlank()) {
-            return Result.fail(400, "用户名和密码不能为空");
+            return Result.fail(400, MSG_USERNAME_PASSWORD_REQUIRED);
         }
         if (userMapper.selectByUsername(username) != null) {
-            return Result.fail(400, "用户名已存在");
+            return Result.fail(400, MSG_USERNAME_EXISTS);
         }
+
         AiUser user = AiUser.builder()
                 .id(username)
                 .username(username)
@@ -283,133 +275,203 @@ public class AuthController {
         return Result.ok(user);
     }
 
-    /**
-     * 更新用户
-     */
     @PutMapping("/users/{id}")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<AiUser> updateUser(@PathVariable(name = "id") String id, @RequestBody Map<String, String> body) {
         AiUser user = userMapper.selectById(id);
         if (user == null) {
-            return Result.fail(404, "用户不存在");
+            return Result.fail(404, MSG_USER_NOT_FOUND);
         }
-        if (body.containsKey("department")) user.setDepartment(body.get("department"));
-        if (body.containsKey("employeeId")) user.setEmployeeId(body.get("employeeId"));
-        if (body.containsKey("roles")) user.setRoles(body.get("roles"));
-        if (body.containsKey("enabled")) user.setEnabled(Boolean.parseBoolean(body.get("enabled")));
+
+        if (body.containsKey("department")) {
+            user.setDepartment(body.get("department"));
+        }
+        if (body.containsKey("employeeId")) {
+            user.setEmployeeId(body.get("employeeId"));
+        }
+        if (body.containsKey("roles")) {
+            user.setRoles(body.get("roles"));
+        }
+        if (body.containsKey("enabled")) {
+            user.setEnabled(Boolean.parseBoolean(body.get("enabled")));
+        }
+
         String password = body.get("password");
         if (password != null && !password.isBlank()) {
             user.setPasswordHash(passwordEncoder.encode(password));
         }
+
         userMapper.updateById(user);
         user.setPasswordHash(null);
         log.info("更新用户: id={}, username={}", id, user.getUsername());
         return Result.ok(user);
     }
 
-    /**
-     * 删除用户
-     */
     @DeleteMapping("/users/{id}")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<Void> deleteUser(@PathVariable(name = "id") String id) {
         AiUser user = userMapper.selectById(id);
         if (user == null) {
-            return Result.fail(404, "用户不存在");
+            return Result.fail(404, MSG_USER_NOT_FOUND);
         }
         userMapper.deleteById(id);
         log.info("删除用户: id={}, username={}", id, user.getUsername());
         return Result.ok();
     }
 
-    // ===== Bot Permission Management (ADMIN only) =====
-
-    /**
-     * 获取所有 Bot 权限配置
-     */
     @GetMapping("/permissions")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<List<BotPermission>> listPermissions() {
         return Result.ok(botPermissionMapper.selectList(null));
     }
 
-    /**
-     * 获取单个 Bot 权限配置
-     */
     @GetMapping("/permissions/{id}")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<BotPermission> getPermission(@PathVariable(name = "id") String id) {
-        BotPermission perm = botPermissionMapper.selectById(id);
-        if (perm == null) {
-            return Result.fail(404, "权限配置不存在");
+        BotPermission permission = botPermissionMapper.selectById(id);
+        if (permission == null) {
+            return Result.fail(404, MSG_PERMISSION_NOT_FOUND);
         }
-        return Result.ok(perm);
+        return Result.ok(permission);
     }
 
-    /**
-     * 新增 Bot 权限配置
-     */
     @PostMapping("/permissions")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<BotPermission> createPermission(@RequestBody Map<String, Object> body) {
         String botType = (String) body.get("botType");
         if (botType == null || botType.isBlank()) {
-            return Result.fail(400, "botType 不能为空");
+            return Result.fail(400, MSG_BOT_TYPE_REQUIRED);
         }
-        // 检查 botType 唯一性
+
         BotPermission existing = botPermissionMapper.selectByBotTypeAndEnabled(botType);
         if (existing != null) {
             return Result.fail(400, "Bot 类型 '" + botType + "' 的权限配置已存在");
         }
 
-        BotPermission perm = BotPermission.builder()
+        BotPermission permission = BotPermission.builder()
                 .botType(botType)
                 .allowedRoles(body.containsKey("allowedRoles") ? (String) body.get("allowedRoles") : "ROLE_ADMIN")
                 .allowedDepartments(body.containsKey("allowedDepartments") ? (String) body.get("allowedDepartments") : null)
                 .dataScope(body.containsKey("dataScope") ? (String) body.get("dataScope") : "DEPARTMENT")
                 .allowedOperations(body.containsKey("allowedOperations") ? (String) body.get("allowedOperations") : "READ,WRITE")
-                .dailyTokenLimit(body.containsKey("dailyTokenLimit") ? ((Number) body.get("dailyTokenLimit")).intValue() : 100000)
+                .dailyTokenLimit(body.containsKey("dailyTokenLimit")
+                        ? ((Number) body.get("dailyTokenLimit")).intValue()
+                        : 100000)
                 .enabled(body.containsKey("enabled") ? (Boolean) body.get("enabled") : true)
                 .build();
 
-        botPermissionMapper.insert(perm);
-        log.info("新增 Bot 权限: botType={}, allowedRoles={}", botType, perm.getAllowedRoles());
-        return Result.ok(perm);
+        botPermissionMapper.insert(permission);
+        log.info("新增 Bot 权限: botType={}, allowedRoles={}", botType, permission.getAllowedRoles());
+        return Result.ok(permission);
     }
 
-    /**
-     * 更新 Bot 权限配置
-     */
     @PutMapping("/permissions/{id}")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public Result<BotPermission> updatePermission(@PathVariable(name = "id") String id, @RequestBody Map<String, Object> body) {
-        BotPermission perm = botPermissionMapper.selectById(id);
-        if (perm == null) {
-            return Result.fail(404, "权限配置不存在");
+    public Result<BotPermission> updatePermission(
+            @PathVariable(name = "id") String id,
+            @RequestBody Map<String, Object> body) {
+        BotPermission permission = botPermissionMapper.selectById(id);
+        if (permission == null) {
+            return Result.fail(404, MSG_PERMISSION_NOT_FOUND);
         }
-        if (body.containsKey("allowedRoles")) perm.setAllowedRoles((String) body.get("allowedRoles"));
-        if (body.containsKey("allowedDepartments")) perm.setAllowedDepartments((String) body.get("allowedDepartments"));
-        if (body.containsKey("dataScope")) perm.setDataScope((String) body.get("dataScope"));
-        if (body.containsKey("allowedOperations")) perm.setAllowedOperations((String) body.get("allowedOperations"));
-        if (body.containsKey("dailyTokenLimit")) perm.setDailyTokenLimit(((Number) body.get("dailyTokenLimit")).intValue());
-        if (body.containsKey("enabled")) perm.setEnabled((Boolean) body.get("enabled"));
-        botPermissionMapper.updateById(perm);
-        log.info("更新 Bot 权限: id={}, botType={}", id, perm.getBotType());
-        return Result.ok(perm);
+
+        if (body.containsKey("allowedRoles")) {
+            permission.setAllowedRoles((String) body.get("allowedRoles"));
+        }
+        if (body.containsKey("allowedDepartments")) {
+            permission.setAllowedDepartments((String) body.get("allowedDepartments"));
+        }
+        if (body.containsKey("dataScope")) {
+            permission.setDataScope((String) body.get("dataScope"));
+        }
+        if (body.containsKey("allowedOperations")) {
+            permission.setAllowedOperations((String) body.get("allowedOperations"));
+        }
+        if (body.containsKey("dailyTokenLimit")) {
+            permission.setDailyTokenLimit(((Number) body.get("dailyTokenLimit")).intValue());
+        }
+        if (body.containsKey("enabled")) {
+            permission.setEnabled((Boolean) body.get("enabled"));
+        }
+
+        botPermissionMapper.updateById(permission);
+        log.info("更新 Bot 权限: id={}, botType={}", id, permission.getBotType());
+        return Result.ok(permission);
     }
 
-    /**
-     * 删除 Bot 权限配置
-     */
     @DeleteMapping("/permissions/{id}")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<Void> deletePermission(@PathVariable(name = "id") String id) {
-        BotPermission perm = botPermissionMapper.selectById(id);
-        if (perm == null) {
-            return Result.fail(404, "权限配置不存在");
+        BotPermission permission = botPermissionMapper.selectById(id);
+        if (permission == null) {
+            return Result.fail(404, MSG_PERMISSION_NOT_FOUND);
         }
         botPermissionMapper.deleteById(id);
-        log.info("删除 Bot 权限: id={}, botType={}", id, perm.getBotType());
+        log.info("删除 Bot 权限: id={}, botType={}", id, permission.getBotType());
         return Result.ok();
+    }
+
+    private Map<String, Object> buildUserClaims(String username, String department, String roles, String userId) {
+        return Map.of(
+                "username", username,
+                "department", department != null ? department : "",
+                "roles", roles != null ? roles : "",
+                "userId", userId != null ? userId : ""
+        );
+    }
+
+    private Map<String, Object> buildTokenPayload(String username,
+                                                  String department,
+                                                  String roles,
+                                                  String userId,
+                                                  Map<String, Object> claims) {
+        String accessToken = jwtUtil.generateToken(
+                username, claims, accessExpirationMs, "access", UUID.randomUUID().toString());
+        String refreshToken = jwtUtil.generateToken(
+                username, claims, refreshExpirationMs, "refresh", UUID.randomUUID().toString());
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("token", accessToken);
+        payload.put("refreshToken", refreshToken);
+        payload.put("tokenType", "Bearer");
+        payload.put("expiresIn", accessExpirationMs / 1000);
+        payload.put("refreshExpiresIn", refreshExpirationMs / 1000);
+        payload.put("userId", userId);
+        payload.put("username", username);
+        payload.put("roles", roles);
+        payload.put("department", department);
+        return payload;
+    }
+
+    private boolean isTokenBlacklisted(String token) {
+        if (token == null || token.isBlank()) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(redisTemplate.hasKey(TOKEN_BLACKLIST_PREFIX + token))) {
+            return true;
+        }
+        if (!jwtUtil.validateToken(token)) {
+            return false;
+        }
+        String jti = jwtUtil.getJti(token);
+        return jti != null && Boolean.TRUE.equals(redisTemplate.hasKey(TOKEN_JTI_BLACKLIST_PREFIX + jti));
+    }
+
+    private void blacklistToken(String token) {
+        if (token == null || token.isBlank() || !jwtUtil.validateToken(token)) {
+            return;
+        }
+        long ttlMillis = jwtUtil.parseToken(token).getExpiration().getTime() - System.currentTimeMillis();
+        long ttlSeconds = Math.max(1, TimeUnit.MILLISECONDS.toSeconds(ttlMillis));
+        redisTemplate.opsForValue().set(TOKEN_BLACKLIST_PREFIX + token, "1", ttlSeconds, TimeUnit.SECONDS);
+        String jti = jwtUtil.getJti(token);
+        if (jti != null && !jti.isBlank()) {
+            redisTemplate.opsForValue().set(TOKEN_JTI_BLACKLIST_PREFIX + jti, "1", ttlSeconds, TimeUnit.SECONDS);
+        }
+        log.info("Token 已加入黑名单: tokenType={}, jti={}", jwtUtil.getTokenType(token), jti);
+    }
+
+    private String stringify(Object value) {
+        return value != null ? value.toString() : "";
     }
 }

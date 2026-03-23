@@ -6,8 +6,8 @@ spring:
     name: auth-service
   datasource:
     url: jdbc:postgresql://localhost:5432/ai-platform
-    username: ${DB_USER:postgres}
-    password: ${DB_PASS:blackstar}
+    username: ${DB_USER}
+    password: ${DB_PASS}
     driver-class-name: org.postgresql.Driver
   data:
     redis:
@@ -15,8 +15,10 @@ spring:
       port: 6379
 
 jwt:
-  secret: ${JWT_SECRET:enterprise-ai-platform-secret-key-minimum-256-bits!!}
-  expiration-ms: 86400000
+  secret: ${JWT_SECRET}
+  expiration-ms: 900000
+  access-expiration-ms: ${JWT_ACCESS_EXPIRATION_MS:900000}
+  refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION_MS:604800000}
 
 management:
   endpoints:

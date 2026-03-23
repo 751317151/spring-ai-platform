@@ -1,6 +1,7 @@
 package com.huah.ai.platform.common.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.huah.ai.platform.common.trace.TraceIdContext;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -26,6 +27,7 @@ public class Result<T> {
         r.message = "success";
         r.data = data;
         r.timestamp = Instant.now().toEpochMilli();
+        r.traceId = TraceIdContext.currentTraceId();
         return r;
     }
 
@@ -38,6 +40,7 @@ public class Result<T> {
         r.code = code;
         r.message = message;
         r.timestamp = Instant.now().toEpochMilli();
+        r.traceId = TraceIdContext.currentTraceId();
         return r;
     }
 

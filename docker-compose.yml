@@ -22,15 +22,14 @@ services:
     container_name: enterprise-ai-postgres
     environment:
       POSTGRES_DB: ai-platform
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASS:-postgres}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ai-platform"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d ai-platform"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -152,8 +151,8 @@ services:
     environment:
       SERVER_PORT: 8080
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ai-platform
-      DB_USER: postgres
-      DB_PASS: postgres
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASS: ${DB_PASS:-postgres}
       SPRING_DATA_REDIS_HOST: redis
       SPRING_AI_OLLAMA_BASE_URL: http://ollama:11434
       OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-xxx}
@@ -183,11 +182,11 @@ services:
     environment:
       SERVER_PORT: 8081
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ai-platform
-      DB_USER: postgres
-      DB_PASS: postgres
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASS: ${DB_PASS:-postgres}
       SPRING_DATA_REDIS_HOST: redis
       SPRING_AI_OLLAMA_BASE_URL: http://ollama:11434
-      aliQwen_api: ${ALI_QWEN_API_KEY:-sk-xxx}
+      ALI_QWEN_API_KEY: ${ALI_QWEN_API_KEY:-sk-xxx}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode}
       LLM_MODEL: ${LLM_MODEL:-qwen3-vl-plus-2025-12-19}
       S3_ENDPOINT: http://minio:9000
@@ -222,10 +221,10 @@ services:
     environment:
       SERVER_PORT: 8082
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ai-platform
-      DB_USER: postgres
-      DB_PASS: postgres
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASS: ${DB_PASS:-postgres}
       SPRING_DATA_REDIS_HOST: redis
-      aliQwen_api: ${ALI_QWEN_API_KEY:-sk-xxx}
+      ALI_QWEN_API_KEY: ${ALI_QWEN_API_KEY:-sk-xxx}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode}
       LLM_MODEL: ${LLM_MODEL:-qwen3-vl-plus-2025-12-19}
       # Docker 容器内无 npx/node，禁用 MCP stdio 模式
@@ -258,8 +257,8 @@ services:
     environment:
       SERVER_PORT: 8083
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ai-platform
-      DB_USER: postgres
-      DB_PASS: postgres
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASS: ${DB_PASS:-postgres}
       SPRING_DATA_REDIS_HOST: redis
       JWT_SECRET: ${JWT_SECRET:-enterprise-ai-platform-secret-key-minimum-256-bits!!}
     depends_on:
@@ -284,8 +283,8 @@ services:
     environment:
       SERVER_PORT: 8084
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ai-platform
-      DB_USER: postgres
-      DB_PASS: postgres
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASS: ${DB_PASS:-postgres}
       SPRING_DATA_REDIS_HOST: redis
       JWT_SECRET: ${JWT_SECRET:-enterprise-ai-platform-secret-key-minimum-256-bits!!}
     depends_on:

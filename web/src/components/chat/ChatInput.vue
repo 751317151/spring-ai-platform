@@ -13,8 +13,8 @@
     <div class="chat-input-wrap">
       <textarea
         ref="inputRef"
-        class="chat-input"
         v-model="message"
+        class="chat-input"
         placeholder="输入消息，Shift+Enter 换行..."
         rows="1"
         @keydown="handleKey"
@@ -54,15 +54,19 @@ function autoResize() {
   const el = inputRef.value
   if (el) {
     el.style.height = 'auto'
-    el.style.height = Math.min(el.scrollHeight, 120) + 'px'
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`
   }
 }
 
 function send() {
   const msg = message.value.trim()
-  if (!msg || chatStore.isThinking) return
+  if (!msg || chatStore.isThinking) {
+    return
+  }
   emit('send', msg)
   message.value = ''
-  if (inputRef.value) inputRef.value.style.height = 'auto'
+  if (inputRef.value) {
+    inputRef.value.style.height = 'auto'
+  }
 }
 </script>

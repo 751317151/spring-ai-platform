@@ -1,14 +1,17 @@
 package com.huah.ai.platform.monitor.metrics;
 
-import io.micrometer.core.instrument.*;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * AI 平台自定义指标收集器
- * 收集：响应延迟、Token消耗、错误率、并发数
+ * AI 平台自定义指标采集器。
+ * 采集响应延迟、Token 消耗、错误率和并发数。
  */
 @Slf4j
 @Component
@@ -46,27 +49,25 @@ public class AiMetricsCollector {
                 .description("Completion Token 消耗总量")
                 .register(registry);
 
-        // 注册 Gauge（当前并发）
         Gauge.builder("ai.requests.active", activeConcurrency, AtomicLong::get)
                 .description("当前活跃 AI 请求数")
                 .register(registry);
     }
 
     /**
-     * 记录一次 AI 调用
+     * 记录一次 AI 调用。
      */
     public void recordRequest(String modelId, String agentType, String scene,
-                               long latencyMs, boolean success,
-                               int promptTokens, int completionTokens) {
-        // 计数
+                              long latencyMs, boolean success,
+                              int promptTokens, int completionTokens) {
         totalRequestsCounter.increment();
-        if (!success) errorRequestsCounter.increment();
+        if (!success) {
+            errorRequestsCounter.increment();
+        }
 
-        // Token 消耗
         promptTokensCounter.increment(promptTokens);
         completionTokensCounter.increment(completionTokens);
 
-        // 响应延迟分布（Histogram）
         Timer.builder("ai.request.latency")
                 .description("AI 请求响应延迟")
                 .tag("model", modelId)
@@ -77,7 +78,6 @@ public class AiMetricsCollector {
                 .register(registry)
                 .record(latencyMs, java.util.concurrent.TimeUnit.MILLISECONDS);
 
-        // 按模型分别计数
         Counter.builder("ai.requests.by_model")
                 .tag("model", modelId)
                 .tag("success", String.valueOf(success))
@@ -89,7 +89,7 @@ public class AiMetricsCollector {
     }
 
     /**
-     * 记录异常查询（敏感词、越权等）
+     * 记录异常查询，如敏感词和越权访问。
      */
     public void recordAnomalyQuery(String userId, String agentType, String anomalyType) {
         Counter.builder("ai.anomaly.queries")
@@ -102,7 +102,7 @@ public class AiMetricsCollector {
         log.warn("检测到异常查询: userId={}, agent={}, type={}", userId, agentType, anomalyType);
     }
 
-    /** 记录 Token 超限 */
+    /** 记录 Token 超限。 */
     public void recordTokenLimitExceeded(String userId, String agentType) {
         Counter.builder("ai.token.limit.exceeded")
                 .tag("agent", agentType)
@@ -111,6 +111,11 @@ public class AiMetricsCollector {
         log.warn("Token 超限: userId={}, agent={}", userId, agentType);
     }
 
-    public void incrementActive() { activeConcurrency.incrementAndGet(); }
-    public void decrementActive() { activeConcurrency.decrementAndGet(); }
+    public void incrementActive() {
+        activeConcurrency.incrementAndGet();
+    }
+
+    public void decrementActive() {
+        activeConcurrency.decrementAndGet();
+    }
 }

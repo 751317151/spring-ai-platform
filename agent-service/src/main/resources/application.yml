@@ -8,7 +8,7 @@ spring:
     openai:
 #      api-key: ${OPENAI_API_KEY:sk-xxx}
 #      base-url: ${AI_BASE_URL:https://api.deepseek.com}
-      api-key: ${aliQwen_api}
+      api-key: ${ALI_QWEN_API_KEY}
       base-url: ${LLM_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
       chat:
         options:
@@ -37,10 +37,9 @@ spring:
       port: 6379
   datasource:
     url: jdbc:postgresql://localhost:5432/ai-platform
-    username: ${DB_USER:postgres}
-    password: ${DB_PASS:blackstar}
+    username: ${DB_USER}
+    password: ${DB_PASS}
     driver-class-name: org.postgresql.Driver
-
 management:
   endpoints:
     web:
@@ -57,7 +56,7 @@ management:
         ai.request.latency: 0.5, 0.95, 0.99
 
 jwt:
-  secret: ${JWT_SECRET:enterprise-ai-platform-secret-key-minimum-256-bits!!}
+  secret: ${JWT_SECRET}
   expiration-ms: 86400000
 
 logging:

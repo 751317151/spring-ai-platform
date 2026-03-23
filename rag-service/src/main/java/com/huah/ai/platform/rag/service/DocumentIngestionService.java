@@ -1,10 +1,10 @@
 package com.huah.ai.platform.rag.service;
 
 import com.huah.ai.platform.common.exception.BizException;
+import com.huah.ai.platform.rag.metrics.RagMetricsService;
 import com.huah.ai.platform.rag.model.DocumentMeta;
 import com.huah.ai.platform.rag.model.KnowledgeBase;
 import com.huah.ai.platform.rag.parser.ExcelDocumentParser;
-import com.huah.ai.platform.rag.parser.StructuredDocumentParser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
@@ -16,16 +16,18 @@ import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StreamUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
- * 文档 ETL 入库服务
- * 支持 PDF、Word、Excel、TXT、HTML、Markdown
+ * 文档 ETL 入库服务。
  */
 @Slf4j
 @Service
@@ -36,55 +38,16 @@ public class DocumentIngestionService {
     private final DocumentMetaService metaService;
     private final FileStorageService fileStorageService;
     private final ExcelDocumentParser excelParser;
-    private final StructuredDocumentParser structuredParser;
+    private final RagMetricsService metricsService;
 
-    /**
-     * 上传并入库文档
-     */
     public DocumentMeta ingestDocument(MultipartFile file, String knowledgeBaseId, String uploadedBy) {
         String filename = file.getOriginalFilename();
         String docId = UUID.randomUUID().toString();
+        String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
+        String storageKey = knowledgeBaseId + "/" + docId + "/" + filename;
         log.info("开始入库文档: {}, 知识库: {}, docId: {}", filename, knowledgeBaseId, docId);
 
-        // 1. 验证知识库存在
         KnowledgeBase kb = metaService.getKnowledgeBase(knowledgeBaseId);
-
-        // 2. 上传原始文件到 S3
-        String storageKey = knowledgeBaseId + "/" + docId + "/" + filename;
-        String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
-        try {
-            fileStorageService.upload(storageKey, file.getInputStream(), file.getSize(), contentType);
-        } catch (IOException e) {
-            throw new BizException("读取上传文件失败: " + e.getMessage());
-        }
-
-        // 3. 解析文档
-        List<Document> documents = parseDocument(file);
-        log.info("文档解析完成: {}, 共 {} 段", filename, documents.size());
-
-        // 4. 添加元数据
-        documents.forEach(doc -> doc.getMetadata().putAll(Map.of(
-                "doc_id", docId,
-                "kb_id", knowledgeBaseId,
-                "filename", filename,
-                "uploaded_by", uploadedBy,
-                "file_type", getFileExtension(filename)
-        )));
-
-        // 5. 切片
-        TokenTextSplitter splitter = new TokenTextSplitter(
-                kb.getChunkSize(),
-                kb.getChunkOverlap(),
-                5, 10000, true
-        );
-        List<Document> chunks = splitter.apply(documents);
-        log.info("文档切片完成: {}, 共 {} 个chunk", filename, chunks.size());
-
-        // 6. 向量化存储
-        vectorStore.add(chunks);
-        log.info("文档向量化完成: {}", filename);
-
-        // 7. 保存元数据
         DocumentMeta meta = DocumentMeta.builder()
                 .id(docId)
                 .filename(filename)
@@ -92,26 +55,122 @@ public class DocumentIngestionService {
                 .fileSize(file.getSize())
                 .storagePath(storageKey)
                 .contentType(contentType)
-                .chunkCount(chunks.size())
                 .uploadedBy(uploadedBy)
-                .status("INDEXED")
+                .status(DocumentMeta.STATUS_PROCESSING)
                 .build();
-        metaService.saveDocumentMeta(meta);
+        metaService.createProcessingDocumentMeta(meta);
 
-        return meta;
+        boolean uploaded = false;
+        try {
+            fileStorageService.upload(storageKey, file.getInputStream(), file.getSize(), contentType);
+            uploaded = true;
+            return ingestContent(docId, filename, knowledgeBaseId, uploadedBy, contentType, storageKey, kb, file.getBytes());
+        } catch (BizException e) {
+            compensateFailedIngestion(docId, storageKey, e.getMessage(), uploaded);
+            throw e;
+        } catch (Exception e) {
+            metricsService.recordDependencyFailure("vector-store", "add");
+            String message = "文档入库失败: " + e.getMessage();
+            compensateFailedIngestion(docId, storageKey, message, uploaded);
+            throw new BizException(message);
+        }
     }
 
-    /**
-     * 根据文件类型选择解析器
-     */
-    private List<Document> parseDocument(MultipartFile file) {
-        String ext = getFileExtension(file.getOriginalFilename()).toLowerCase();
+    public DocumentMeta retryDocument(String docId) {
+        DocumentMeta meta = metaService.resetFailedDocumentForRetry(docId);
+        KnowledgeBase kb = metaService.getKnowledgeBase(meta.getKnowledgeBaseId());
+
+        try (InputStream inputStream = fileStorageService.download(meta.getStoragePath())) {
+            byte[] content = StreamUtils.copyToByteArray(inputStream);
+            log.info("开始重试失败文档: {}, knowledgeBaseId={}, docId={}", meta.getFilename(), meta.getKnowledgeBaseId(), docId);
+            return ingestContent(
+                    docId,
+                    meta.getFilename(),
+                    meta.getKnowledgeBaseId(),
+                    meta.getUploadedBy(),
+                    meta.getContentType(),
+                    meta.getStoragePath(),
+                    kb,
+                    content
+            );
+        } catch (BizException e) {
+            compensateFailedIngestion(docId, meta.getStoragePath(), e.getMessage(), true);
+            throw e;
+        } catch (IOException e) {
+            String message = "读取待重试文档失败: " + e.getMessage();
+            compensateFailedIngestion(docId, meta.getStoragePath(), message, true);
+            throw new BizException(message);
+        } catch (Exception e) {
+            metricsService.recordDependencyFailure("vector-store", "retry");
+            String message = "重试文档入库失败: " + e.getMessage();
+            compensateFailedIngestion(docId, meta.getStoragePath(), message, true);
+            throw new BizException(message);
+        }
+    }
+
+    private DocumentMeta ingestContent(
+            String docId,
+            String filename,
+            String knowledgeBaseId,
+            String uploadedBy,
+            String contentType,
+            String storageKey,
+            KnowledgeBase kb,
+            byte[] content
+    ) {
+        long parseStart = System.nanoTime();
+        List<Document> documents = parseDocument(filename, content);
+        metricsService.recordStageLatency("document.parse", elapsedMillis(parseStart), true);
+        log.info("文档解析完成: {}, 共 {} 段", filename, documents.size());
+
+        documents.forEach(doc -> doc.getMetadata().putAll(Map.of(
+                "doc_id", docId,
+                "kb_id", knowledgeBaseId,
+                "filename", filename,
+                "uploaded_by", uploadedBy == null ? "anonymous" : uploadedBy,
+                "file_type", getFileExtension(filename)
+        )));
+
+        TokenTextSplitter splitter = new TokenTextSplitter(
+                kb.getChunkSize(),
+                kb.getChunkOverlap(),
+                5, 10000, true
+        );
+        List<Document> chunks = splitter.apply(documents);
+        log.info("文档切片完成: {}, 共 {} 个 chunk", filename, chunks.size());
+
+        long vectorizeStart = System.nanoTime();
+        vectorStore.add(chunks);
+        metricsService.recordStageLatency("vector-store.add", elapsedMillis(vectorizeStart), true);
+        log.info("文档向量化完成: {}", filename);
+
+        return metaService.markDocumentIndexed(docId, storageKey, contentType, chunks.size());
+    }
+
+    private void compensateFailedIngestion(String docId, String storageKey, String errorMessage, boolean keepSourceFile) {
+        if (!keepSourceFile) {
+            try {
+                fileStorageService.delete(storageKey);
+            } catch (Exception cleanupError) {
+                log.warn("文档入库失败后的文件清理失败: docId={}, error={}", docId, cleanupError.getMessage());
+            }
+        }
+
         try {
-            byte[] bytes = file.getBytes();
-            Resource resource = new ByteArrayResource(bytes) {
+            metaService.markDocumentFailed(docId, errorMessage);
+        } catch (Exception markError) {
+            metricsService.recordDependencyFailure("database", "mark-document-failed");
+            log.warn("标记文档失败状态失败: docId={}, error={}", docId, markError.getMessage());
+        }
+    }
+
+    private List<Document> parseDocument(String filename, byte[] content) {
+        String ext = getFileExtension(filename).toLowerCase();
+        try {
+            Resource resource = new ByteArrayResource(content) {
                 @Override
                 public String getFilename() {
-                    return file.getOriginalFilename();
+                    return filename;
                 }
             };
             return switch (ext) {
@@ -123,7 +182,8 @@ public class DocumentIngestionService {
         } catch (BizException e) {
             throw e;
         } catch (Exception e) {
-            log.error("文档解析失败: filename={}, ext={}, error={}", file.getOriginalFilename(), ext, e.getMessage(), e);
+            metricsService.recordDependencyFailure("document-parser", ext);
+            log.error("文档解析失败: filename={}, ext={}, error={}", filename, ext, e.getMessage(), e);
             throw new BizException("文档解析失败: " + e.getMessage());
         }
     }
@@ -143,7 +203,13 @@ public class DocumentIngestionService {
     }
 
     private String getFileExtension(String filename) {
-        if (filename == null || !filename.contains(".")) return "unknown";
+        if (filename == null || !filename.contains(".")) {
+            return "unknown";
+        }
         return filename.substring(filename.lastIndexOf('.') + 1);
+    }
+
+    private long elapsedMillis(long start) {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
     }
 }

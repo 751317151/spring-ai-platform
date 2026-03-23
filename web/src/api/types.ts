@@ -15,8 +15,10 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   token: string
+  refreshToken?: string
   tokenType: string
   expiresIn: number
+  refreshExpiresIn?: number
   userId: string
   username: string
   roles: string
@@ -148,6 +150,11 @@ export interface AlertEvent {
   type: string
   message: string
   time: string
+  source?: string
+  status?: string
+  fingerprint?: string
+  silenceUrl?: string
+  labels?: Record<string, string>
 }
 
 export interface TopUser {

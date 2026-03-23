@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -18,14 +19,19 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * 通用 JWT 认证过滤器
- * 解析 JWT Token，注入 SecurityContext，设置请求属性
+ * Shared JWT authentication filter.
  */
 @Slf4j
 @RequiredArgsConstructor
 public class JwtAuthFilter extends OncePerRequestFilter {
 
+    private static final String TOKEN_BLACKLIST_PREFIX = "ai:token:blacklist:";
+    private static final String TOKEN_JTI_BLACKLIST_PREFIX = "ai:token:blacklist:jti:";
+    private static final String TOKEN_REVOKED_RESPONSE =
+            "{\"code\":401,\"message\":\"Token 已失效\",\"data\":null}";
+
     private final JwtUtil jwtUtil;
+    private final StringRedisTemplate redisTemplate;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -35,11 +41,25 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         if (token != null && jwtUtil.validateToken(token)) {
             try {
+                if (!"access".equals(jwtUtil.getTokenType(token))) {
+                    chain.doFilter(request, response);
+                    return;
+                }
+
+                String jti = jwtUtil.getJti(token);
+                if (Boolean.TRUE.equals(redisTemplate.hasKey(TOKEN_BLACKLIST_PREFIX + token))
+                        || (jti != null && Boolean.TRUE.equals(redisTemplate.hasKey(TOKEN_JTI_BLACKLIST_PREFIX + jti)))) {
+                    SecurityContextHolder.clearContext();
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json;charset=UTF-8");
+                    response.getWriter().write(TOKEN_REVOKED_RESPONSE);
+                    return;
+                }
+
                 Claims claims = jwtUtil.parseToken(token);
                 String subject = claims.getSubject();
                 String department = (String) claims.get("department");
                 String rolesStr = (String) claims.get("roles");
-                // 优先使用 claims 中的 userId（UUID），回退到 subject（username）
                 Object userIdClaim = claims.get("userId");
                 String userId = userIdClaim != null ? userIdClaim.toString() : subject;
 
@@ -53,16 +73,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 UsernamePasswordAuthenticationToken auth =
                         new UsernamePasswordAuthenticationToken(userId, null, authorities);
 
-                // 将用户信息传递给下游 Controller
                 request.setAttribute("X-User-Id", userId);
                 request.setAttribute("X-Username", subject);
                 request.setAttribute("X-Department", department);
                 request.setAttribute("X-Roles", rolesStr);
 
                 SecurityContextHolder.getContext().setAuthentication(auth);
-                log.debug("JWT 认证成功: userId={}, username={}, roles={}", userId, subject, rolesStr);
+                log.debug("JWT authentication succeeded: userId={}, username={}, roles={}", userId, subject, rolesStr);
             } catch (Exception e) {
-                log.warn("JWT 解析失败: {}", e.getMessage());
+                log.warn("JWT parsing failed: {}", e.getMessage());
                 SecurityContextHolder.clearContext();
             }
         }
@@ -75,7 +94,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith("Bearer ")) {
             return header.substring(7);
         }
-        // 也支持从 Cookie 中读取
         if (request.getCookies() != null) {
             for (var cookie : request.getCookies()) {
                 if ("ai_token".equals(cookie.getName())) {

@@ -6,8 +6,8 @@ spring:
     name: monitor-service
   datasource:
     url: jdbc:postgresql://localhost:5432/ai-platform
-    username: ${DB_USER:postgres}
-    password: ${DB_PASS:blackstar}
+    username: ${DB_USER}
+    password: ${DB_PASS}
     driver-class-name: org.postgresql.Driver
   data:
     redis:
@@ -34,5 +34,52 @@ logging:
     com.huah.ai.platform.monitor: INFO
 
 jwt:
-  secret: ${JWT_SECRET:enterprise-ai-platform-secret-key-minimum-256-bits!!}
+  secret: ${JWT_SECRET}
   expiration-ms: 86400000
+
+monitor:
+  alertmanager:
+    enabled: ${ALERTMANAGER_ENABLED:false}
+    base-url: ${ALERTMANAGER_BASE_URL:http://localhost:9093}
+    api-path: ${ALERTMANAGER_API_PATH:/api/v2/alerts}
+    ui-base-url: ${ALERTMANAGER_UI_BASE_URL:http://localhost:9093}
+    silence-path: ${ALERTMANAGER_SILENCE_PATH:/#/silences/new?filter=}
+    timeout-ms: ${ALERTMANAGER_TIMEOUT_MS:3000}
+  alerts:
+    rules:
+      - id: high-error-rate
+        level: ERROR
+        type: 高错误率
+        summary: AI 请求错误率超过阈值
+        metric: errorRate
+        threshold: 0.05
+      - id: high-error-count
+        level: WARNING
+        type: 错误请求累积
+        summary: 错误请求数量持续偏高
+        metric: errorCount
+        threshold: 10
+      - id: high-p95-latency
+        level: WARNING
+        type: 高延迟告警
+        summary: AI 请求 P95 延迟过高
+        metric: p95LatencyMs
+        threshold: 5000
+      - id: token-limit-breach
+        level: WARNING
+        type: Token 超限
+        summary: Token 配额超限过于频繁
+        metric: tokenLimitExceeded
+        threshold: 0
+      - id: high-concurrency
+        level: WARNING
+        type: 高并发
+        summary: 活跃请求数超过阈值
+        metric: activeRequests
+        threshold: 50
+      - id: dependency-failures
+        level: WARNING
+        type: 依赖失败
+        summary: 外部依赖失败次数偏高
+        metric: dependencyFailures
+        threshold: 0

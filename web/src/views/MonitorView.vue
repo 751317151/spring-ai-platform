@@ -2,18 +2,18 @@
   <div>
     <div class="metrics-grid">
       <MetricCard label="P95 延迟" color="blue">
-        <template #default>{{ overview?.p95LatencyMs ?? '—' }}<span style="font-size: 14px">ms</span></template>
+        <template #default>{{ overview?.p95LatencyMs ?? '--' }}<span style="font-size: 14px">ms</span></template>
       </MetricCard>
       <MetricCard label="错误率" color="green">
         <template #default>{{ errorRate }}<span style="font-size: 14px">%</span></template>
       </MetricCard>
-      <MetricCard label="活跃会话" :value="overview?.activeRequests ?? '—'" :sub="`总请求: ${overview?.totalRequests ?? '—'}`" color="amber" />
+      <MetricCard label="活跃请求" :value="overview?.activeRequests ?? '--'" :sub="`总请求 ${overview?.totalRequests ?? '--'}`" color="amber" />
       <MetricCard label="Token 消耗" :value="formatTokens(overview?.totalTokens ?? 0)" sub="Prompt + Completion" color="purple" />
     </div>
 
     <div class="grid-2" style="margin-bottom: 16px">
       <div class="card">
-        <div class="card-title">延迟分布（ms）</div>
+        <div class="card-title">延迟分布 (ms)</div>
         <div class="chart-container">
           <Bar v-if="barData" :data="barData" :options="barOptions" />
         </div>
@@ -28,7 +28,7 @@
 
     <div class="grid-2">
       <div class="card">
-        <div class="card-title">Token 消耗（按用户 Top 10）</div>
+        <div class="card-title">Token 消耗用户 Top 10</div>
         <TopUsersTable :users="monitorStore.topUsers" />
       </div>
       <div class="card">
@@ -55,11 +55,10 @@ import { formatTokens } from '@/utils/format'
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Legend, Filler)
 
 const monitorStore = useMonitorStore()
-
 const overview = computed(() => monitorStore.overview)
 
 const errorRate = computed(() => {
-  if (!overview.value || overview.value.successRate == null) return '—'
+  if (!overview.value || overview.value.successRate == null) return '--'
   return ((1 - overview.value.successRate) * 100).toFixed(1)
 })
 
@@ -69,7 +68,7 @@ const barData = computed(() => {
   const hours = Array.from({ length: 24 }, (_, i) => `${i}:00`)
   const p50Arr = new Array(24).fill(0)
   const p95Arr = new Array(24).fill(0)
-  stats.forEach(s => {
+  stats.forEach((s) => {
     if (s.hour >= 0 && s.hour < 24) {
       p50Arr[s.hour] = Math.round(s.p50 || 0)
       p95Arr[s.hour] = Math.round(s.p95 || 0)
@@ -99,7 +98,7 @@ const errorLineData = computed(() => {
   if (!stats.length) return null
   const hours = Array.from({ length: 24 }, (_, i) => `${i}:00`)
   const errRateArr = new Array(24).fill(0)
-  stats.forEach(s => {
+  stats.forEach((s) => {
     if (s.hour >= 0 && s.hour < 24) {
       const total = s.total || 0
       const errors = s.errors || 0
@@ -109,7 +108,7 @@ const errorLineData = computed(() => {
   return {
     labels: hours,
     datasets: [{
-      label: '错误率%',
+      label: '错误率',
       data: errRateArr,
       borderColor: '#f06060',
       backgroundColor: 'rgba(240,96,96,0.1)',

@@ -26,6 +26,11 @@
           <button class="btn btn-ghost btn-sm" @click="showToast('会话已导出')">导出</button>
         </div>
       </div>
+      <BackendStatusBanner
+        service="chat"
+        demo-message="聊天页当前运行在演示模式，消息回答来自本地 mock 数据。"
+        unavailable-message="聊天后端暂不可用，页面不会再自动回退到模拟回答。"
+      />
       <ChatMessages />
       <ChatInput @send="handleSend" />
     </div>
@@ -38,6 +43,7 @@ import AgentList from '@/components/chat/AgentList.vue'
 import SessionList from '@/components/chat/SessionList.vue'
 import ChatMessages from '@/components/chat/ChatMessages.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
+import BackendStatusBanner from '@/components/common/BackendStatusBanner.vue'
 import { useChatStore } from '@/stores/chat'
 import { useToast } from '@/composables/useToast'
 import { MODEL_OPTIONS } from '@/utils/constants'

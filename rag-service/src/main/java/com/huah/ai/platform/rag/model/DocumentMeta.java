@@ -3,12 +3,15 @@ package com.huah.ai.platform.rag.model;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
 /**
- * 文档元数据实体
+ * 文档元数据实体。
  */
 @Data
 @TableName("document_meta")
@@ -17,6 +20,10 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class DocumentMeta {
 
+    public static final String STATUS_PROCESSING = "PROCESSING";
+    public static final String STATUS_INDEXED = "INDEXED";
+    public static final String STATUS_FAILED = "FAILED";
+
     @TableId(type = IdType.ASSIGN_UUID)
     private String id;
 
@@ -24,23 +31,18 @@ public class DocumentMeta {
 
     private String knowledgeBaseId;
 
-    /** 文件大小（bytes）*/
     private Long fileSize;
 
-    /** 原始存储路径（S3 key） */
     private String storagePath;
 
-    /** 文件MIME类型 */
     private String contentType;
 
     private int chunkCount;
 
-    /** 上传人 */
     private String uploadedBy;
 
-    /** 状态: PROCESSING | INDEXED | FAILED */
     @Builder.Default
-    private String status = "PROCESSING";
+    private String status = STATUS_PROCESSING;
 
     private String errorMessage;
 

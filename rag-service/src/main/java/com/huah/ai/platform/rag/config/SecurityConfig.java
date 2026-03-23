@@ -3,10 +3,13 @@ package com.huah.ai.platform.rag.config;
 import com.huah.ai.platform.common.filter.JwtAuthFilter;
 import com.huah.ai.platform.common.util.JwtUtil;
 import jakarta.servlet.DispatcherType;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -15,7 +18,11 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
+
+    private final StringRedisTemplate redisTemplate;
 
     @Value("${jwt.secret}")
     private String jwtSecret;
@@ -41,7 +48,7 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/**").permitAll()
                 .anyRequest().authenticated()
             )
-            .addFilterBefore(new JwtAuthFilter(jwtUtil()),
+            .addFilterBefore(new JwtAuthFilter(jwtUtil(), redisTemplate),
                 UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

@@ -7,12 +7,10 @@ const BASE = '/api/v1/agent'
 export function chatStream(
   agentType: AgentType,
   message: string,
-  userId: string,
   sessionId: string
 ): { response: Promise<Response>; abort: () => void } {
   const controller = new AbortController()
   const headers = buildHeaders({
-    'X-User-Id': userId,
     'X-Session-Id': sessionId
   })
 
@@ -26,20 +24,18 @@ export function chatStream(
   return { response, abort: () => controller.abort() }
 }
 
-export function getHistory(agentType: AgentType, userId: string, sessionId: string): Promise<ChatMessage[]> {
+export function getHistory(agentType: AgentType, sessionId: string): Promise<ChatMessage[]> {
   return client.get(`${BASE}/${agentType}/memory`, {
-    headers: { 'X-User-Id': userId, 'X-Session-Id': sessionId }
+    headers: { 'X-Session-Id': sessionId }
   })
 }
 
-export function clearMemory(agentType: AgentType, userId: string, sessionId: string): Promise<void> {
+export function clearMemory(agentType: AgentType, sessionId: string): Promise<void> {
   return client.delete(`${BASE}/${agentType}/memory`, {
-    headers: { 'X-User-Id': userId, 'X-Session-Id': sessionId }
+    headers: { 'X-Session-Id': sessionId }
   })
 }
 
-export function getSessions(agentType: AgentType, userId: string): Promise<SessionInfo[]> {
-  return client.get(`${BASE}/${agentType}/sessions`, {
-    headers: { 'X-User-Id': userId }
-  })
+export function getSessions(agentType: AgentType): Promise<SessionInfo[]> {
+  return client.get(`${BASE}/${agentType}/sessions`)
 }

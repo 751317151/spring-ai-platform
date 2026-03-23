@@ -7,8 +7,12 @@ export function login(data: LoginRequest): Promise<LoginResponse> {
   return client.post(`${BASE}/login`, data)
 }
 
-export function logout(): Promise<void> {
-  return client.post(`${BASE}/logout`)
+export function refresh(refreshToken: string): Promise<LoginResponse> {
+  return client.post(`${BASE}/refresh`, { refreshToken })
+}
+
+export function logout(refreshToken?: string): Promise<void> {
+  return client.post(`${BASE}/logout`, refreshToken ? { refreshToken } : {})
 }
 
 export function getUsers(): Promise<AiUser[]> {

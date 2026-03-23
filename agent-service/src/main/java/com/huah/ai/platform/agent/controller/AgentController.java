@@ -25,6 +25,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -37,6 +40,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -122,6 +127,9 @@ public class AgentController {
         try {
             AgentChatResult result = routeToAgent(agentType, userId, sessionId, message);
             long latency = System.currentTimeMillis() - startTime;
+            metricsCollector.recordModelCall(agentType, latency, true);
+            metricsCollector.recordRequest(null, agentType, latency, true,
+                    result.getPromptTokens(), result.getCompletionTokens());
             log.info("[Chat] 模型输出 agent={}, userId={}, latency={}ms, responseLength={}, promptTokens={}, completionTokens={}, response={}",
                     agentType, userId, latency,
                     result.getContent() != null ? result.getContent().length() : 0,
@@ -133,6 +141,10 @@ public class AgentController {
             return Result.ok(result.getContent());
         } catch (Exception e) {
             long latency = System.currentTimeMillis() - startTime;
+            metricsCollector.recordModelCall("multi", latency, false);
+            metricsCollector.recordRequest(null, "multi", latency, false, 0, 0);
+            metricsCollector.recordModelCall(agentType, latency, false);
+            metricsCollector.recordRequest(null, agentType, latency, false, 0, 0);
             log.error("[Chat] 调用失败 agent={}, userId={}, latency={}ms, error={}",
                     agentType, userId, latency, e.getMessage(), e);
             // 调用失败回滚预扣
@@ -229,6 +241,7 @@ public class AgentController {
 
                     metricsCollector.decrementActive();
                     long latency = System.currentTimeMillis() - startTime;
+                    metricsCollector.recordModelCall("multi", latency, true);
                     log.info("[Stream] Multi-Agent 完成 userId={}, latency={}ms, tokens={}/{}", userId, latency, totalPrompt, totalCompletion);
                     metricsCollector.recordRequest(null, "multi", latency, true, totalPrompt, totalCompletion);
                     saveAuditLog(userId, sessionId, "multi", message, truncate(criticResult.getContent(), 500), latency, true, null, totalPrompt, totalCompletion);
@@ -261,6 +274,7 @@ public class AgentController {
                             .doOnComplete(() -> {
                                 metricsCollector.decrementActive();
                                 long latency = System.currentTimeMillis() - startTime;
+                                metricsCollector.recordModelCall(agentType, latency, true);
                                 String resp = fullResponse.toString();
                                 log.info("[Stream] 模型输出 agent={}, userId={}, latency={}ms, chunks={}, responseLength={}, promptTokens={}, completionTokens={}, response={}",
                                         agentType, userId, latency, chunkCount.get(),
@@ -276,6 +290,7 @@ public class AgentController {
                             .doOnError(e -> {
                                 metricsCollector.decrementActive();
                                 long latency = System.currentTimeMillis() - startTime;
+                                metricsCollector.recordModelCall(agentType, latency, false);
                                 log.error("[Stream] 流式异常 agent={}, userId={}, latency={}ms, chunks={}, partialResponse={}, error={}",
                                         agentType, userId, latency, chunkCount.get(),
                                         truncate(fullResponse.toString(), 200), e.getMessage(), e);
@@ -291,6 +306,7 @@ public class AgentController {
             } catch (Exception e) {
                 metricsCollector.decrementActive();
                 long latency = System.currentTimeMillis() - startTime;
+                metricsCollector.recordModelCall(agentType, latency, false);
                 log.error("[Stream] 执行异常 agent={}, userId={}, latency={}ms, error={}",
                         agentType, userId, latency, e.getMessage(), e);
                 metricsCollector.recordRequest(null, agentType, latency, false, 0, 0);
@@ -337,6 +353,9 @@ public class AgentController {
         try {
             var result = multiAgentOrchestrator.executeComplexTask(userId, sessionId, task);
             long latency = System.currentTimeMillis() - startTime;
+            metricsCollector.recordModelCall("multi", latency, true);
+            metricsCollector.recordRequest(null, "multi", latency, true,
+                    result.getPromptTokens(), result.getCompletionTokens());
             log.info("[Multi] 模型输出 userId={}, latency={}ms, responseLength={}, tokens={}/{}, response={}",
                     userId, latency,
                     result.getContent() != null ? result.getContent().length() : 0,
@@ -380,7 +399,7 @@ public class AgentController {
             @PathVariable(name = "agentType") String agentType,
             HttpServletRequest request) {
         String userId = getUserId(request);
-        String prefix = userId + "-" + agentType + "-";
+        String prefix = buildSessionPrefix(userId, agentType);
         log.info("[Sessions] 查询会话列表 agent={}, userId={}, prefix={}", agentType, userId, prefix);
         return Result.ok(memoryService.listSessions(prefix));
     }
@@ -389,17 +408,38 @@ public class AgentController {
 
     private String getUserId(HttpServletRequest request) {
         Object attr = request.getAttribute("X-User-Id");
-        return attr != null ? attr.toString() : "anonymous";
+        if (attr != null) {
+            return attr.toString();
+        }
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getPrincipal() != null) {
+            return authentication.getPrincipal().toString();
+        }
+        return "anonymous";
     }
 
     private String getRoles(HttpServletRequest request) {
         Object attr = request.getAttribute("X-Roles");
-        return attr != null ? attr.toString() : null;
+        if (attr != null) {
+            return attr.toString();
+        }
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getAuthorities() == null) {
+            return null;
+        }
+        return authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .reduce((left, right) -> left + "," + right)
+                .orElse(null);
     }
 
     private String getDepartment(HttpServletRequest request) {
         Object attr = request.getAttribute("X-Department");
         return attr != null ? attr.toString() : null;
+    }
+
+    private String buildSessionPrefix(String userId, String agentType) {
+        return URLEncoder.encode(userId, StandardCharsets.UTF_8) + "-" + agentType + "-";
     }
 
     // ===== Internal =====

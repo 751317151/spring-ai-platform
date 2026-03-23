@@ -18,7 +18,17 @@ import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -30,7 +40,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * RAG 知识库接口
+ * RAG 知识库接口。
  */
 @Slf4j
 @RestController
@@ -45,17 +55,11 @@ public class RagController {
     private final S3Properties s3Properties;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
-    // ============ 知识库问答 ============
-
-    /**
-     * 普通问答（返回 answer + sources）
-     */
     @PostMapping("/query")
     public Result<RagQueryResponse> query(@RequestBody RagQueryRequest req) {
         long start = System.currentTimeMillis();
         int topK = req.getTopK() != null ? req.getTopK() : 5;
 
-        // 并行：生成答案 + 检索来源文档
         String answer = ragService.query(req.getQuestion(), req.getKnowledgeBaseId(), topK);
         List<Document> sourceDocs = ragService.search(req.getQuestion(), req.getKnowledgeBaseId(), topK);
 
@@ -79,9 +83,6 @@ public class RagController {
                 .build());
     }
 
-    /**
-     * 流式问答（SSE）— 前端监听 data: {chunk, done}
-     */
     @PostMapping(value = "/query/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter queryStream(@RequestBody RagQueryRequest req) {
         SseEmitter emitter = new SseEmitter(60_000L);
@@ -89,16 +90,23 @@ public class RagController {
             try {
                 int topK = req.getTopK() != null ? req.getTopK() : 5;
                 ragService.queryStream(req.getQuestion(), req.getKnowledgeBaseId(), topK)
-                    .doOnNext(chunk -> {
-                        try { emitter.send(SseEmitter.event().data(Map.of("chunk", chunk, "done", false))); }
-                        catch (IOException e) { emitter.completeWithError(e); }
-                    })
-                    .doOnComplete(() -> {
-                        try { emitter.send(SseEmitter.event().data(Map.of("chunk", "", "done", true))); emitter.complete(); }
-                        catch (IOException e) { emitter.completeWithError(e); }
-                    })
-                    .doOnError(emitter::completeWithError)
-                    .subscribe();
+                        .doOnNext(chunk -> {
+                            try {
+                                emitter.send(SseEmitter.event().data(Map.of("chunk", chunk, "done", false)));
+                            } catch (IOException e) {
+                                emitter.completeWithError(e);
+                            }
+                        })
+                        .doOnComplete(() -> {
+                            try {
+                                emitter.send(SseEmitter.event().data(Map.of("chunk", "", "done", true)));
+                                emitter.complete();
+                            } catch (IOException e) {
+                                emitter.completeWithError(e);
+                            }
+                        })
+                        .doOnError(emitter::completeWithError)
+                        .subscribe();
             } catch (Exception e) {
                 emitter.completeWithError(e);
             }
@@ -106,9 +114,6 @@ public class RagController {
         return emitter;
     }
 
-    /**
-     * 纯向量相似性检索
-     */
     @PostMapping("/search")
     public Result<List<Document>> search(
             @RequestParam String query,
@@ -117,9 +122,8 @@ public class RagController {
         return Result.ok(ragService.search(query, knowledgeBaseId, topK));
     }
 
-    // ============ 知识库管理 ============
-
     @PostMapping("/knowledge-bases")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<KnowledgeBase> createKnowledgeBase(@RequestBody KnowledgeBase kb) {
         return Result.ok(metaService.createKnowledgeBase(kb));
     }
@@ -135,23 +139,20 @@ public class RagController {
     }
 
     @PutMapping("/knowledge-bases/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<KnowledgeBase> updateKnowledgeBase(@PathVariable String id, @RequestBody KnowledgeBase kb) {
         return Result.ok(metaService.updateKnowledgeBase(id, kb));
     }
 
     @DeleteMapping("/knowledge-bases/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<Void> deleteKnowledgeBase(@PathVariable String id) {
         metaService.deleteKnowledgeBase(id);
         return Result.ok(null);
     }
 
-    // ============ 文档管理 ============
-
-    /**
-     * 上传单文档并向量化入库
-     * X-User-Id 使用 defaultValue，前端未传时不报错
-     */
     @PostMapping("/documents/upload")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<DocumentMeta> uploadDocument(
             @RequestParam("file") MultipartFile file,
             @RequestParam("knowledgeBaseId") String knowledgeBaseId,
@@ -160,10 +161,8 @@ public class RagController {
         return Result.ok(meta);
     }
 
-    /**
-     * 批量上传
-     */
     @PostMapping("/documents/batch-upload")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<List<DocumentMeta>> batchUpload(
             @RequestParam("files") List<MultipartFile> files,
             @RequestParam("knowledgeBaseId") String knowledgeBaseId,
@@ -174,53 +173,50 @@ public class RagController {
         return Result.ok(results);
     }
 
-    /**
-     * 查询知识库下的文档列表
-     */
     @GetMapping("/documents")
-    public Result<List<DocumentMeta>> listDocuments(
-            @RequestParam("knowledgeBaseId") String knowledgeBaseId) {
+    public Result<List<DocumentMeta>> listDocuments(@RequestParam("knowledgeBaseId") String knowledgeBaseId) {
         return Result.ok(metaService.listDocuments(knowledgeBaseId));
     }
 
-    /**
-     * 获取单个文档元数据
-     */
     @GetMapping("/documents/{id}")
     public Result<DocumentMeta> getDocument(@PathVariable("id") String id) {
         return Result.ok(metaService.getDocument(id));
     }
 
-    /**
-     * 下载文档原始文件
-     */
+    @PostMapping("/documents/{id}/retry")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<DocumentMeta> retryDocument(@PathVariable("id") String id) {
+        return Result.ok(ingestionService.retryDocument(id));
+    }
+
+    @GetMapping("/documents/retry-candidates")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<List<DocumentMeta>> retryCandidates(@RequestParam(defaultValue = "20") int limit) {
+        return Result.ok(metaService.listRetryableFailedDocuments(limit));
+    }
+
     @GetMapping("/documents/{id}/download")
     public ResponseEntity<InputStreamResource> downloadDocument(@PathVariable("id") String id) {
         DocumentMeta doc = metaService.getDocument(id);
         if (doc.getStoragePath() == null) {
-            throw new BizException("该文档没有原始文件存储");
+            throw new BizException("该文档没有原始文件存储记录");
         }
         InputStream inputStream = fileStorageService.download(doc.getStoragePath());
         String contentType = doc.getContentType() != null ? doc.getContentType() : "application/octet-stream";
 
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(contentType))
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + doc.getFilename() + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + doc.getFilename() + "\"")
                 .body(new InputStreamResource(inputStream));
     }
 
-    /**
-     * 在线预览文档（返回预签名URL）
-     */
     @GetMapping("/documents/{id}/preview")
     public Result<Map<String, String>> previewDocument(@PathVariable("id") String id) {
         DocumentMeta doc = metaService.getDocument(id);
         if (doc.getStoragePath() == null) {
-            throw new BizException("该文档没有原始文件存储");
+            throw new BizException("该文档没有原始文件存储记录");
         }
-        String url = fileStorageService.generatePresignedUrl(
-                doc.getStoragePath(), s3Properties.getPresignedUrlExpiry());
+        String url = fileStorageService.generatePresignedUrl(doc.getStoragePath(), s3Properties.getPresignedUrlExpiry());
         return Result.ok(Map.of(
                 "previewUrl", url,
                 "filename", doc.getFilename(),
@@ -228,10 +224,8 @@ public class RagController {
         ));
     }
 
-    /**
-     * 删除文档（元数据 + S3文件 + 向量）
-     */
     @DeleteMapping("/documents/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<Void> deleteDocument(@PathVariable("id") String id) {
         metaService.deleteDocument(id);
         return Result.ok(null);

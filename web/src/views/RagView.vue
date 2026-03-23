@@ -1,5 +1,11 @@
 <template>
   <div>
+    <BackendStatusBanner
+      service="rag"
+      demo-message="知识库页当前运行在演示模式，列表和答案来自本地 mock 数据。"
+      unavailable-message="知识库后端暂不可用，页面不会再自动回退到模拟答案。"
+    />
+
     <KnowledgeBaseGrid />
 
     <div class="grid-2">
@@ -19,6 +25,7 @@
 
 <script setup lang="ts">
 import { onMounted } from 'vue'
+import BackendStatusBanner from '@/components/common/BackendStatusBanner.vue'
 import KnowledgeBaseGrid from '@/components/rag/KnowledgeBaseGrid.vue'
 import DocumentUpload from '@/components/rag/DocumentUpload.vue'
 import DocumentTable from '@/components/rag/DocumentTable.vue'

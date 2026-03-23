@@ -5,6 +5,7 @@ import type { LoginResponse } from '@/api/types'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('auth_token'))
+  const refreshToken = ref<string | null>(localStorage.getItem('auth_refreshToken'))
   const userId = ref(localStorage.getItem('auth_userId') || 'EMP001')
   const username = ref(localStorage.getItem('auth_username') || '')
   const roles = ref(localStorage.getItem('auth_roles') || '')
@@ -14,11 +15,17 @@ export const useAuthStore = defineStore('auth', () => {
 
   function setAuth(data: LoginResponse) {
     token.value = data.token
+    refreshToken.value = data.refreshToken || null
     userId.value = data.userId
     username.value = data.username
     roles.value = data.roles
     department.value = data.department
     localStorage.setItem('auth_token', data.token)
+    if (data.refreshToken) {
+      localStorage.setItem('auth_refreshToken', data.refreshToken)
+    } else {
+      localStorage.removeItem('auth_refreshToken')
+    }
     localStorage.setItem('auth_userId', data.userId)
     localStorage.setItem('auth_username', data.username)
     localStorage.setItem('auth_roles', data.roles)
@@ -27,11 +34,13 @@ export const useAuthStore = defineStore('auth', () => {
 
   function clearAuth() {
     token.value = null
+    refreshToken.value = null
     userId.value = 'EMP001'
     username.value = ''
     roles.value = ''
     department.value = ''
     localStorage.removeItem('auth_token')
+    localStorage.removeItem('auth_refreshToken')
     localStorage.removeItem('auth_userId')
     localStorage.removeItem('auth_username')
     localStorage.removeItem('auth_roles')
@@ -44,15 +53,14 @@ export const useAuthStore = defineStore('auth', () => {
       setAuth(data)
       return true
     } catch {
-      // Backend is offline - login fails
-      throw new Error('无法连接到认证服务，请稍后重试')
+      throw new Error('无法连接到认证服务，请稍后重试。')
     }
   }
 
   async function logout() {
     try {
       if (token.value && !token.value.startsWith('mock-token-')) {
-        await authApi.logout()
+        await authApi.logout(refreshToken.value || undefined)
       }
     } catch {
       // ignore logout errors
@@ -61,5 +69,5 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  return { token, userId, username, roles, department, isAuthenticated, login, logout }
+  return { token, refreshToken, userId, username, roles, department, isAuthenticated, setAuth, clearAuth, login, logout }
 })

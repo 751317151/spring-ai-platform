@@ -1,6 +1,9 @@
 package com.huah.ai.platform.agent.metrics;
 
-import io.micrometer.core.instrument.*;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -8,8 +11,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * AI 平台自定义指标收集器（agent-service 本地）
- * 在实际处理 AI 请求的 JVM 内记录 Micrometer 指标，供 Prometheus 抓取。
+ * agent-service 本地指标采集器。
  */
 @Slf4j
 @Component
@@ -47,9 +49,6 @@ public class AiMetricsCollector {
                 .register(registry);
     }
 
-    /**
-     * 记录一次 AI 调用的完整指标
-     */
     public void recordRequest(String modelId, String agentType, long latencyMs,
                               boolean success, int promptTokens, int completionTokens) {
         totalRequestsCounter.increment();
@@ -62,26 +61,44 @@ public class AiMetricsCollector {
 
         Timer.builder("ai.request.latency")
                 .description("AI 请求响应延迟")
-                .tag("model", modelId != null ? modelId : "unknown")
-                .tag("agent", agentType != null ? agentType : "unknown")
+                .tag("model", normalize(modelId))
+                .tag("agent", normalize(agentType))
                 .tag("success", String.valueOf(success))
                 .register(registry)
                 .record(latencyMs, TimeUnit.MILLISECONDS);
 
         Counter.builder("ai.requests.by_model")
-                .tag("model", modelId != null ? modelId : "unknown")
+                .tag("model", normalize(modelId))
                 .tag("success", String.valueOf(success))
                 .register(registry)
                 .increment();
 
-        log.debug("记录指标: agent={}, model={}, latency={}ms, success={}, tokens={}/{}",
+        log.debug("记录请求指标: agent={}, model={}, latency={}ms, success={}, tokens={}/{}",
                 agentType, modelId, latencyMs, success, promptTokens, completionTokens);
     }
 
-    /** 记录 Token 超限 */
+    public void recordModelCall(String agentType, long latencyMs, boolean success) {
+        Timer.builder("ai.model.call.latency")
+                .description("External model call latency")
+                .tag("agent", normalize(agentType))
+                .tag("success", String.valueOf(success))
+                .publishPercentileHistogram()
+                .register(registry)
+                .record(latencyMs, TimeUnit.MILLISECONDS);
+    }
+
+    public void recordDependencyFailure(String dependency, String operation) {
+        Counter.builder("ai.dependency.failures")
+                .description("Agent dependency failure count")
+                .tag("dependency", normalize(dependency))
+                .tag("operation", normalize(operation))
+                .register(registry)
+                .increment();
+    }
+
     public void recordTokenLimitExceeded(String agentType) {
         Counter.builder("ai.token.limit.exceeded")
-                .tag("agent", agentType != null ? agentType : "unknown")
+                .tag("agent", normalize(agentType))
                 .register(registry)
                 .increment();
     }
@@ -92,5 +109,9 @@ public class AiMetricsCollector {
 
     public void decrementActive() {
         activeConcurrency.decrementAndGet();
+    }
+
+    private String normalize(String value) {
+        return value == null || value.isBlank() ? "unknown" : value;
     }
 }
