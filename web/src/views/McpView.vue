@@ -1,26 +1,34 @@
 <template>
-  <div>
-    <div class="page-header">
-      <div>
+  <div class="space-admin">
+    <div class="page-hero">
+      <div class="page-hero-main">
+        <div class="eyebrow">基础设施</div>
         <div class="page-title">MCP 管理</div>
         <div class="page-subtitle">
-          当前页面用于展示 agent-service 已加载的 MCP servers 配置，不支持在线编辑。
+          查看 `agent-service` 加载的 MCP 服务，检查启动命令与参数，并确认运行时启用状态。
+        </div>
+        <div class="hero-tags">
+          <span class="tag">MCP 客户端 {{ clientEnabled ? '开启' : '关闭' }}</span>
+          <span class="tag">{{ data?.count ?? 0 }} 个服务</span>
+          <span class="tag">{{ data?.source || 'classpath:mcp-servers.json' }}</span>
         </div>
       </div>
-      <button class="btn btn-primary btn-sm" :disabled="loading" @click="loadData">
-        {{ loading ? '刷新中...' : '刷新配置' }}
-      </button>
+      <div class="page-hero-actions">
+        <button class="btn btn-primary btn-sm" :disabled="loading" @click="loadData">
+          {{ loading ? '刷新中...' : '刷新配置' }}
+        </button>
+      </div>
     </div>
 
     <div class="summary-grid">
       <div class="card summary-card">
-        <div class="summary-label">MCP Client</div>
+        <div class="summary-label">MCP 客户端</div>
         <div :class="['summary-value', clientEnabled ? 'status-on' : 'status-off']">
-          {{ clientEnabled ? '已启用' : '未启用' }}
+          {{ clientEnabled ? '已启用' : '已停用' }}
         </div>
       </div>
       <div class="card summary-card">
-        <div class="summary-label">Server 数量</div>
+        <div class="summary-label">服务数量</div>
         <div class="summary-value">{{ data?.count ?? 0 }}</div>
       </div>
       <div class="card summary-card">
@@ -32,31 +40,48 @@
     <div class="card">
       <div class="card-header">
         <div>
-          <div class="card-title">Server 列表</div>
-          <div class="card-subtitle">用于核对当前 MCP server 命令、参数和启用状态。</div>
+          <div class="card-title">服务列表</div>
+          <div class="card-subtitle">检查启动命令、参数，以及服务端和客户端两侧的启用状态。</div>
         </div>
       </div>
 
-      <table class="compact-table">
+      <div v-if="data?.servers?.length" class="mcp-summary-note">
+        可将此表作为运行时核查面板。如果聊天中缺少某个工具，先确认这里的 MCP 客户端已启用，同时对应服务也处于启用状态。
+      </div>
+
+      <div v-if="loading" class="mcp-loading-list">
+        <div v-for="idx in 3" :key="idx" class="mcp-loading-item skeleton"></div>
+      </div>
+
+      <EmptyState
+        v-else-if="!!error"
+        icon="!"
+        title="MCP 配置加载失败"
+        :description="error"
+        action-text="重试"
+        @action="loadData"
+      />
+
+      <EmptyState
+        v-else-if="!data?.servers?.length"
+        icon="M"
+        title="暂无 MCP 服务"
+        description="请检查 `agent-service` 是否存在有效的 `mcp-servers.json` 文件，以及 MCP 客户端是否已启用。"
+        action-text="刷新配置"
+        @action="loadData"
+      />
+
+      <table v-else class="compact-table">
         <thead>
           <tr>
             <th>编码</th>
             <th>命令</th>
             <th>参数</th>
-            <th>Server 状态</th>
-            <th>Client 状态</th>
+            <th>服务端状态</th>
+            <th>客户端状态</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-if="loading">
-            <td colspan="5" class="empty-cell">正在加载 MCP 配置...</td>
-          </tr>
-          <tr v-else-if="error">
-            <td colspan="5" class="empty-cell error-text">{{ error }}</td>
-          </tr>
-          <tr v-else-if="!data?.servers?.length">
-            <td colspan="5" class="empty-cell">当前没有可展示的 MCP server 配置</td>
-          </tr>
           <tr v-for="server in data?.servers || []" :key="server.code">
             <td>
               <div class="server-code">{{ server.code }}</div>
@@ -71,12 +96,12 @@
             </td>
             <td>
               <span :class="['status-chip', server.enabled ? 'status-on' : 'status-off']">
-                {{ server.enabled ? '启用' : '禁用' }}
+                {{ server.enabled ? '启用' : '停用' }}
               </span>
             </td>
             <td>
               <span :class="['status-chip', server.clientEnabled ? 'status-on' : 'status-off']">
-                {{ server.clientEnabled ? '启用' : '禁用' }}
+                {{ server.clientEnabled ? '启用' : '停用' }}
               </span>
             </td>
           </tr>
@@ -90,6 +115,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { getMcpServers } from '@/api/agent'
 import type { McpServerListResponse } from '@/api/types'
+import EmptyState from '@/components/common/EmptyState.vue'
 
 const loading = ref(false)
 const error = ref('')
@@ -115,27 +141,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.page-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.page-subtitle {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--text3);
-  line-height: 1.6;
-}
-
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -174,6 +179,26 @@ onMounted(() => {
   gap: 6px;
 }
 
+.mcp-loading-list {
+  display: grid;
+  gap: 10px;
+}
+
+.mcp-summary-note {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--text3);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.mcp-loading-item {
+  height: 64px;
+  border-radius: 12px;
+}
+
 .arg-chip,
 .status-chip {
   display: inline-flex;
@@ -202,15 +227,7 @@ onMounted(() => {
   background: rgba(245, 158, 11, 0.14);
 }
 
-.error-text {
-  color: #b91c1c;
-}
-
 @media (max-width: 960px) {
-  .page-header {
-    flex-direction: column;
-  }
-
   .summary-grid {
     grid-template-columns: 1fr;
   }

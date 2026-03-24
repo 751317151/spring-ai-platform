@@ -18,11 +18,19 @@ export const useRagStore = defineStore('rag', () => {
   const queryResponseId = ref('')
   const queryFeedback = ref<'up' | 'down' | null>(null)
   const isQuerying = ref(false)
+  const queryStage = ref<'idle' | 'retrieving' | 'answering'>('idle')
+  const queryError = ref('')
+  const loadingKnowledgeBases = ref(false)
+  const loadingDocuments = ref(false)
+  const knowledgeBaseError = ref('')
+  const documentError = ref('')
 
   const authStore = useAuthStore()
   const runtimeStore = useRuntimeStore()
 
   async function loadKnowledgeBases() {
+    loadingKnowledgeBases.value = true
+    knowledgeBaseError.value = ''
     try {
       const data = await ragApi.listKnowledgeBases()
       knowledgeBases.value = data || []
@@ -36,8 +44,11 @@ export const useRagStore = defineStore('rag', () => {
         currentKb.value = ''
         currentKbName.value = ''
         documents.value = []
-        runtimeStore.markServiceUnavailable('rag', '知识库列表加载失败，请检查 rag-service 状态。')
+        knowledgeBaseError.value = '知识库列表加载失败，请检查 rag-service 状态。'
+        runtimeStore.markServiceUnavailable('rag', knowledgeBaseError.value)
       }
+    } finally {
+      loadingKnowledgeBases.value = false
     }
 
     if (knowledgeBases.value.length > 0 && !knowledgeBases.value.find((kb) => kb.id === currentKb.value)) {
@@ -56,18 +67,20 @@ export const useRagStore = defineStore('rag', () => {
     if (!currentKb.value) {
       return
     }
+    loadingDocuments.value = true
+    documentError.value = ''
     try {
       const data = await ragApi.listDocuments(currentKb.value)
       documents.value = data || []
       runtimeStore.markServiceAvailable('rag')
     } catch {
       documents.value = []
-      runtimeStore.markServiceUnavailable(
-        'rag',
-        runtimeStore.demoMode
-          ? '文档列表接口不可用，当前仅展示演示知识库摘要。'
-          : '文档列表加载失败，请稍后重试。'
-      )
+      documentError.value = runtimeStore.demoMode
+        ? '文档列表接口不可用，当前仅展示知识库概览。'
+        : '文档列表加载失败，请稍后重试。'
+      runtimeStore.markServiceUnavailable('rag', documentError.value)
+    } finally {
+      loadingDocuments.value = false
     }
   }
 
@@ -183,7 +196,9 @@ export const useRagStore = defineStore('rag', () => {
     querySources.value = []
     queryResponseId.value = ''
     queryFeedback.value = null
+    queryError.value = ''
     isQuerying.value = true
+    queryStage.value = 'retrieving'
 
     try {
       if (stream) {
@@ -221,6 +236,7 @@ export const useRagStore = defineStore('rag', () => {
             try {
               const data = JSON.parse(jsonStr) as SSEChunk
               if (data.chunk) {
+                queryStage.value = 'answering'
                 queryResult.value += data.chunk
               }
               if (Array.isArray(data.sources)) {
@@ -230,6 +246,7 @@ export const useRagStore = defineStore('rag', () => {
                 queryResponseId.value = data.responseId
               }
             } catch {
+              queryStage.value = 'answering'
               queryResult.value += jsonStr
             }
           }
@@ -240,6 +257,7 @@ export const useRagStore = defineStore('rag', () => {
           knowledgeBaseId: currentKb.value,
           topK
         })
+        queryStage.value = 'answering'
         queryResult.value = data.answer || ''
         querySources.value = (data.sources || []).map((item) => ({ ...item, feedback: null }))
         queryResponseId.value = data.responseId || ''
@@ -247,6 +265,9 @@ export const useRagStore = defineStore('rag', () => {
 
       runtimeStore.markServiceAvailable('rag')
     } catch {
+      queryError.value = runtimeStore.demoMode
+        ? '问答后端不可用，已切换为演示答案。'
+        : '知识库问答服务暂不可用，请稍后重试。'
       runtimeStore.markServiceUnavailable(
         'rag',
         runtimeStore.demoMode
@@ -258,13 +279,14 @@ export const useRagStore = defineStore('rag', () => {
         queryResult.value = MOCK_RAG_RESPONSES[currentKb.value] || '当前为演示模式，暂未找到对应的模拟答案。'
         querySources.value = MOCK_RAG_SOURCES.map((item) => ({ ...item, feedback: null }))
       } else {
-        queryResult.value = '知识库服务暂不可用，请稍后重试。当前页面不会自动切换到模拟答案。'
+        queryResult.value = ''
         querySources.value = []
       }
       queryResponseId.value = ''
       queryFeedback.value = null
     } finally {
       isQuerying.value = false
+      queryStage.value = 'idle'
     }
   }
 
@@ -300,6 +322,12 @@ export const useRagStore = defineStore('rag', () => {
     queryResponseId,
     queryFeedback,
     isQuerying,
+    queryStage,
+    queryError,
+    loadingKnowledgeBases,
+    loadingDocuments,
+    knowledgeBaseError,
+    documentError,
     loadKnowledgeBases,
     selectKb,
     loadDocuments,

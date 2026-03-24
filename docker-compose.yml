@@ -188,7 +188,7 @@ services:
       SPRING_AI_OLLAMA_BASE_URL: http://ollama:11434
       ALI_QWEN_API_KEY: ${ALI_QWEN_API_KEY:-sk-xxx}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode}
-      LLM_MODEL: ${LLM_MODEL:-qwen3-vl-plus-2025-12-19}
+      LLM_MODEL: ${LLM_MODEL:-qwen3-vl-flash-2026-01-22}
       S3_ENDPOINT: http://minio:9000
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_BUCKET: ${S3_BUCKET:-blackstar}
@@ -226,7 +226,7 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       ALI_QWEN_API_KEY: ${ALI_QWEN_API_KEY:-sk-xxx}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode}
-      LLM_MODEL: ${LLM_MODEL:-qwen3-vl-plus-2025-12-19}
+      LLM_MODEL: ${LLM_MODEL:-qwen3-vl-flash-2026-01-22}
       # Docker 容器内无 npx/node，禁用 MCP stdio 模式
       SPRING_AI_MCP_CLIENT_ENABLED: "false"
       JWT_SECRET: ${JWT_SECRET:-enterprise-ai-platform-secret-key-minimum-256-bits!!}

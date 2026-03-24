@@ -15,12 +15,35 @@ export const useChatStore = defineStore('chat', () => {
   const currentSessionId = ref<string | null>(null)
   const sessionList = ref<SessionInfo[]>([])
   const chatHistory = ref<ChatMessage[]>([])
+  const sessionDrafts = ref<Record<string, string>>({})
   const isThinking = ref(false)
   const availableBots = ref<BotPermission[]>([])
   const showArchivedSessions = ref(false)
+  const activeStreamAbort = ref<(() => void) | null>(null)
 
   const authStore = useAuthStore()
   const runtimeStore = useRuntimeStore()
+
+  function getDraftStorageKey() {
+    return `chat_session_drafts_${encodeURIComponent(authStore.userId || 'anonymous')}`
+  }
+
+  function loadDrafts() {
+    try {
+      const raw = sessionStorage.getItem(getDraftStorageKey())
+      sessionDrafts.value = raw ? JSON.parse(raw) : {}
+    } catch {
+      sessionDrafts.value = {}
+    }
+  }
+
+  function persistDrafts() {
+    try {
+      sessionStorage.setItem(getDraftStorageKey(), JSON.stringify(sessionDrafts.value))
+    } catch {
+      // ignore persistence failures
+    }
+  }
 
   const agentList = computed(() => {
     if (runtimeStore.demoMode) {
@@ -108,6 +131,9 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function selectAgent(type: AgentType) {
+    if (isThinking.value) {
+      stopStreaming()
+    }
     currentAgent.value = type
     chatHistory.value = []
     currentSessionId.value = null
@@ -139,6 +165,9 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function switchSession(sessionId: string) {
+    if (isThinking.value) {
+      stopStreaming()
+    }
     currentSessionId.value = sessionId
     chatHistory.value = []
     try {
@@ -159,6 +188,10 @@ export const useChatStore = defineStore('chat', () => {
     const sid = generateSessionId()
     currentSessionId.value = sid
     chatHistory.value = []
+    if (!sessionDrafts.value[sid]) {
+      sessionDrafts.value[sid] = ''
+      persistDrafts()
+    }
     sessionList.value = sortSessions([
       {
         sessionId: sid,
@@ -246,6 +279,10 @@ export const useChatStore = defineStore('chat', () => {
     try {
       await agentApi.deleteSession(currentAgent.value, sessionId)
       sessionList.value = sessionList.value.filter((item) => item.sessionId !== sessionId)
+      if (sessionId in sessionDrafts.value) {
+        delete sessionDrafts.value[sessionId]
+        persistDrafts()
+      }
 
       if (currentSessionId.value === sessionId) {
         chatHistory.value = []
@@ -282,6 +319,7 @@ export const useChatStore = defineStore('chat', () => {
     if (!currentSessionId.value) {
       currentSessionId.value = sessionId
     }
+    clearDraft(sessionId)
 
     const session = sessionList.value.find((item) => item.sessionId === sessionId)
     if (session) {
@@ -294,9 +332,11 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     let fullResponse = ''
+    let messageIndex = -1
 
     try {
-      const { response } = agentApi.chatStream(currentAgent.value, message, sessionId)
+      const { response, abort } = agentApi.chatStream(currentAgent.value, message, sessionId)
+      activeStreamAbort.value = abort
       const res = await response
 
       if (!res.ok || !res.body) {
@@ -304,7 +344,7 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       chatHistory.value.push({ role: 'assistant', content: '', feedback: null })
-      const messageIndex = chatHistory.value.length - 1
+      messageIndex = chatHistory.value.length - 1
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
@@ -362,7 +402,19 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       runtimeStore.markServiceAvailable('chat')
-    } catch {
+    } catch (error) {
+      const aborted = error instanceof DOMException && error.name === 'AbortError'
+      if (aborted) {
+        if (messageIndex >= 0) {
+          const current = chatHistory.value[messageIndex]
+          chatHistory.value[messageIndex] = {
+            ...current,
+            content: (current?.content || '已停止生成').trim()
+          }
+        }
+        return fullResponse
+      }
+
       runtimeStore.markServiceUnavailable(
         'chat',
         runtimeStore.demoMode
@@ -383,6 +435,7 @@ export const useChatStore = defineStore('chat', () => {
         })
       }
     } finally {
+      activeStreamAbort.value = null
       isThinking.value = false
     }
 
@@ -415,16 +468,47 @@ export const useChatStore = defineStore('chat', () => {
     createNewSession()
   }
 
+  function stopStreaming() {
+    activeStreamAbort.value?.()
+  }
+
+  function setDraft(sessionId: string | null, value: string) {
+    if (!sessionId) {
+      return
+    }
+    sessionDrafts.value[sessionId] = value
+    persistDrafts()
+  }
+
+  function getDraft(sessionId: string | null) {
+    if (!sessionId) {
+      return ''
+    }
+    return sessionDrafts.value[sessionId] || ''
+  }
+
+  function clearDraft(sessionId: string | null) {
+    if (!sessionId) {
+      return
+    }
+    sessionDrafts.value[sessionId] = ''
+    persistDrafts()
+  }
+
+  loadDrafts()
+
   return {
     currentAgent,
     currentSessionId,
     sessionList,
     activeSessions,
     archivedSessions,
+    sessionDrafts,
     showArchivedSessions,
     chatHistory,
     isThinking,
     availableBots,
+    activeStreamAbort,
     agentList,
     getAgentConfig,
     loadAvailableBots,
@@ -437,8 +521,12 @@ export const useChatStore = defineStore('chat', () => {
     toggleArchiveSession,
     toggleArchivedVisibility,
     deleteSession,
+    setDraft,
+    getDraft,
+    clearDraft,
     sendMessage,
     submitFeedback,
-    clearChat
+    clearChat,
+    stopStreaming
   }
 })

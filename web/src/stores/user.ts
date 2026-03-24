@@ -6,22 +6,36 @@ import type { AiUser, BotPermission, BotPermissionUpsertRequest, UserUpsertReque
 export const useUserStore = defineStore('user', () => {
   const users = ref<AiUser[]>([])
   const permissions = ref<BotPermission[]>([])
+  const loadingUsers = ref(false)
+  const loadingPermissions = ref(false)
+  const userError = ref('')
+  const permissionError = ref('')
 
   async function loadUsers() {
+    loadingUsers.value = true
+    userError.value = ''
     try {
       const data = await authApi.getUsers()
       users.value = data || []
     } catch {
       users.value = []
+      userError.value = '用户列表加载失败，请稍后重试。'
+    } finally {
+      loadingUsers.value = false
     }
   }
 
   async function loadPermissions() {
+    loadingPermissions.value = true
+    permissionError.value = ''
     try {
       const data = await authApi.getPermissions()
       permissions.value = data || []
     } catch {
       permissions.value = []
+      permissionError.value = '权限规则加载失败，请稍后重试。'
+    } finally {
+      loadingPermissions.value = false
     }
   }
 
@@ -90,9 +104,20 @@ export const useUserStore = defineStore('user', () => {
   }
 
   return {
-    users, permissions,
-    loadUsers, loadPermissions, loadAll,
-    createUser, updateUser, deleteUser,
-    createPermission, updatePermission, deletePermission
+    users,
+    permissions,
+    loadingUsers,
+    loadingPermissions,
+    userError,
+    permissionError,
+    loadUsers,
+    loadPermissions,
+    loadAll,
+    createUser,
+    updateUser,
+    deleteUser,
+    createPermission,
+    updatePermission,
+    deletePermission
   }
 })

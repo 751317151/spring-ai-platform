@@ -2,24 +2,42 @@
   <table>
     <thead>
       <tr>
+        <th class="check-col">
+          <input
+            type="checkbox"
+            :checked="allSelected"
+            :indeterminate.prop="indeterminate"
+            @change="toggleAll(($event.target as HTMLInputElement).checked)"
+          >
+        </th>
         <th>用户</th>
         <th>工号</th>
         <th>部门</th>
         <th>角色</th>
         <th>状态</th>
-        <th>上次登录</th>
+        <th>最后登录</th>
         <th>操作</th>
       </tr>
     </thead>
     <tbody>
       <tr v-if="!users.length">
-        <td colspan="7" class="empty-cell">暂无数据</td>
+        <td colspan="8" class="empty-cell">当前筛选条件下没有匹配的用户。</td>
       </tr>
       <tr v-for="u in users" :key="u.id">
+        <td class="check-col">
+          <input
+            type="checkbox"
+            :checked="selectedIds.includes(u.id)"
+            @change="toggleOne(u.id, ($event.target as HTMLInputElement).checked)"
+          >
+        </td>
         <td>
           <div class="user-name">
             <div class="avatar avatar-sm">{{ (u.username || '?').charAt(0).toUpperCase() }}</div>
-            <span class="username">{{ u.username }}</span>
+            <div class="user-main">
+              <span class="username">{{ u.username }}</span>
+              <small class="subtle-text">{{ u.id }}</small>
+            </div>
           </div>
         </td>
         <td><span class="mono">{{ u.employeeId || '-' }}</span></td>
@@ -36,12 +54,16 @@
             </span>
           </div>
         </td>
-        <td><span class="pill" :class="u.enabled !== false ? 'green' : 'red'">{{ u.enabled !== false ? '启用' : '禁用' }}</span></td>
+        <td>
+          <span class="pill" :class="u.enabled !== false ? 'green' : 'red'">
+            {{ u.enabled !== false ? '启用' : '停用' }}
+          </span>
+        </td>
         <td class="last-login">{{ formatTime(u.lastLoginAt) }}</td>
         <td>
           <div class="action-list">
-            <button class="btn btn-ghost btn-sm" @click="emit('edit', u.id)">编辑</button>
-            <button class="btn btn-ghost btn-sm danger" @click="emit('delete', u.id, u.username)">删除</button>
+            <button class="table-action-btn" @click="emit('edit', u.id)">编辑</button>
+            <button class="table-action-btn danger" @click="emit('delete', u.id, u.username)">删除</button>
           </div>
         </td>
       </tr>
@@ -50,16 +72,45 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { AiUser } from '@/api/types'
 import { ROLE_COLORS } from '@/utils/constants'
 import { formatTime } from '@/utils/format'
 
-defineProps<{ users: AiUser[] }>()
-const emit = defineEmits<{ edit: [userId: string]; delete: [userId: string, username: string] }>()
+const props = defineProps<{
+  users: AiUser[]
+  selectedIds: string[]
+}>()
+
+const emit = defineEmits<{
+  (e: 'edit', userId: string): void
+  (e: 'delete', userId: string, username: string): void
+  (e: 'update:selectedIds', ids: string[]): void
+}>()
+
 const roleColors = ROLE_COLORS
+
+const allSelected = computed(() => props.users.length > 0 && props.users.every((user) => props.selectedIds.includes(user.id)))
+const indeterminate = computed(() => props.selectedIds.length > 0 && !allSelected.value)
+
+function toggleAll(checked: boolean) {
+  emit('update:selectedIds', checked ? props.users.map((user) => user.id) : [])
+}
+
+function toggleOne(id: string, checked: boolean) {
+  if (checked) {
+    emit('update:selectedIds', [...props.selectedIds, id])
+  } else {
+    emit('update:selectedIds', props.selectedIds.filter((item) => item !== id))
+  }
+}
 </script>
 
 <style scoped>
+.check-col {
+  width: 42px;
+}
+
 .empty-cell {
   text-align: center;
   color: var(--text3);
@@ -69,6 +120,12 @@ const roleColors = ROLE_COLORS
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.user-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .username {
@@ -92,7 +149,29 @@ const roleColors = ROLE_COLORS
   gap: 6px;
 }
 
-.danger {
+.table-action-btn {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text2);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.table-action-btn:hover {
+  background: var(--surface2);
+  color: var(--text);
+  border-color: var(--border2);
+}
+
+.table-action-btn.danger {
   color: #ef4444;
+}
+
+.table-action-btn.danger:hover {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
 }
 </style>

@@ -2,7 +2,23 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as monitorApi from '@/api/monitor'
 import * as gatewayApi from '@/api/gateway'
-import type { MonitorOverview, HourlyStat, AgentStat, TopUser, AlertEvent, AuditLog, ModelInfo, FailureSample, ModelStat, SlowRequestSample, FeedbackOverview, FeedbackSample, EvidenceFeedbackSample } from '@/api/types'
+import type {
+  AlertEvent,
+  AgentStat,
+  AuditLog,
+  EvidenceFeedbackSample,
+  FailureSample,
+  FeedbackOverview,
+  FeedbackSample,
+  HourlyStat,
+  ModelInfo,
+  ModelStat,
+  MonitorOverview,
+  SlowRequestSample,
+  TopUser
+} from '@/api/types'
+
+type ExportType = 'slow-requests' | 'failure-samples' | 'feedback' | 'evidence-feedback' | 'top-users' | 'gateway-models'
 
 export const useMonitorStore = defineStore('monitor', () => {
   const overview = ref<MonitorOverview | null>(null)
@@ -20,6 +36,9 @@ export const useMonitorStore = defineStore('monitor', () => {
   const models = ref<ModelInfo[]>([])
   const gatewayLoadBalanceStrategy = ref('')
   const gatewaySceneRoutes = ref<Record<string, string[]>>({})
+  const loading = ref(false)
+  const error = ref('')
+  const exportingType = ref<ExportType | ''>('')
   let intervalId: ReturnType<typeof setInterval> | null = null
 
   async function loadDashboardData() {
@@ -42,22 +61,37 @@ export const useMonitorStore = defineStore('monitor', () => {
   }
 
   async function loadMonitorData() {
+    loading.value = true
+    error.value = ''
     try {
-      const [ov, users, alertsData, hourly, agents, modelsByUsage, slow, failures, feedbackStats, feedbackList, evidenceFeedbackList, gatewayModels] = await Promise.all([
-        monitorApi.getOverview().catch(() => null),
-        monitorApi.getTokenTopUsers().catch(() => []),
-        monitorApi.getAlerts().catch(() => ({ alerts: [] })),
-        monitorApi.getHourlyStats().catch(() => []),
-        monitorApi.getByAgent().catch(() => []),
-        monitorApi.getByModel().catch(() => []),
-        monitorApi.getSlowRequests().catch(() => []),
-        monitorApi.getFailureSamples().catch(() => []),
-        monitorApi.getFeedbackOverview().catch(() => null),
-        monitorApi.getRecentFeedback().catch(() => []),
-        monitorApi.getRecentEvidenceFeedback().catch(() => []),
-        gatewayApi.getModels().catch(() => null)
+      const [
+        ov,
+        users,
+        alertsData,
+        hourly,
+        agents,
+        modelsByUsage,
+        slow,
+        failures,
+        feedbackStats,
+        feedbackList,
+        evidenceFeedbackList,
+        gatewayModels
+      ] = await Promise.all([
+        monitorApi.getOverview(),
+        monitorApi.getTokenTopUsers(),
+        monitorApi.getAlerts(),
+        monitorApi.getHourlyStats(),
+        monitorApi.getByAgent(),
+        monitorApi.getByModel(),
+        monitorApi.getSlowRequests(),
+        monitorApi.getFailureSamples(),
+        monitorApi.getFeedbackOverview(),
+        monitorApi.getRecentFeedback(),
+        monitorApi.getRecentEvidenceFeedback(),
+        gatewayApi.getModels()
       ])
-      if (ov) overview.value = ov
+      overview.value = ov
       topUsers.value = users
       alerts.value = alertsData?.alerts || []
       hourlyStats.value = hourly
@@ -68,13 +102,13 @@ export const useMonitorStore = defineStore('monitor', () => {
       feedbackOverview.value = feedbackStats
       recentFeedback.value = feedbackList
       recentEvidenceFeedback.value = evidenceFeedbackList
-      if (gatewayModels) {
-        models.value = gatewayModels.models || []
-        gatewayLoadBalanceStrategy.value = gatewayModels.loadBalanceStrategy || ''
-        gatewaySceneRoutes.value = gatewayModels.sceneRoutes || {}
-      }
-    } catch {
-      // ignore
+      models.value = gatewayModels?.models || []
+      gatewayLoadBalanceStrategy.value = gatewayModels?.loadBalanceStrategy || ''
+      gatewaySceneRoutes.value = gatewayModels?.sceneRoutes || {}
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '监控数据加载失败'
+    } finally {
+      loading.value = false
     }
   }
 
@@ -97,46 +131,83 @@ export const useMonitorStore = defineStore('monitor', () => {
     }
   }
 
+  function isExporting(type: ExportType) {
+    return exportingType.value === type
+  }
+
   async function exportCsv(
-    type: 'slow-requests' | 'failure-samples' | 'feedback' | 'top-users',
+    type: Exclude<ExportType, 'gateway-models'>,
     fileName: string,
     limit?: number
   ) {
-    const blob = await monitorApi.downloadExport(type, limit)
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fileName
-    a.click()
-    URL.revokeObjectURL(url)
+    exportingType.value = type
+    try {
+      const blob = await monitorApi.downloadExport(type, limit)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      exportingType.value = ''
+    }
   }
 
   async function exportGatewayModelsCsv(fileName: string) {
-    const rows = [
-      ['modelId', 'name', 'provider', 'enabled', 'weight', 'totalCalls', 'successCalls', 'successRate', 'avgLatencyMs'],
-      ...models.value.map((item) => [
-        item.id,
-        item.name,
-        item.provider,
-        item.enabled,
-        item.weight,
-        item.totalCalls,
-        item.successCalls,
-        item.successRate,
-        item.avgLatencyMs
-      ])
-    ]
-    const blob = monitorApi.toCsvBlob(rows)
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fileName
-    a.click()
-    URL.revokeObjectURL(url)
+    exportingType.value = 'gateway-models'
+    try {
+      const rows = [
+        ['modelId', 'name', 'provider', 'enabled', 'weight', 'totalCalls', 'successCalls', 'successRate', 'avgLatencyMs'],
+        ...models.value.map((item) => [
+          item.id,
+          item.name,
+          item.provider,
+          item.enabled,
+          item.weight,
+          item.totalCalls,
+          item.successCalls,
+          item.successRate,
+          item.avgLatencyMs
+        ])
+      ]
+      const blob = monitorApi.toCsvBlob(rows)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      exportingType.value = ''
+    }
   }
 
   return {
-    overview, hourlyStats, agentStats, topUsers, alerts, auditLogs, modelStats, slowRequests, failureSamples, feedbackOverview, recentFeedback, recentEvidenceFeedback, models, gatewayLoadBalanceStrategy, gatewaySceneRoutes,
-    loadDashboardData, loadMonitorData, startRealtimeUpdates, stopRealtimeUpdates, exportCsv, exportGatewayModelsCsv
+    overview,
+    hourlyStats,
+    agentStats,
+    topUsers,
+    alerts,
+    auditLogs,
+    modelStats,
+    slowRequests,
+    failureSamples,
+    feedbackOverview,
+    recentFeedback,
+    recentEvidenceFeedback,
+    models,
+    gatewayLoadBalanceStrategy,
+    gatewaySceneRoutes,
+    loading,
+    error,
+    exportingType,
+    loadDashboardData,
+    loadMonitorData,
+    startRealtimeUpdates,
+    stopRealtimeUpdates,
+    isExporting,
+    exportCsv,
+    exportGatewayModelsCsv
   }
 })
