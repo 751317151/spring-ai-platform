@@ -18,7 +18,7 @@ spring:
           stream-usage: true
     mcp:
       client:
-        enabled: true        # 设为 true 启用 MCP 助手
+        enabled: false        # 设为 true 启用 MCP 助手
         name: agent-service-mcp
         version: 1.0.0
         type: SYNC

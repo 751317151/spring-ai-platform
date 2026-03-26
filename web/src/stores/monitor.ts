@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import * as monitorApi from '@/api/monitor'
 import * as gatewayApi from '@/api/gateway'
+import * as monitorApi from '@/api/monitor'
 import type {
   AlertEvent,
+  AlertWorkflowHistory,
   AgentStat,
   AuditLog,
   EvidenceFeedbackSample,
@@ -15,10 +16,17 @@ import type {
   ModelStat,
   MonitorOverview,
   SlowRequestSample,
+  ToolAudit,
   TopUser
 } from '@/api/types'
 
-type ExportType = 'slow-requests' | 'failure-samples' | 'feedback' | 'evidence-feedback' | 'top-users' | 'gateway-models'
+type ExportType =
+  | 'slow-requests'
+  | 'failure-samples'
+  | 'feedback'
+  | 'evidence-feedback'
+  | 'top-users'
+  | 'gateway-models'
 
 export const useMonitorStore = defineStore('monitor', () => {
   const overview = ref<MonitorOverview | null>(null)
@@ -26,8 +34,10 @@ export const useMonitorStore = defineStore('monitor', () => {
   const agentStats = ref<AgentStat[]>([])
   const topUsers = ref<TopUser[]>([])
   const alerts = ref<AlertEvent[]>([])
+  const alertHistories = ref<Record<string, AlertWorkflowHistory[]>>({})
   const auditLogs = ref<AuditLog[]>([])
   const modelStats = ref<ModelStat[]>([])
+  const toolAudits = ref<ToolAudit[]>([])
   const slowRequests = ref<SlowRequestSample[]>([])
   const failureSamples = ref<FailureSample[]>([])
   const feedbackOverview = ref<FeedbackOverview | null>(null)
@@ -41,20 +51,33 @@ export const useMonitorStore = defineStore('monitor', () => {
   const exportingType = ref<ExportType | ''>('')
   let intervalId: ReturnType<typeof setInterval> | null = null
 
+  function getToolAuditsSafely(limit = 20, userId?: string, agentType?: string, toolName?: string) {
+    try {
+      const toolAuditFn = (monitorApi as unknown as Record<string, unknown>).getToolAudits
+      return typeof toolAuditFn === 'function'
+        ? (toolAuditFn as (limit?: number, userId?: string, agentType?: string, toolName?: string) => Promise<ToolAudit[]>)(limit, userId, agentType, toolName)
+        : Promise.resolve([])
+    } catch {
+      return Promise.resolve([])
+    }
+  }
+
   async function loadDashboardData() {
     try {
-      const [ov, hourly, agents, modelsData, logs] = await Promise.all([
+      const [ov, hourly, agents, modelsData, logs, toolAuditRows] = await Promise.all([
         monitorApi.getOverview().catch(() => null),
         monitorApi.getHourlyStats().catch(() => []),
         monitorApi.getByAgent().catch(() => []),
         gatewayApi.getModels().catch(() => null),
-        monitorApi.getAuditLogs(5).catch(() => [])
+        monitorApi.getAuditLogs(5).catch(() => []),
+        getToolAuditsSafely(5).catch(() => [])
       ])
       if (ov) overview.value = ov
       hourlyStats.value = hourly
       agentStats.value = agents
       if (modelsData) models.value = modelsData.models || []
       auditLogs.value = logs
+      toolAudits.value = toolAuditRows
     } catch {
       // ignore
     }
@@ -71,6 +94,7 @@ export const useMonitorStore = defineStore('monitor', () => {
         hourly,
         agents,
         modelsByUsage,
+        toolAuditRows,
         slow,
         failures,
         feedbackStats,
@@ -84,6 +108,7 @@ export const useMonitorStore = defineStore('monitor', () => {
         monitorApi.getHourlyStats(),
         monitorApi.getByAgent(),
         monitorApi.getByModel(),
+        getToolAuditsSafely(),
         monitorApi.getSlowRequests(),
         monitorApi.getFailureSamples(),
         monitorApi.getFeedbackOverview(),
@@ -91,12 +116,14 @@ export const useMonitorStore = defineStore('monitor', () => {
         monitorApi.getRecentEvidenceFeedback(),
         gatewayApi.getModels()
       ])
+
       overview.value = ov
       topUsers.value = users
       alerts.value = alertsData?.alerts || []
       hourlyStats.value = hourly
       agentStats.value = agents
       modelStats.value = modelsByUsage
+      toolAudits.value = toolAuditRows
       slowRequests.value = slow
       failureSamples.value = failures
       feedbackOverview.value = feedbackStats
@@ -135,6 +162,27 @@ export const useMonitorStore = defineStore('monitor', () => {
     return exportingType.value === type
   }
 
+  async function updateAlertWorkflow(fingerprint: string, workflowStatus: string, workflowNote = '', silencedUntil = '') {
+    await monitorApi.updateAlertWorkflow(fingerprint, workflowStatus, workflowNote, silencedUntil)
+    alerts.value = alerts.value.map((item) =>
+      item.fingerprint === fingerprint
+        ? { ...item, workflowStatus, workflowNote, workflowUpdatedAt: new Date().toISOString(), silencedUntil: silencedUntil || undefined }
+        : item
+    )
+    if (alertHistories.value[fingerprint]) {
+      await loadAlertWorkflowHistory(fingerprint)
+    }
+  }
+
+  async function loadAlertWorkflowHistory(fingerprint: string, limit = 10) {
+    const rows = await monitorApi.getAlertWorkflowHistory(fingerprint, limit)
+    alertHistories.value = {
+      ...alertHistories.value,
+      [fingerprint]: rows
+    }
+    return rows
+  }
+
   async function exportCsv(
     type: Exclude<ExportType, 'gateway-models'>,
     fileName: string,
@@ -144,10 +192,10 @@ export const useMonitorStore = defineStore('monitor', () => {
     try {
       const blob = await monitorApi.downloadExport(type, limit)
       const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = fileName
-      a.click()
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = fileName
+      anchor.click()
       URL.revokeObjectURL(url)
     } finally {
       exportingType.value = ''
@@ -173,10 +221,10 @@ export const useMonitorStore = defineStore('monitor', () => {
       ]
       const blob = monitorApi.toCsvBlob(rows)
       const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = fileName
-      a.click()
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = fileName
+      anchor.click()
       URL.revokeObjectURL(url)
     } finally {
       exportingType.value = ''
@@ -189,8 +237,10 @@ export const useMonitorStore = defineStore('monitor', () => {
     agentStats,
     topUsers,
     alerts,
+    alertHistories,
     auditLogs,
     modelStats,
+    toolAudits,
     slowRequests,
     failureSamples,
     feedbackOverview,
@@ -207,6 +257,8 @@ export const useMonitorStore = defineStore('monitor', () => {
     startRealtimeUpdates,
     stopRealtimeUpdates,
     isExporting,
+    updateAlertWorkflow,
+    loadAlertWorkflowHistory,
     exportCsv,
     exportGatewayModelsCsv
   }

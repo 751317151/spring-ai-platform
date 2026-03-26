@@ -21,9 +21,18 @@
     </thead>
     <tbody>
       <tr v-if="!users.length">
-        <td colspan="8" class="empty-cell">当前筛选条件下没有匹配的用户。</td>
+        <td colspan="8" class="empty-cell">
+          <EmptyState
+            icon="U"
+            title="当前筛选条件下没有匹配的用户"
+            description="可以调整状态、角色或关键词筛选条件后重试。"
+            action-text="清空筛选"
+            variant="compact"
+            @action="emit('reset-filters')"
+          />
+        </td>
       </tr>
-      <tr v-for="u in users" :key="u.id">
+      <tr v-for="u in users" :id="`user-row-${u.id}`" :key="u.id" :class="{ highlighted: highlightedUserId === u.id }">
         <td class="check-col">
           <input
             type="checkbox"
@@ -63,6 +72,7 @@
         <td>
           <div class="action-list">
             <button class="table-action-btn" @click="emit('edit', u.id)">编辑</button>
+            <button class="table-action-btn" @click="emit('inspect', u.id)">概览</button>
             <button class="table-action-btn danger" @click="emit('delete', u.id, u.username)">删除</button>
           </div>
         </td>
@@ -74,18 +84,22 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AiUser } from '@/api/types'
+import EmptyState from '@/components/common/EmptyState.vue'
 import { ROLE_COLORS } from '@/utils/constants'
 import { formatTime } from '@/utils/format'
 
 const props = defineProps<{
   users: AiUser[]
   selectedIds: string[]
+  highlightedUserId?: string
 }>()
 
 const emit = defineEmits<{
   (e: 'edit', userId: string): void
+  (e: 'inspect', userId: string): void
   (e: 'delete', userId: string, username: string): void
   (e: 'update:selectedIds', ids: string[]): void
+  (e: 'reset-filters'): void
 }>()
 
 const roleColors = ROLE_COLORS
@@ -112,8 +126,7 @@ function toggleOne(id: string, checked: boolean) {
 }
 
 .empty-cell {
-  text-align: center;
-  color: var(--text3);
+  padding: 12px;
 }
 
 .user-name {
@@ -173,5 +186,10 @@ function toggleOne(id: string, checked: boolean) {
 .table-action-btn.danger:hover {
   border-color: #ef4444;
   background: rgba(239, 68, 68, 0.1);
+}
+
+tbody tr.highlighted {
+  background: rgba(59, 130, 246, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.25);
 }
 </style>

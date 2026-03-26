@@ -45,6 +45,11 @@ public class FeedbackSchemaInitializer {
             jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_feedback_source ON ai_response_feedback (source_type, feedback)");
             jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_evidence_feedback_created ON ai_evidence_feedback (created_at DESC)");
             jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_evidence_feedback_chunk ON ai_evidence_feedback (chunk_id)");
+            jdbcTemplate.execute("ALTER TABLE ai_audit_logs ADD COLUMN IF NOT EXISTS trace_id VARCHAR(64)");
+            jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_audit_trace_id ON ai_audit_logs (trace_id)");
+            jdbcTemplate.execute("ALTER TABLE knowledge_bases ADD COLUMN IF NOT EXISTS visibility_scope VARCHAR(16) DEFAULT 'DEPARTMENT'");
+            jdbcTemplate.execute("ALTER TABLE knowledge_bases ADD COLUMN IF NOT EXISTS chunk_strategy VARCHAR(16) DEFAULT 'TOKEN'");
+            jdbcTemplate.execute("ALTER TABLE knowledge_bases ADD COLUMN IF NOT EXISTS structured_batch_size INT DEFAULT 20");
         } catch (Exception e) {
             log.warn("initialize ai_response_feedback table failed: {}", e.getMessage());
         }

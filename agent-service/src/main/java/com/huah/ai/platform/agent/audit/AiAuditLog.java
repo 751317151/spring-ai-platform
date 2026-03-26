@@ -33,6 +33,8 @@ public class AiAuditLog {
     private String errorMessage;
     private String clientIp;
     private String sessionId;
+    private String traceId;
+    private String phaseBreakdownJson;
 
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();

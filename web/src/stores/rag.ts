@@ -1,10 +1,31 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as ragApi from '@/api/rag'
-import type { DocumentChunkPreview, DocumentMeta, KnowledgeBase, SourceDocument, SSEChunk } from '@/api/types'
+import type {
+  DocumentChunkPreview,
+  DocumentMeta,
+  KnowledgeBase,
+  RagEvaluationOverview,
+  RagEvaluationSample,
+  SourceDocument,
+  SSEChunk
+} from '@/api/types'
 import { DEMO_KNOWLEDGE_BASES, MOCK_RAG_RESPONSES, MOCK_RAG_SOURCES } from '@/utils/constants'
 import { useAuthStore } from './auth'
 import { useRuntimeStore } from './runtime'
+
+const DEFAULT_EVALUATION: RagEvaluationOverview = {
+  totalQueries: 0,
+  feedbackCount: 0,
+  positiveFeedbackCount: 0,
+  negativeFeedbackCount: 0,
+  positiveFeedbackRate: 0,
+  evidenceFeedbackCount: 0,
+  positiveEvidenceCount: 0,
+  negativeEvidenceCount: 0,
+  positiveEvidenceRate: 0,
+  lowRatedQueryCount: 0
+}
 
 export const useRagStore = defineStore('rag', () => {
   const knowledgeBases = ref<KnowledgeBase[]>([])
@@ -22,8 +43,11 @@ export const useRagStore = defineStore('rag', () => {
   const queryError = ref('')
   const loadingKnowledgeBases = ref(false)
   const loadingDocuments = ref(false)
+  const loadingEvaluation = ref(false)
   const knowledgeBaseError = ref('')
   const documentError = ref('')
+  const evaluationOverview = ref<RagEvaluationOverview>({ ...DEFAULT_EVALUATION })
+  const lowRatedSamples = ref<RagEvaluationSample[]>([])
 
   const authStore = useAuthStore()
   const runtimeStore = useRuntimeStore()
@@ -44,6 +68,8 @@ export const useRagStore = defineStore('rag', () => {
         currentKb.value = ''
         currentKbName.value = ''
         documents.value = []
+        evaluationOverview.value = { ...DEFAULT_EVALUATION }
+        lowRatedSamples.value = []
         knowledgeBaseError.value = '知识库列表加载失败，请检查 rag-service 状态。'
         runtimeStore.markServiceUnavailable('rag', knowledgeBaseError.value)
       }
@@ -60,11 +86,67 @@ export const useRagStore = defineStore('rag', () => {
     currentKb.value = kbId
     const kb = knowledgeBases.value.find((item) => item.id === kbId)
     currentKbName.value = kb?.name || ''
-    loadDocuments()
+    void Promise.all([loadDocuments(), loadEvaluation()])
+  }
+
+  async function createKnowledgeBase(payload: Partial<KnowledgeBase>) {
+    try {
+      const created = await ragApi.createKnowledgeBase(payload)
+      runtimeStore.markServiceAvailable('rag')
+      await loadKnowledgeBases()
+      if (created?.id) {
+        selectKb(created.id)
+      }
+      return created
+    } catch {
+      runtimeStore.markServiceUnavailable('rag', '知识库创建失败，请稍后重试。')
+      return null
+    }
+  }
+
+  async function updateKnowledgeBase(id: string, payload: Partial<KnowledgeBase>) {
+    try {
+      const updated = await ragApi.updateKnowledgeBase(id, payload)
+      runtimeStore.markServiceAvailable('rag')
+      await loadKnowledgeBases()
+      if (currentKb.value === id) {
+        currentKbName.value = updated?.name || currentKbName.value
+        await Promise.all([loadDocuments(), loadEvaluation()])
+      }
+      return updated
+    } catch {
+      runtimeStore.markServiceUnavailable('rag', '知识库更新失败，请稍后重试。')
+      return null
+    }
+  }
+
+  async function deleteKnowledgeBase(id: string) {
+    try {
+      await ragApi.deleteKnowledgeBase(id)
+      runtimeStore.markServiceAvailable('rag')
+      const deletingCurrent = currentKb.value === id
+      await loadKnowledgeBases()
+      if (deletingCurrent) {
+        if (knowledgeBases.value.length > 0) {
+          selectKb(knowledgeBases.value[0].id)
+        } else {
+          currentKb.value = ''
+          currentKbName.value = ''
+          documents.value = []
+          evaluationOverview.value = { ...DEFAULT_EVALUATION }
+          lowRatedSamples.value = []
+        }
+      }
+      return true
+    } catch {
+      runtimeStore.markServiceUnavailable('rag', '知识库删除失败，请先清空文档或稍后重试。')
+      return false
+    }
   }
 
   async function loadDocuments() {
     if (!currentKb.value) {
+      documents.value = []
       return
     }
     loadingDocuments.value = true
@@ -84,12 +166,38 @@ export const useRagStore = defineStore('rag', () => {
     }
   }
 
+  async function loadEvaluation() {
+    if (!currentKb.value) {
+      evaluationOverview.value = { ...DEFAULT_EVALUATION }
+      lowRatedSamples.value = []
+      return
+    }
+    loadingEvaluation.value = true
+    try {
+      const [overview, samples] = await Promise.all([
+        ragApi.getEvaluationOverview(currentKb.value),
+        ragApi.getLowRatedSamples(currentKb.value, 10)
+      ])
+      evaluationOverview.value = overview || { ...DEFAULT_EVALUATION }
+      lowRatedSamples.value = samples || []
+      runtimeStore.markServiceAvailable('rag')
+    } catch {
+      evaluationOverview.value = { ...DEFAULT_EVALUATION }
+      lowRatedSamples.value = []
+    } finally {
+      loadingEvaluation.value = false
+    }
+  }
+
+  async function refreshCurrentKnowledgeBase() {
+    await Promise.all([loadDocuments(), loadEvaluation()])
+  }
+
   async function uploadFile(file: File, replaceExisting = false): Promise<DocumentMeta | null> {
     try {
       const meta = await ragApi.uploadDocument(file, currentKb.value, authStore.userId, replaceExisting)
       runtimeStore.markServiceAvailable('rag')
-      await loadDocuments()
-      await loadKnowledgeBases()
+      await Promise.all([loadDocuments(), loadKnowledgeBases(), loadEvaluation()])
       return meta
     } catch {
       runtimeStore.markServiceUnavailable('rag', '文件上传失败，请检查知识库服务或对象存储配置。')
@@ -101,8 +209,7 @@ export const useRagStore = defineStore('rag', () => {
     try {
       await ragApi.deleteDocument(docId)
       runtimeStore.markServiceAvailable('rag')
-      await loadDocuments()
-      await loadKnowledgeBases()
+      await Promise.all([loadDocuments(), loadKnowledgeBases(), loadEvaluation()])
       return true
     } catch {
       runtimeStore.markServiceUnavailable('rag', '删除文档失败，请稍后重试。')
@@ -114,8 +221,7 @@ export const useRagStore = defineStore('rag', () => {
     try {
       await ragApi.retryDocument(docId)
       runtimeStore.markServiceAvailable('rag')
-      await loadDocuments()
-      await loadKnowledgeBases()
+      await Promise.all([loadDocuments(), loadKnowledgeBases(), loadEvaluation()])
       return true
     } catch {
       runtimeStore.markServiceUnavailable('rag', '文档重试失败，请稍后重试。')
@@ -127,8 +233,7 @@ export const useRagStore = defineStore('rag', () => {
     try {
       await ragApi.reindexDocument(docId)
       runtimeStore.markServiceAvailable('rag')
-      await loadDocuments()
-      await loadKnowledgeBases()
+      await Promise.all([loadDocuments(), loadKnowledgeBases(), loadEvaluation()])
       return true
     } catch {
       runtimeStore.markServiceUnavailable('rag', '重建索引失败，请稍后重试。')
@@ -140,10 +245,10 @@ export const useRagStore = defineStore('rag', () => {
     try {
       const blob = await ragApi.downloadDocument(docId)
       const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      a.click()
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = filename
+      anchor.click()
       URL.revokeObjectURL(url)
       runtimeStore.markServiceAvailable('rag')
       return true
@@ -177,7 +282,7 @@ export const useRagStore = defineStore('rag', () => {
     } catch {
       activeDocumentChunks.value = []
       activeChunkDocument.value = null
-      runtimeStore.markServiceUnavailable('rag', '文档分块加载失败，请稍后重试。')
+      runtimeStore.markServiceUnavailable('rag', '文档分段加载失败，请稍后重试。')
       return false
     }
   }
@@ -264,6 +369,7 @@ export const useRagStore = defineStore('rag', () => {
       }
 
       runtimeStore.markServiceAvailable('rag')
+      await loadEvaluation()
     } catch {
       queryError.value = runtimeStore.demoMode
         ? '问答后端不可用，已切换为演示答案。'
@@ -296,6 +402,7 @@ export const useRagStore = defineStore('rag', () => {
     }
     await ragApi.submitFeedback(queryResponseId.value, feedback)
     queryFeedback.value = feedback
+    await loadEvaluation()
     return true
   }
 
@@ -307,6 +414,7 @@ export const useRagStore = defineStore('rag', () => {
     querySources.value = querySources.value.map((item) =>
       item.chunkId === chunkId ? { ...item, feedback } : item
     )
+    await loadEvaluation()
     return true
   }
 
@@ -326,11 +434,19 @@ export const useRagStore = defineStore('rag', () => {
     queryError,
     loadingKnowledgeBases,
     loadingDocuments,
+    loadingEvaluation,
     knowledgeBaseError,
     documentError,
+    evaluationOverview,
+    lowRatedSamples,
     loadKnowledgeBases,
     selectKb,
+    createKnowledgeBase,
+    updateKnowledgeBase,
+    deleteKnowledgeBase,
     loadDocuments,
+    loadEvaluation,
+    refreshCurrentKnowledgeBase,
     uploadFile,
     deleteDocument,
     retryDocument,

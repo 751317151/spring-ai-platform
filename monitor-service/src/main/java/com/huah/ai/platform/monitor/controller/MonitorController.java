@@ -3,6 +3,7 @@ package com.huah.ai.platform.monitor.controller;
 import com.huah.ai.platform.common.dto.Result;
 import com.huah.ai.platform.monitor.model.AgentStatView;
 import com.huah.ai.platform.monitor.model.AlertsView;
+import com.huah.ai.platform.monitor.model.AlertWorkflowHistoryView;
 import com.huah.ai.platform.monitor.model.AuditLogView;
 import com.huah.ai.platform.monitor.model.FailureSampleView;
 import com.huah.ai.platform.monitor.model.EvidenceFeedbackSampleView;
@@ -11,9 +12,12 @@ import com.huah.ai.platform.monitor.model.FeedbackSampleView;
 import com.huah.ai.platform.monitor.model.HourlyStatView;
 import com.huah.ai.platform.monitor.model.ModelStatView;
 import com.huah.ai.platform.monitor.model.MonitorOverviewView;
+import com.huah.ai.platform.monitor.model.AlertWorkflowUpdateRequest;
 import com.huah.ai.platform.monitor.model.SlowRequestView;
+import com.huah.ai.platform.monitor.model.TraceDetailView;
 import com.huah.ai.platform.monitor.model.TokenUsageView;
 import com.huah.ai.platform.monitor.model.TopUserView;
+import com.huah.ai.platform.monitor.model.ToolAuditView;
 import com.huah.ai.platform.monitor.service.MonitorQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -21,7 +25,9 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -78,6 +84,22 @@ public class MonitorController {
         return Result.ok(monitorQueryService.getFailureSamples(limit));
     }
 
+    @GetMapping("/tool-audits")
+    public Result<List<ToolAuditView>> toolAudits(
+            @RequestParam(name = "limit", defaultValue = "20") int limit,
+            @RequestParam(name = "userId", required = false) String userId,
+            @RequestParam(name = "agentType", required = false) String agentType,
+            @RequestParam(name = "toolName", required = false) String toolName) {
+        return Result.ok(monitorQueryService.getToolAudits(limit, userId, agentType, toolName));
+    }
+
+    @GetMapping("/trace/{traceId}")
+    public Result<TraceDetailView> traceDetail(@PathVariable(name = "traceId") String traceId) {
+        return monitorQueryService.getTraceDetail(traceId)
+                .map(Result::ok)
+                .orElseGet(() -> Result.fail("未找到对应的 Trace 详情"));
+    }
+
     @GetMapping("/feedback/overview")
     public Result<FeedbackOverviewView> feedbackOverview() {
         return Result.ok(monitorQueryService.getFeedbackOverview());
@@ -101,6 +123,21 @@ public class MonitorController {
     @GetMapping("/alerts")
     public Result<AlertsView> alerts() {
         return Result.ok(monitorQueryService.getAlerts());
+    }
+
+    @PostMapping("/alerts/{fingerprint}/workflow")
+    public Result<String> updateAlertWorkflow(
+            @PathVariable(name = "fingerprint") String fingerprint,
+            @RequestBody AlertWorkflowUpdateRequest request) {
+        monitorQueryService.updateAlertWorkflow(fingerprint, request.getWorkflowStatus(), request.getWorkflowNote(), request.getSilencedUntil());
+        return Result.ok("告警流转状态已更新");
+    }
+
+    @GetMapping("/alerts/{fingerprint}/history")
+    public Result<List<AlertWorkflowHistoryView>> alertWorkflowHistory(
+            @PathVariable(name = "fingerprint") String fingerprint,
+            @RequestParam(name = "limit", defaultValue = "10") int limit) {
+        return Result.ok(monitorQueryService.getAlertWorkflowHistory(fingerprint, limit));
     }
 
     @GetMapping(value = "/export/slow-requests", produces = "text/csv")

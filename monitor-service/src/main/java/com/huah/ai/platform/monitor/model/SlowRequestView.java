@@ -16,6 +16,8 @@ public class SlowRequestView {
     private String agentType;
     @JsonProperty("model_id")
     private String modelId;
+    @JsonProperty("trace_id")
+    private String traceId;
     @JsonProperty("latency_ms")
     private long latencyMs;
     private boolean success;

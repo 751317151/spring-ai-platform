@@ -2,7 +2,7 @@
   <div
     class="session-item"
     :class="{
-      active: active,
+      active,
       archived: archiveMode
     }"
     @click="$emit('select', session.sessionId)"
@@ -22,10 +22,20 @@
     />
 
     <template v-else>
+      <label class="session-select" @click.stop>
+        <input
+          :checked="selected"
+          class="session-select-input"
+          type="checkbox"
+          @change="$emit('toggle-select', session.sessionId)"
+        />
+      </label>
+
       <div class="session-main">
         <div class="session-title-row">
           <span v-if="isPinned" class="session-pin active">置顶</span>
           <span v-if="active" class="session-current">当前</span>
+          <span v-if="hasDraft" class="session-draft-chip">草稿</span>
           <span class="session-title">
             <template v-for="(segment, index) in titleSegments" :key="`${session.sessionId}-${index}`">
               <mark v-if="segment.highlight" class="session-highlight">{{ segment.text }}</mark>
@@ -67,6 +77,8 @@ const props = defineProps<{
   keyword: string
   subtitle: string
   archiveMode?: boolean
+  selected?: boolean
+  hasDraft?: boolean
 }>()
 
 defineEmits<{
@@ -78,6 +90,7 @@ defineEmits<{
   (event: 'toggle-pin'): void
   (event: 'toggle-archive'): void
   (event: 'delete'): void
+  (event: 'toggle-select', sessionId: string): void
 }>()
 
 const isPinned = computed(() => props.session.pinned === true || props.session.pinned === 'true')
@@ -93,7 +106,7 @@ const titleSegments = computed(() => {
   if (start === -1) return [{ text: title, highlight: false }]
 
   const end = start + search.length
-  const segments = []
+  const segments: Array<{ text: string; highlight: boolean }> = []
   if (start > 0) segments.push({ text: title.slice(0, start), highlight: false })
   segments.push({ text: title.slice(start, end), highlight: true })
   if (end < title.length) segments.push({ text: title.slice(end), highlight: false })
@@ -108,3 +121,64 @@ const matchedField = computed(() => {
   return ''
 })
 </script>
+
+<style scoped>
+.session-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.session-select {
+  display: flex;
+  align-items: center;
+  padding-top: 4px;
+}
+
+.session-select-input {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.session-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.session-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.session-title {
+  min-width: 0;
+  word-break: break-word;
+}
+
+.session-draft-chip {
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+  padding: 1px 6px;
+  font-size: 11px;
+}
+
+.session-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.session-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+</style>

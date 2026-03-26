@@ -36,6 +36,11 @@ public class ModelRegistryConfig {
      */
     private Map<String, List<String>> sceneRoutes;
 
+    /**
+     * 主动健康探测配置
+     */
+    private HealthProbe healthProbe = new HealthProbe();
+
     @Data
     public static class ModelDefinition {
         /** 模型唯一标识 */
@@ -62,5 +67,21 @@ public class ModelRegistryConfig {
         private List<String> capabilities;
         /** 每分钟 Token 限制 */
         private int rpmLimit = 60;
+        /** 输入 token 单价，单位：每 1k token */
+        private double promptCostPer1kTokens = 0;
+        /** 输出 token 单价，单位：每 1k token */
+        private double completionCostPer1kTokens = 0;
+    }
+
+    @Data
+    public static class HealthProbe {
+        /** 是否启用主动健康探测 */
+        private boolean enabled = true;
+        /** 探测间隔毫秒 */
+        private long intervalMs = 300000;
+        /** 单次探测提示词 */
+        private String prompt = "ping";
+        /** 启动后是否立即探测 */
+        private boolean runOnStartup = true;
     }
 }

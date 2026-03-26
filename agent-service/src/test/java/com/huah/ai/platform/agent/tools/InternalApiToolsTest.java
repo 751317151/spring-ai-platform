@@ -1,6 +1,7 @@
 package com.huah.ai.platform.agent.tools;
 
 import com.huah.ai.platform.agent.config.ToolsProperties;
+import com.huah.ai.platform.agent.tools.InternalApiTools;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;

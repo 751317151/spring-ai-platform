@@ -1,5 +1,5 @@
-import { defineStore } from 'pinia'
 import { computed, reactive } from 'vue'
+import { defineStore } from 'pinia'
 
 export type BackendServiceKey = 'chat' | 'rag'
 

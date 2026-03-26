@@ -20,6 +20,8 @@ public class AuditLogView {
     String errorMessage;
     @JsonProperty("session_id")
     String sessionId;
+    @JsonProperty("trace_id")
+    String traceId;
     @JsonProperty("latency_ms")
     long latencyMs;
     boolean success;

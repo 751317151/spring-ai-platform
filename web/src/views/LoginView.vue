@@ -41,10 +41,11 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 const username = ref('admin')
@@ -58,9 +59,10 @@ async function handleLogin() {
   errorMsg.value = ''
   try {
     await authStore.login(username.value, password.value)
-    router.push('/dashboard')
-  } catch (e: unknown) {
-    errorMsg.value = e instanceof Error ? e.message : '登录失败，请稍后重试。'
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard'
+    router.replace(redirect)
+  } catch (error: unknown) {
+    errorMsg.value = error instanceof Error ? error.message : '登录失败，请稍后重试。'
   } finally {
     isLoading.value = false
   }

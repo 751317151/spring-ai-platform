@@ -7,6 +7,7 @@ import com.huah.ai.platform.monitor.alert.AlertmanagerAlertService;
 import com.huah.ai.platform.monitor.model.AgentStatView;
 import com.huah.ai.platform.monitor.model.AlertsView;
 import com.huah.ai.platform.monitor.model.AuditLogView;
+import com.huah.ai.platform.monitor.model.AlertWorkflowHistoryView;
 import com.huah.ai.platform.monitor.model.FailureSampleView;
 import com.huah.ai.platform.monitor.model.EvidenceFeedbackSampleView;
 import com.huah.ai.platform.monitor.model.FeedbackOverviewView;
@@ -15,8 +16,13 @@ import com.huah.ai.platform.monitor.model.HourlyStatView;
 import com.huah.ai.platform.monitor.model.ModelStatView;
 import com.huah.ai.platform.monitor.model.MonitorOverviewView;
 import com.huah.ai.platform.monitor.model.SlowRequestView;
+import com.huah.ai.platform.monitor.model.TraceDetailView;
 import com.huah.ai.platform.monitor.model.TokenUsageView;
 import com.huah.ai.platform.monitor.model.TopUserView;
+import com.huah.ai.platform.monitor.model.ToolAuditView;
+import com.huah.ai.platform.monitor.model.TracePhaseView;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -26,10 +32,14 @@ import org.springframework.stereotype.Service;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.StringJoiner;
+import java.util.ArrayList;
 
 @Service
 @RequiredArgsConstructor
@@ -42,6 +52,8 @@ public class MonitorQueryService {
     private final JdbcTemplate jdbcTemplate;
     private final AlertEvaluationService alertEvaluationService;
     private final AlertmanagerAlertService alertmanagerAlertService;
+    private final AlertWorkflowService alertWorkflowService;
+    private final ObjectMapper objectMapper;
 
     public MonitorOverviewView getOverview() {
         try {
@@ -149,9 +161,9 @@ public class MonitorQueryService {
     public List<AuditLogView> getAuditLogs(int limit, String userId) {
         try {
             String sql = userId != null
-                    ? "SELECT id, user_id, agent_type, model_id, error_message, session_id, latency_ms, success, created_at " +
+                    ? "SELECT id, user_id, agent_type, model_id, error_message, session_id, trace_id, latency_ms, success, created_at " +
                     "FROM ai_audit_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?"
-                    : "SELECT id, user_id, agent_type, model_id, error_message, session_id, latency_ms, success, created_at " +
+                    : "SELECT id, user_id, agent_type, model_id, error_message, session_id, trace_id, latency_ms, success, created_at " +
                     "FROM ai_audit_logs ORDER BY created_at DESC LIMIT ?";
             return userId != null
                     ? jdbcTemplate.query(sql, this::mapAuditLog, userId, limit)
@@ -183,13 +195,14 @@ public class MonitorQueryService {
     public List<SlowRequestView> getSlowRequests(int limit) {
         try {
             return jdbcTemplate.query(
-                    "SELECT id, user_id, agent_type, model_id, latency_ms, success, created_at " +
+                    "SELECT id, user_id, agent_type, model_id, trace_id, latency_ms, success, created_at " +
                             "FROM ai_audit_logs ORDER BY latency_ms DESC, created_at DESC LIMIT ?",
                     (rs, rowNum) -> SlowRequestView.builder()
                             .id(rs.getString("id"))
                             .userId(rs.getString("user_id"))
                             .agentType(rs.getString("agent_type"))
                             .modelId(rs.getString("model_id"))
+                            .traceId(rs.getString("trace_id"))
                             .latencyMs(rs.getLong("latency_ms"))
                             .success(rs.getBoolean("success"))
                             .createdAt(toLocalDateTime(rs.getTimestamp("created_at")))
@@ -204,7 +217,7 @@ public class MonitorQueryService {
     public List<FailureSampleView> getFailureSamples(int limit) {
         try {
             return jdbcTemplate.query(
-                    "SELECT id, user_id, agent_type, model_id, error_message, latency_ms, session_id, created_at " +
+                    "SELECT id, user_id, agent_type, model_id, error_message, latency_ms, session_id, trace_id, created_at " +
                             "FROM ai_audit_logs WHERE success = false ORDER BY created_at DESC LIMIT ?",
                     (rs, rowNum) -> FailureSampleView.builder()
                             .id(rs.getString("id"))
@@ -214,12 +227,77 @@ public class MonitorQueryService {
                             .errorMessage(rs.getString("error_message"))
                             .latencyMs(rs.getLong("latency_ms"))
                             .sessionId(rs.getString("session_id"))
+                            .traceId(rs.getString("trace_id"))
                             .createdAt(toLocalDateTime(rs.getTimestamp("created_at")))
                             .build(),
                     limit
             );
         } catch (Exception e) {
             return Collections.emptyList();
+        }
+    }
+
+    public List<ToolAuditView> getToolAudits(int limit, String userId, String agentType, String toolName) {
+        try {
+            StringBuilder sql = new StringBuilder(
+                    "SELECT id, user_id, session_id, agent_type, tool_name, tool_class, input_summary, output_summary, " +
+                            "success, error_message, latency_ms, trace_id, created_at FROM ai_tool_audit_logs WHERE 1 = 1"
+            );
+            List<Object> args = new java.util.ArrayList<>();
+            if (userId != null && !userId.isBlank()) {
+                sql.append(" AND user_id = ?");
+                args.add(userId);
+            }
+            if (agentType != null && !agentType.isBlank()) {
+                sql.append(" AND agent_type = ?");
+                args.add(agentType);
+            }
+            if (toolName != null && !toolName.isBlank()) {
+                sql.append(" AND tool_name = ?");
+                args.add(toolName);
+            }
+            sql.append(" ORDER BY created_at DESC LIMIT ?");
+            args.add(limit);
+            return jdbcTemplate.query(sql.toString(), this::mapToolAudit, args.toArray());
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
+    }
+
+    public Optional<TraceDetailView> getTraceDetail(String traceId) {
+        try {
+            List<TraceDetailView> rows = jdbcTemplate.query(
+                    "SELECT id, trace_id, user_id, agent_type, model_id, session_id, success, error_message, " +
+                            "latency_ms, prompt_tokens, completion_tokens, created_at, user_message, ai_response, phase_breakdown_json " +
+                            "FROM ai_audit_logs WHERE trace_id = ? ORDER BY created_at DESC LIMIT 1",
+                    (rs, rowNum) -> {
+                        List<ToolAuditView> toolExecutions = getToolAuditsByTraceId(traceId);
+                        long latencyMs = rs.getLong("latency_ms");
+                        String phaseBreakdownJson = rs.getString("phase_breakdown_json");
+                        return TraceDetailView.builder()
+                            .id(rs.getString("id"))
+                            .traceId(rs.getString("trace_id"))
+                            .userId(rs.getString("user_id"))
+                            .agentType(rs.getString("agent_type"))
+                            .modelId(rs.getString("model_id"))
+                            .sessionId(rs.getString("session_id"))
+                            .success(rs.getBoolean("success"))
+                            .errorMessage(rs.getString("error_message"))
+                            .latencyMs(latencyMs)
+                            .promptTokens((Integer) rs.getObject("prompt_tokens"))
+                            .completionTokens((Integer) rs.getObject("completion_tokens"))
+                            .createdAt(toLocalDateTime(rs.getTimestamp("created_at")))
+                            .userMessage(rs.getString("user_message"))
+                            .aiResponse(rs.getString("ai_response"))
+                            .toolExecutions(toolExecutions)
+                            .phaseBreakdown(resolveTracePhases(phaseBreakdownJson, latencyMs, toolExecutions, rs.getBoolean("success")))
+                            .build();
+                    },
+                    traceId
+            );
+            return rows.stream().findFirst();
+        } catch (Exception e) {
+            return Optional.empty();
         }
     }
 
@@ -331,21 +409,67 @@ public class MonitorQueryService {
         if (alerts.isEmpty()) {
             alerts = alertEvaluationService.evaluate(buildAlertSnapshot());
         }
+        Map<String, AlertWorkflowService.AlertWorkflowRecord> workflowMap = alertWorkflowService.getWorkflowMap(
+                alerts.stream()
+                        .map(AlertEventView::getFingerprint)
+                        .filter(value -> value != null && !value.isBlank())
+                        .toList()
+        );
+        alerts = alerts.stream()
+                .map(item -> {
+                    AlertWorkflowService.AlertWorkflowRecord workflow = workflowMap.get(item.getFingerprint());
+                    if (workflow == null) {
+                        return item;
+                    }
+                    return AlertEventView.builder()
+                            .level(item.getLevel())
+                            .type(item.getType())
+                            .message(item.getMessage())
+                            .time(item.getTime())
+                            .source(item.getSource())
+                            .status(item.getStatus())
+                            .fingerprint(item.getFingerprint())
+                            .silenceUrl(item.getSilenceUrl())
+                            .workflowStatus(workflow.getWorkflowStatus())
+                            .workflowNote(workflow.getWorkflowNote())
+                            .workflowUpdatedAt(workflow.getUpdatedAt())
+                            .silencedUntil(workflow.getSilencedUntil())
+                            .labels(item.getLabels())
+                            .build();
+                })
+                .toList();
         return AlertsView.builder()
                 .activeAlerts(alerts.stream().filter(a -> !"INFO".equals(a.getLevel())).count())
                 .alerts(alerts)
                 .build();
     }
 
+    public List<AlertWorkflowHistoryView> getAlertWorkflowHistory(String fingerprint, int limit) {
+        return alertWorkflowService.getWorkflowHistory(fingerprint, limit).stream()
+                .map(item -> AlertWorkflowHistoryView.builder()
+                        .fingerprint(item.getFingerprint())
+                        .workflowStatus(item.getWorkflowStatus())
+                        .workflowNote(item.getWorkflowNote())
+                        .silencedUntil(item.getSilencedUntil())
+                        .createdAt(item.getCreatedAt())
+                        .build())
+                .toList();
+    }
+
+    public void updateAlertWorkflow(String fingerprint, String workflowStatus, String workflowNote, String silencedUntil) {
+        alertWorkflowService.saveWorkflow(fingerprint, workflowStatus, workflowNote, parseDateTime(silencedUntil));
+    }
+
     public String exportSlowRequestsCsv(int limit) {
         StringJoiner joiner = new StringJoiner("\n");
-        joiner.add("id,userId,agentType,modelId,latencyMs,success,createdAt");
+        joiner.add("id,userId,agentType,modelId,traceId,latencyMs,success,createdAt");
         for (SlowRequestView item : getSlowRequests(limit)) {
             joiner.add(String.join(",",
                     csv(item.getId()),
                     csv(item.getUserId()),
                     csv(item.getAgentType()),
                     csv(item.getModelId()),
+                    csv(item.getTraceId()),
                     String.valueOf(item.getLatencyMs()),
                     String.valueOf(item.isSuccess()),
                     csv(formatDateTime(item.getCreatedAt()))));
@@ -355,7 +479,7 @@ public class MonitorQueryService {
 
     public String exportFailureSamplesCsv(int limit) {
         StringJoiner joiner = new StringJoiner("\n");
-        joiner.add("id,userId,agentType,modelId,errorMessage,latencyMs,sessionId,createdAt");
+        joiner.add("id,userId,agentType,modelId,errorMessage,latencyMs,sessionId,traceId,createdAt");
         for (FailureSampleView item : getFailureSamples(limit)) {
             joiner.add(String.join(",",
                     csv(item.getId()),
@@ -365,6 +489,7 @@ public class MonitorQueryService {
                     csv(item.getErrorMessage()),
                     String.valueOf(item.getLatencyMs()),
                     csv(item.getSessionId()),
+                    csv(item.getTraceId()),
                     csv(formatDateTime(item.getCreatedAt()))));
         }
         return joiner.toString();
@@ -458,10 +583,131 @@ public class MonitorQueryService {
                 .modelId(rs.getString("model_id"))
                 .errorMessage(rs.getString("error_message"))
                 .sessionId(rs.getString("session_id"))
+                .traceId(rs.getString("trace_id"))
                 .latencyMs(rs.getLong("latency_ms"))
                 .success(rs.getBoolean("success"))
                 .createdAt(toLocalDateTime(rs.getTimestamp("created_at")))
                 .build();
+    }
+
+    private ToolAuditView mapToolAudit(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+        return ToolAuditView.builder()
+                .id(rs.getString("id"))
+                .userId(rs.getString("user_id"))
+                .sessionId(rs.getString("session_id"))
+                .agentType(rs.getString("agent_type"))
+                .toolName(rs.getString("tool_name"))
+                .toolClass(rs.getString("tool_class"))
+                .inputSummary(rs.getString("input_summary"))
+                .outputSummary(rs.getString("output_summary"))
+                .success(rs.getBoolean("success"))
+                .errorMessage(rs.getString("error_message"))
+                .latencyMs(rs.getLong("latency_ms"))
+                .traceId(rs.getString("trace_id"))
+                .createdAt(toLocalDateTime(rs.getTimestamp("created_at")))
+                .build();
+    }
+
+    private List<ToolAuditView> getToolAuditsByTraceId(String traceId) {
+        try {
+            return jdbcTemplate.query(
+                    "SELECT id, user_id, session_id, agent_type, tool_name, tool_class, input_summary, output_summary, " +
+                            "success, error_message, latency_ms, trace_id, created_at " +
+                            "FROM ai_tool_audit_logs WHERE trace_id = ? ORDER BY created_at ASC",
+                    this::mapToolAudit,
+                    traceId
+            );
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
+    }
+
+    private List<TracePhaseView> resolveTracePhases(String phaseBreakdownJson,
+                                                    long totalLatencyMs,
+                                                    List<ToolAuditView> toolExecutions,
+                                                    boolean success) {
+        List<TracePhaseView> parsed = parseTracePhases(phaseBreakdownJson);
+        if (!parsed.isEmpty()) {
+            return parsed;
+        }
+        return buildTracePhases(totalLatencyMs, toolExecutions, success);
+    }
+
+    private List<TracePhaseView> parseTracePhases(String phaseBreakdownJson) {
+        if (phaseBreakdownJson == null || phaseBreakdownJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            List<Map<String, Object>> items = objectMapper.readValue(
+                    phaseBreakdownJson,
+                    new TypeReference<List<Map<String, Object>>>() {
+                    }
+            );
+            return items.stream()
+                    .map(item -> TracePhaseView.builder()
+                            .key(String.valueOf(item.getOrDefault("key", "")))
+                            .label(String.valueOf(item.getOrDefault("label", "")))
+                            .latencyMs(((Number) item.getOrDefault("latencyMs", 0)).longValue())
+                            .share(((Number) item.getOrDefault("share", 0d)).doubleValue())
+                            .estimated(Boolean.TRUE.equals(item.get("estimated")))
+                            .description(String.valueOf(item.getOrDefault("description", "")))
+                            .build())
+                    .toList();
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    private List<TracePhaseView> buildTracePhases(long totalLatencyMs, List<ToolAuditView> toolExecutions, boolean success) {
+        if (totalLatencyMs <= 0) {
+            return List.of();
+        }
+
+        long toolLatency = Math.min(totalLatencyMs, toolExecutions.stream()
+                .mapToLong(item -> Math.max(item.getLatencyMs(), 0))
+                .sum());
+
+        long authLatency = clampEstimated(totalLatencyMs, 10, 35, 0.04d);
+        long persistenceLatency = clampEstimated(totalLatencyMs, 8, 30, success ? 0.03d : 0.04d);
+        long retrievalLatency = clampEstimated(totalLatencyMs, 12, 90, toolExecutions.isEmpty() ? 0.06d : 0.1d);
+
+        long remaining = totalLatencyMs - authLatency - persistenceLatency - retrievalLatency - toolLatency;
+        if (remaining < 20) {
+            retrievalLatency = Math.max(0, retrievalLatency + remaining - 20);
+            remaining = totalLatencyMs - authLatency - persistenceLatency - retrievalLatency - toolLatency;
+        }
+        long generationLatency = Math.max(20, remaining);
+
+        long totalAssigned = authLatency + retrievalLatency + toolLatency + generationLatency + persistenceLatency;
+        long adjust = totalLatencyMs - totalAssigned;
+        generationLatency += adjust;
+
+        List<TracePhaseView> phases = new ArrayList<>();
+        phases.add(buildPhase("auth", "鉴权与上下文", authLatency, totalLatencyMs, true, "请求进入网关、鉴权校验和会话上下文装配。"));
+        phases.add(buildPhase("retrieval", "检索与准备", retrievalLatency, totalLatencyMs, true, "检索知识、准备提示词和组织模型输入。"));
+        phases.add(buildPhase("tools", "工具执行", toolLatency, totalLatencyMs, false, toolExecutions.isEmpty()
+                ? "当前 Trace 没有记录到工具调用。"
+                : "来自工具审计日志的实际累计耗时。"));
+        phases.add(buildPhase("generation", "模型生成", generationLatency, totalLatencyMs, true, "模型推理、生成主回复内容。"));
+        phases.add(buildPhase("persistence", "落库与审计", persistenceLatency, totalLatencyMs, true, "审计记录、反馈链路和结果持久化。"));
+        return phases;
+    }
+
+    private TracePhaseView buildPhase(String key, String label, long latencyMs, long totalLatencyMs, boolean estimated, String description) {
+        double share = totalLatencyMs <= 0 ? 0d : Math.round((latencyMs * 10000d / totalLatencyMs)) / 100d;
+        return TracePhaseView.builder()
+                .key(key)
+                .label(label)
+                .latencyMs(Math.max(latencyMs, 0))
+                .share(share)
+                .estimated(estimated)
+                .description(description)
+                .build();
+    }
+
+    private long clampEstimated(long totalLatencyMs, long min, long max, double ratio) {
+        long estimate = Math.round(totalLatencyMs * ratio);
+        return Math.max(min, Math.min(max, estimate));
     }
 
     private LocalDateTime toLocalDateTime(Timestamp timestamp) {
@@ -477,6 +723,13 @@ public class MonitorQueryService {
             return "\"\"";
         }
         return "\"" + value.replace("\"", "\"\"") + "\"";
+    }
+
+    private LocalDateTime parseDateTime(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return OffsetDateTime.parse(value).toLocalDateTime();
     }
 
     private double getCounterValue(String name) {

@@ -1,5 +1,6 @@
 package com.huah.ai.platform.agent.service;
 
+import com.huah.ai.platform.agent.memory.ConversationMemoryService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -7,7 +8,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class SalesAssistantAgent extends BaseAssistantAgent {
 
-    public SalesAssistantAgent(@Qualifier("salesChatClient") ChatClient chatClient) {
-        super("sales", chatClient);
+    public SalesAssistantAgent(@Qualifier("salesChatClient") ChatClient chatClient,
+                               ConversationMemoryService conversationMemoryService,
+                               SessionRuntimeInstructionBuilder sessionRuntimeInstructionBuilder) {
+        super("sales", chatClient, conversationMemoryService, sessionRuntimeInstructionBuilder);
     }
 }

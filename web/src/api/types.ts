@@ -66,11 +66,64 @@ export interface BotPermissionUpsertRequest {
 
 export type AgentType = string
 
+export interface MessageDerivedFrom {
+  action: 'continue' | 'regenerate' | 'branch'
+  messageIndex: number
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   responseId?: string
   feedback?: 'up' | 'down' | null
+  sessionConfigSnapshot?: SessionConfig | null
+  derivedFrom?: MessageDerivedFrom | null
+}
+
+export interface FavoriteMessageRecord {
+  id: string
+  responseId?: string
+  role: 'user' | 'assistant'
+  content: string
+  agentType?: string
+  sessionId?: string
+  sessionSummary?: string
+  sourceMessageIndex?: number | null
+  createdAt: number
+  lastCollectedAt?: number
+  duplicateCount?: number
+  tags?: string[]
+  sessionConfigSnapshot?: SessionConfig | null
+}
+
+export interface LearningNoteRecord {
+  id: string
+  title: string
+  content: string
+  sourceType?: 'favorite' | 'manual' | 'session-search'
+  relatedFavoriteId?: string | null
+  relatedSessionId?: string | null
+  relatedAgentType?: string | null
+  relatedSessionSummary?: string | null
+  relatedMessageIndex?: number | null
+  tags?: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface SessionSearchResult {
+  agentType: string
+  sessionId: string
+  sessionSummary: string
+  matchedRole: 'user' | 'assistant'
+  matchedContent: string
+  matchedMessageIndex?: number
+  updatedAt?: string
+  matchedField?: 'title' | 'message'
+  excerpt?: string
+  contextBefore?: string
+  contextAfter?: string
+  additionalMatchCount?: number
 }
 
 export interface SessionInfo {
@@ -79,6 +132,22 @@ export interface SessionInfo {
   updatedAt?: string
   pinned?: string | boolean
   archived?: string | boolean
+  model?: string
+  knowledgeEnabled?: string | boolean
+}
+
+export interface SessionConfig {
+  model?: string | null
+  temperature?: number | null
+  maxContextMessages?: number | null
+  knowledgeEnabled?: boolean | null
+  systemPromptTemplate?: string | null
+  updatedAt?: number | null
+}
+
+export interface SendMessageOptions {
+  sessionConfigOverride?: SessionConfig | null
+  derivedFrom?: MessageDerivedFrom | null
 }
 
 export interface SSEChunk {
@@ -93,11 +162,14 @@ export interface KnowledgeBase {
   name: string
   description?: string
   department?: string
+  visibilityScope?: 'PUBLIC' | 'DEPARTMENT' | 'PRIVATE' | string
   status?: string
   documentCount?: number
   totalChunks?: number
   chunkSize?: number
   chunkOverlap?: number
+  chunkStrategy?: string
+  structuredBatchSize?: number
   createdBy?: string
   createdAt?: string
 }
@@ -196,7 +268,19 @@ export interface AlertEvent {
   status?: string
   fingerprint?: string
   silenceUrl?: string
+  workflowStatus?: string
+  workflowNote?: string
+  workflowUpdatedAt?: string
+  silencedUntil?: string
   labels?: Record<string, string>
+}
+
+export interface AlertWorkflowHistory {
+  fingerprint: string
+  workflowStatus: string
+  workflowNote?: string
+  silencedUntil?: string
+  createdAt: string
 }
 
 export interface TopUser {
@@ -213,9 +297,16 @@ export interface AuditLog {
   model_id?: string
   error_message?: string
   session_id?: string
+  trace_id?: string
   latency_ms: number
   success: boolean
   created_at: string
+}
+
+export interface TokenUsage {
+  userId: string
+  date: string
+  tokensUsed: number
 }
 
 export interface SlowRequestSample {
@@ -223,6 +314,7 @@ export interface SlowRequestSample {
   user_id: string
   agent_type: string
   model_id?: string
+  trace_id?: string
   latency_ms: number
   success: boolean
   created_at: string
@@ -236,6 +328,51 @@ export interface FailureSample {
   error_message?: string
   latency_ms: number
   session_id?: string
+  trace_id?: string
+  created_at: string
+}
+
+export interface TraceDetail {
+  id: string
+  trace_id: string
+  user_id?: string
+  agent_type?: string
+  model_id?: string
+  session_id?: string
+  success: boolean
+  error_message?: string
+  latency_ms: number
+  prompt_tokens?: number | null
+  completion_tokens?: number | null
+  created_at: string
+  user_message?: string
+  ai_response?: string
+  tool_executions?: ToolAudit[]
+  phase_breakdown?: TracePhase[]
+}
+
+export interface TracePhase {
+  key: string
+  label: string
+  latency_ms: number
+  share: number
+  estimated?: boolean
+  description?: string
+}
+
+export interface ToolAudit {
+  id: string
+  user_id?: string
+  session_id?: string
+  agent_type?: string
+  tool_name?: string
+  tool_class?: string
+  input_summary?: string
+  output_summary?: string
+  success: boolean
+  error_message?: string
+  latency_ms: number
+  trace_id?: string
   created_at: string
 }
 
@@ -267,6 +404,31 @@ export interface EvidenceFeedbackSample {
   createdAt: string
 }
 
+export interface RagEvaluationOverview {
+  totalQueries: number
+  feedbackCount: number
+  positiveFeedbackCount: number
+  negativeFeedbackCount: number
+  positiveFeedbackRate: number
+  evidenceFeedbackCount: number
+  positiveEvidenceCount: number
+  negativeEvidenceCount: number
+  positiveEvidenceRate: number
+  lowRatedQueryCount: number
+}
+
+export interface RagEvaluationSample {
+  responseId: string
+  userId?: string
+  knowledgeBaseId?: string
+  question: string
+  answer?: string
+  feedback?: 'up' | 'down' | string
+  comment?: string
+  evidenceNegativeCount: number
+  createdAt: string
+}
+
 export interface ModelInfo {
   id: string
   name: string
@@ -275,10 +437,48 @@ export interface ModelInfo {
   weight: number
   capabilities: string[]
   rpmLimit?: number
+  healthStatus?: 'healthy' | 'degraded'
+  degradedUntil?: number | null
+  healthReason?: string
+  consecutiveFailures?: number
   totalCalls: number
   successCalls: number
   avgLatencyMs: number
   successRate: number
+  promptCostPer1kTokens?: number
+  completionCostPer1kTokens?: number
+  totalPromptTokens?: number
+  totalCompletionTokens?: number
+  totalEstimatedCost?: number
+  lastCheckedAt?: number | null
+  lastProbeLatencyMs?: number | null
+}
+
+export interface GatewayRouteDecisionPreview {
+  scene: string
+  requestedModelId?: string
+  selectedModelId: string
+  strategy: string
+  reason: string
+  fallbackTriggered: boolean
+  estimatedCostNote?: string
+  candidateModels: GatewayRouteCandidate[]
+}
+
+export interface GatewayRouteCandidate {
+  id: string
+  name: string
+  provider: string
+  enabled: boolean
+  healthy: boolean
+  selected: boolean
+  degraded: boolean
+  weight: number
+  avgLatencyMs?: number
+  successRate?: number
+  promptCostPer1kTokens?: number
+  completionCostPer1kTokens?: number
+  reason?: string
 }
 
 export interface GatewayModelsResponse {

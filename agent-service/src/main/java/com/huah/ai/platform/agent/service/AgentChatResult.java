@@ -13,6 +13,11 @@ public class AgentChatResult {
     private final String content;
     private final int promptTokens;
     private final int completionTokens;
+    private final AgentExecutionMetrics executionMetrics;
+
+    public AgentChatResult(String content, int promptTokens, int completionTokens) {
+        this(content, promptTokens, completionTokens, null);
+    }
 
     /**
      * 从 Spring AI ChatResponse 中提取精确 token 用量
@@ -33,6 +38,10 @@ public class AgentChatResult {
             }
         }
 
-        return new AgentChatResult(text, prompt, completion);
+        return new AgentChatResult(text, prompt, completion, null);
+    }
+
+    public AgentChatResult withExecutionMetrics(AgentExecutionMetrics metrics) {
+        return new AgentChatResult(content, promptTokens, completionTokens, metrics);
     }
 }

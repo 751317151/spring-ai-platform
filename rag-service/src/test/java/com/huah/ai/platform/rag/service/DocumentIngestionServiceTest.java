@@ -5,6 +5,7 @@ import com.huah.ai.platform.rag.metrics.RagMetricsService;
 import com.huah.ai.platform.rag.model.DocumentMeta;
 import com.huah.ai.platform.rag.model.KnowledgeBase;
 import com.huah.ai.platform.rag.parser.ExcelDocumentParser;
+import com.huah.ai.platform.rag.parser.StructuredDocumentParser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,6 +46,9 @@ class DocumentIngestionServiceTest {
     private ExcelDocumentParser excelParser;
 
     @Mock
+    private StructuredDocumentParser structuredParser;
+
+    @Mock
     private RagMetricsService metricsService;
 
     private DocumentIngestionService service;
@@ -56,6 +60,7 @@ class DocumentIngestionServiceTest {
                 metaService,
                 fileStorageService,
                 excelParser,
+                structuredParser,
                 metricsService
         );
     }
@@ -163,28 +168,72 @@ class DocumentIngestionServiceTest {
     }
 
     @Test
-    void ingestDocumentMarksStructuredUnsupportedFileAsFailedWithoutThrowing() {
+    void ingestDocumentParsesCsvAndIndexesDocument() {
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "dataset.csv",
                 "text/csv",
-                "col1,col2".getBytes(StandardCharsets.UTF_8)
+                "name,score\nalice,98".getBytes(StandardCharsets.UTF_8)
         );
-        KnowledgeBase kb = KnowledgeBase.builder().id("kb-1").build();
-        DocumentMeta failedMeta = DocumentMeta.builder()
+        KnowledgeBase kb = KnowledgeBase.builder()
+                .id("kb-1")
+                .chunkSize(1000)
+                .chunkOverlap(200)
+                .build();
+        DocumentMeta indexedMeta = DocumentMeta.builder()
                 .id("doc-1")
-                .status(DocumentMeta.STATUS_FAILED)
-                .errorMessage("unsupported")
+                .status(DocumentMeta.STATUS_INDEXED)
+                .chunkCount(1)
                 .build();
 
         when(metaService.findLatestByKnowledgeBaseAndFilename("kb-1", "dataset.csv")).thenReturn(null);
         when(metaService.getKnowledgeBase("kb-1")).thenReturn(kb);
-        when(metaService.markDocumentFailed(any(String.class), any(String.class))).thenReturn(failedMeta);
+        when(structuredParser.parseCsv(any(Resource.class))).thenReturn(List.of(new Document("Row 1: name=alice; score=98;")));
+        when(metaService.markDocumentIndexed(any(String.class), any(String.class), any(String.class), eq(1)))
+                .thenReturn(indexedMeta);
 
         DocumentMeta result = service.ingestDocument(file, "kb-1", "user-1", false);
 
-        assertEquals(DocumentMeta.STATUS_FAILED, result.getStatus());
-        verify(vectorStore, never()).add(any());
+        assertEquals(DocumentMeta.STATUS_INDEXED, result.getStatus());
+        verify(vectorStore).add(any());
+    }
+
+    @Test
+    void ingestDocumentUsesStructuredChunkStrategyForStructuredFiles() {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "dataset.json",
+                "application/json",
+                "{\"items\":[1,2,3]}".getBytes(StandardCharsets.UTF_8)
+        );
+        KnowledgeBase kb = KnowledgeBase.builder()
+                .id("kb-1")
+                .chunkStrategy("STRUCTURED")
+                .structuredBatchSize(2)
+                .build();
+        DocumentMeta indexedMeta = DocumentMeta.builder()
+                .id("doc-1")
+                .status(DocumentMeta.STATUS_INDEXED)
+                .chunkCount(2)
+                .build();
+
+        when(metaService.findLatestByKnowledgeBaseAndFilename("kb-1", "dataset.json")).thenReturn(null);
+        when(metaService.getKnowledgeBase("kb-1")).thenReturn(kb);
+        when(structuredParser.parseJson(any(Resource.class))).thenReturn(List.of(
+                new Document("root.items[0] = 1", java.util.Map.of("structured_type", "json")),
+                new Document("root.items[1] = 2", java.util.Map.of("structured_type", "json")),
+                new Document("root.items[2] = 3", java.util.Map.of("structured_type", "json"))
+        ));
+        when(metaService.markDocumentIndexed(any(String.class), any(String.class), any(String.class), eq(2)))
+                .thenReturn(indexedMeta);
+
+        service.ingestDocument(file, "kb-1", "user-1", false);
+
+        ArgumentCaptor<List<Document>> chunkCaptor = ArgumentCaptor.forClass(List.class);
+        verify(vectorStore).add(chunkCaptor.capture());
+        assertEquals(2, chunkCaptor.getValue().size());
+        assertEquals("STRUCTURED", chunkCaptor.getValue().get(0).getMetadata().get("chunk_strategy"));
+        assertEquals(2, chunkCaptor.getValue().get(0).getMetadata().get("structured_batch_size"));
     }
 
     @Test

@@ -17,7 +17,7 @@ export const AGENT_CONFIG: Record<string, AgentConfig> = {
   'data-analysis': { name: '数据分析助手', icon: 'DA', color: '#f59e0b', desc: 'SQL 协助、图表生成和统计分析' },
   code: { name: '代码助手', icon: 'CO', color: '#10b981', desc: '仓库检索、代码执行和实现审查' },
   mcp: { name: 'MCP 助手', icon: 'MC', color: '#8b5cf6', desc: 'MCP 工具、协议集成和运行时能力' },
-  multi: { name: '多智能体', icon: 'MA', color: '#f5a623', desc: '将复杂任务拆分到多个智能体协作处理' }
+  multi: { name: '多智能体', icon: 'MA', color: '#f5a623', desc: '将复杂任务拆给多个智能体协作处理' }
 }
 
 export const AGENT_LABELS: Record<string, string> = {
@@ -149,7 +149,7 @@ export const DEMO_KNOWLEDGE_BASES = [
   {
     id: 'kb-002',
     name: '研发知识库',
-    description: '技术规范、API 文档、架构说明和工程开发指南。',
+    description: '技术规范、API 文档、架构说明和工程开发指引。',
     status: 'active',
     documentCount: 89,
     totalChunks: 5211

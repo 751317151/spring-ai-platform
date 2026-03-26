@@ -2,6 +2,7 @@ package com.huah.ai.platform.agent.audit;
 
 import com.huah.ai.platform.agent.metrics.AiMetricsCollector;
 import com.huah.ai.platform.agent.service.AgentChatResult;
+import com.huah.ai.platform.common.trace.TraceIdContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -77,6 +78,7 @@ public class AgentAuditAspect {
                         .latencyMs(latency)
                         .success(success)
                         .errorMessage(errorMsg)
+                        .traceId(TraceIdContext.currentTraceId())
                         .createdAt(LocalDateTime.now())
                         .build());
             } catch (Exception ex) {

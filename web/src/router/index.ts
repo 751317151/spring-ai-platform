@@ -33,6 +33,12 @@ const router = createRouter({
           meta: { title: '知识库' }
         },
         {
+          path: 'learning',
+          name: 'learning',
+          component: () => import('@/views/LearningCenterView.vue'),
+          meta: { title: '学习中心' }
+        },
+        {
           path: 'gateway',
           name: 'gateway',
           component: () => import('@/views/GatewayView.vue'),
@@ -63,20 +69,32 @@ const router = createRouter({
 
 router.beforeEach((to, _from, next) => {
   const token = localStorage.getItem('auth_token')
+
   if (to.name !== 'login' && !token) {
-    next({ name: 'login' })
-  } else if (to.name === 'login' && token) {
-    next({ name: 'dashboard' })
-  } else if (to.meta?.requiresAdmin) {
+    next({
+      name: 'login',
+      query: {
+        redirect: to.fullPath
+      }
+    })
+    return
+  }
+
+  if (to.name === 'login' && token) {
+    const redirect = typeof to.query.redirect === 'string' ? to.query.redirect : ''
+    next(redirect || { name: 'dashboard' })
+    return
+  }
+
+  if (to.meta?.requiresAdmin) {
     const roles = localStorage.getItem('auth_roles') || ''
     if (!roles.includes('ROLE_ADMIN')) {
       next({ name: 'dashboard' })
-    } else {
-      next()
+      return
     }
-  } else {
-    next()
   }
+
+  next()
 })
 
 export default router

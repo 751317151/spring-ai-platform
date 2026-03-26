@@ -1,112 +1,149 @@
 package com.huah.ai.platform.gateway.service;
 
 import com.huah.ai.platform.gateway.config.ModelRegistryConfig;
-import com.huah.ai.platform.gateway.config.ModelRegistryConfig.ModelDefinition;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
 
-import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
 class ModelGatewayServiceTest {
 
-    @Mock
-    private JdbcTemplate jdbcTemplate;
-
-    private ModelGatewayService service;
-
-    @BeforeEach
-    void setUp() throws Exception {
+    @Test
+    void selectModelShouldPreferHealthyCandidateWhenAnotherModelIsDegraded() {
         ModelRegistryConfig config = new ModelRegistryConfig();
         config.setLoadBalanceStrategy("round-robin");
-        config.setSceneRoutes(Map.of(
-                "code", List.of("deepseek-chat", "gpt-4o"),
-                "analysis", List.of("gpt-4o")
-        ));
-        config.setRegistry(List.of(
-                definition("deepseek-chat", 2),
-                definition("gpt-4o", 1),
-                definition("qwen-plus", 1)
-        ));
+        config.setSceneRoutes(Map.of("default", List.of("model-a", "model-b")));
 
-        service = new ModelGatewayService(config, jdbcTemplate, new SimpleMeterRegistry());
-        putModel(service, "deepseek-chat");
-        putModel(service, "gpt-4o");
-        putModel(service, "qwen-plus");
+        ModelRegistryConfig.ModelDefinition a = new ModelRegistryConfig.ModelDefinition();
+        a.setId("model-a");
+        a.setEnabled(true);
+        ModelRegistryConfig.ModelDefinition b = new ModelRegistryConfig.ModelDefinition();
+        b.setId("model-b");
+        b.setEnabled(true);
+        config.setRegistry(List.of(a, b));
+
+        ModelGatewayService service = new ModelGatewayService(config, mock(JdbcTemplate.class), new SimpleMeterRegistry());
+
+        @SuppressWarnings("unchecked")
+        Map<String, ChatModel> modelCache = (Map<String, ChatModel>) ReflectionTestUtils.getField(service, "modelCache");
+        modelCache.put("model-a", mock(ChatModel.class));
+        modelCache.put("model-b", mock(ChatModel.class));
+
+        service.recordCall("model-a", 120, false);
+        service.recordCall("model-a", 140, false);
+        service.recordCall("model-a", 160, false);
+
+        String selected = service.selectModel("default");
+
+        assertEquals("model-b", selected);
+        assertEquals("degraded", service.getAllHealth().get("model-a").getStatus());
+        assertTrue(service.getAllHealth().get("model-a").getDegradedUntil() > System.currentTimeMillis());
     }
 
     @Test
-    void selectModelUsesSceneRouteWithRoundRobin() {
-        assertEquals("deepseek-chat", service.selectModel("code"));
-        assertEquals("gpt-4o", service.selectModel("code"));
-        assertEquals("deepseek-chat", service.selectModel("code"));
-    }
-
-    @Test
-    void selectModelFallsBackToAllModelsWhenSceneMissing() {
-        assertEquals("deepseek-chat", service.selectModel("unknown-scene"));
-        assertEquals("gpt-4o", service.selectModel("unknown-scene"));
-        assertEquals("qwen-plus", service.selectModel("unknown-scene"));
-    }
-
-    @Test
-    void selectModelUsesLeastLatencyWhenConfigured() throws Exception {
+    void selectModelWithDecisionShouldExplainFallbackWhenSceneCandidatesAreDegraded() {
         ModelRegistryConfig config = new ModelRegistryConfig();
-        config.setLoadBalanceStrategy("least-latency");
-        config.setRegistry(List.of(
-                definition("model-a", 1),
-                definition("model-b", 1)
-        ));
+        config.setLoadBalanceStrategy("round-robin");
+        config.setSceneRoutes(Map.of("chat", List.of("model-a")));
 
-        ModelGatewayService leastLatencyService =
-                new ModelGatewayService(config, jdbcTemplate, new SimpleMeterRegistry());
-        putModel(leastLatencyService, "model-a");
-        putModel(leastLatencyService, "model-b");
-        putStats(leastLatencyService, "model-a", 4, 4, 400);
-        putStats(leastLatencyService, "model-b", 4, 4, 80);
+        ModelRegistryConfig.ModelDefinition a = new ModelRegistryConfig.ModelDefinition();
+        a.setId("model-a");
+        a.setEnabled(true);
+        config.setRegistry(List.of(a));
 
-        assertEquals("model-b", leastLatencyService.selectModel(null));
+        ModelGatewayService service = new ModelGatewayService(config, mock(JdbcTemplate.class), new SimpleMeterRegistry());
+
+        @SuppressWarnings("unchecked")
+        Map<String, ChatModel> modelCache = (Map<String, ChatModel>) ReflectionTestUtils.getField(service, "modelCache");
+        modelCache.put("model-a", mock(ChatModel.class));
+
+        service.recordCall("model-a", 100, false);
+        service.recordCall("model-a", 100, false);
+        service.recordCall("model-a", 100, false);
+
+        ModelGatewayService.RouteDecision decision = service.selectModelWithDecision("chat", null);
+
+        assertEquals("model-a", decision.getSelectedModelId());
+        assertTrue(decision.isFallbackTriggered());
+        assertTrue(decision.getReason().contains("回退"));
+        assertEquals(List.of("model-a"), decision.getDegradedModelIds());
     }
 
-    private static ModelDefinition definition(String id, int weight) {
-        ModelDefinition definition = new ModelDefinition();
-        definition.setId(id);
-        definition.setName(id);
-        definition.setProvider("ollama");
-        definition.setBaseUrl("http://localhost:11434");
-        definition.setWeight(weight);
-        definition.setEnabled(true);
-        return definition;
+    @Test
+    void selectModelWithDecisionShouldExplainManualOverride() {
+        ModelRegistryConfig config = new ModelRegistryConfig();
+        config.setLoadBalanceStrategy("weighted");
+
+        ModelRegistryConfig.ModelDefinition a = new ModelRegistryConfig.ModelDefinition();
+        a.setId("model-a");
+        a.setEnabled(true);
+        config.setRegistry(List.of(a));
+
+        ModelGatewayService service = new ModelGatewayService(config, mock(JdbcTemplate.class), new SimpleMeterRegistry());
+
+        @SuppressWarnings("unchecked")
+        Map<String, ChatModel> modelCache = (Map<String, ChatModel>) ReflectionTestUtils.getField(service, "modelCache");
+        modelCache.put("model-a", mock(ChatModel.class));
+
+        ModelGatewayService.RouteDecision decision = service.selectModelWithDecision("default", "model-a");
+
+        assertEquals("model-a", decision.getSelectedModelId());
+        assertEquals("manual", decision.getStrategy());
+        assertTrue(decision.getReason().contains("显式模型指定"));
     }
 
-    @SuppressWarnings("unchecked")
-    private static void putModel(ModelGatewayService target, String id) throws Exception {
-        Field field = ModelGatewayService.class.getDeclaredField("modelCache");
-        field.setAccessible(true);
-        Map<String, ChatModel> modelCache = (Map<String, ChatModel>) field.get(target);
-        modelCache.put(id, mock(ChatModel.class));
+    @Test
+    void probeModelHealthShouldUpdateHealthStatusWithoutAffectingStats() {
+        ModelRegistryConfig config = new ModelRegistryConfig();
+        ModelRegistryConfig.ModelDefinition a = new ModelRegistryConfig.ModelDefinition();
+        a.setId("model-a");
+        a.setEnabled(true);
+        config.setRegistry(List.of(a));
+
+        ModelGatewayService service = new ModelGatewayService(config, mock(JdbcTemplate.class), new SimpleMeterRegistry());
+
+        ChatModel chatModel = mock(ChatModel.class);
+        when(chatModel.call(any(Prompt.class))).thenReturn(mock(ChatResponse.class));
+
+        @SuppressWarnings("unchecked")
+        Map<String, ChatModel> modelCache = (Map<String, ChatModel>) ReflectionTestUtils.getField(service, "modelCache");
+        modelCache.put("model-a", chatModel);
+
+        Map<String, Object> result = service.probeModelHealth("model-a");
+
+        assertEquals("healthy", result.get("status"));
+        assertEquals(0, service.getAllStats().getOrDefault("model-a", new ModelGatewayService.ModelStats("model-a")).getTotalCalls().get());
+        assertTrue(service.getAllHealth().get("model-a").getLastCheckedAt() > 0);
     }
 
-    @SuppressWarnings("unchecked")
-    private static void putStats(ModelGatewayService target, String id, int total, int success, long totalLatency)
-            throws Exception {
-        Field field = ModelGatewayService.class.getDeclaredField("statsMap");
-        field.setAccessible(true);
-        Map<String, ModelGatewayService.ModelStats> statsMap =
-                (Map<String, ModelGatewayService.ModelStats>) field.get(target);
-        ModelGatewayService.ModelStats stats = new ModelGatewayService.ModelStats(id);
-        stats.restore(total, success, totalLatency);
-        statsMap.put(id, stats);
+    @Test
+    void recordCallShouldAccumulateTokenUsageAndEstimatedCost() {
+        ModelRegistryConfig config = new ModelRegistryConfig();
+        ModelRegistryConfig.ModelDefinition a = new ModelRegistryConfig.ModelDefinition();
+        a.setId("model-a");
+        a.setEnabled(true);
+        a.setPromptCostPer1kTokens(0.01);
+        a.setCompletionCostPer1kTokens(0.02);
+        config.setRegistry(List.of(a));
+
+        ModelGatewayService service = new ModelGatewayService(config, mock(JdbcTemplate.class), new SimpleMeterRegistry());
+        service.recordCall("model-a", 100, true, 500, 250);
+
+        ModelGatewayService.ModelStats stats = service.getAllStats().get("model-a");
+        assertEquals(500, stats.getTotalPromptTokens());
+        assertEquals(250, stats.getTotalCompletionTokens());
+        assertTrue(stats.getTotalEstimatedCost() > 0d);
     }
 }

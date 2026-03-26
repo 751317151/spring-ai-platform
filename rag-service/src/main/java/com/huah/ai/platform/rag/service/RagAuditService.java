@@ -1,12 +1,17 @@
 package com.huah.ai.platform.rag.service;
 
 import com.huah.ai.platform.common.exception.BizException;
+import com.huah.ai.platform.common.trace.TraceIdContext;
+import com.huah.ai.platform.rag.model.RagEvaluationOverview;
+import com.huah.ai.platform.rag.model.RagEvaluationSample;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -25,8 +30,8 @@ public class RagAuditService {
                                String errorMessage) {
         String responseId = UUID.randomUUID().toString();
         jdbcTemplate.update(
-                "INSERT INTO ai_audit_logs (id, user_id, agent_type, user_message, ai_response, latency_ms, success, error_message, session_id, created_at) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO ai_audit_logs (id, user_id, agent_type, user_message, ai_response, latency_ms, success, error_message, session_id, trace_id, created_at) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 responseId,
                 userId,
                 "rag",
@@ -36,6 +41,7 @@ public class RagAuditService {
                 success,
                 errorMessage,
                 knowledgeBaseId,
+                TraceIdContext.currentTraceId(),
                 Timestamp.valueOf(LocalDateTime.now())
         );
         return responseId;
@@ -143,6 +149,108 @@ public class RagAuditService {
         );
     }
 
+    public RagEvaluationOverview getEvaluationOverview(String knowledgeBaseId) {
+        try {
+            String querySql = knowledgeBaseId == null || knowledgeBaseId.isBlank()
+                    ? "SELECT COUNT(*) FROM ai_audit_logs WHERE agent_type = 'rag'"
+                    : "SELECT COUNT(*) FROM ai_audit_logs WHERE agent_type = 'rag' AND session_id = ?";
+            long totalQueries = (knowledgeBaseId == null || knowledgeBaseId.isBlank())
+                    ? jdbcTemplate.queryForObject(querySql, Long.class)
+                    : jdbcTemplate.queryForObject(querySql, Long.class, knowledgeBaseId);
+
+            String feedbackSql = """
+                    SELECT
+                        COUNT(*) AS total,
+                        COUNT(*) FILTER (WHERE feedback = 'up') AS positive,
+                        COUNT(*) FILTER (WHERE feedback = 'down') AS negative
+                    FROM ai_response_feedback
+                    WHERE source_type = 'rag'
+                    """ + ((knowledgeBaseId == null || knowledgeBaseId.isBlank()) ? "" : " AND knowledge_base_id = ?");
+            var feedbackStats = (knowledgeBaseId == null || knowledgeBaseId.isBlank())
+                    ? jdbcTemplate.queryForMap(feedbackSql)
+                    : jdbcTemplate.queryForMap(feedbackSql, knowledgeBaseId);
+
+            String evidenceSql = """
+                    SELECT
+                        COUNT(*) AS total,
+                        COUNT(*) FILTER (WHERE feedback = 'up') AS positive,
+                        COUNT(*) FILTER (WHERE feedback = 'down') AS negative
+                    FROM ai_evidence_feedback
+                    """ + ((knowledgeBaseId == null || knowledgeBaseId.isBlank()) ? "" : " WHERE knowledge_base_id = ?");
+            var evidenceStats = (knowledgeBaseId == null || knowledgeBaseId.isBlank())
+                    ? jdbcTemplate.queryForMap(evidenceSql)
+                    : jdbcTemplate.queryForMap(evidenceSql, knowledgeBaseId);
+
+            long feedbackCount = getLong(feedbackStats, "total");
+            long positiveFeedback = getLong(feedbackStats, "positive");
+            long negativeFeedback = getLong(feedbackStats, "negative");
+            long evidenceCount = getLong(evidenceStats, "total");
+            long positiveEvidence = getLong(evidenceStats, "positive");
+            long negativeEvidence = getLong(evidenceStats, "negative");
+
+            return RagEvaluationOverview.builder()
+                    .totalQueries(totalQueries)
+                    .feedbackCount(feedbackCount)
+                    .positiveFeedbackCount(positiveFeedback)
+                    .negativeFeedbackCount(negativeFeedback)
+                    .positiveFeedbackRate(feedbackCount > 0 ? (double) positiveFeedback / feedbackCount : 0d)
+                    .evidenceFeedbackCount(evidenceCount)
+                    .positiveEvidenceCount(positiveEvidence)
+                    .negativeEvidenceCount(negativeEvidence)
+                    .positiveEvidenceRate(evidenceCount > 0 ? (double) positiveEvidence / evidenceCount : 0d)
+                    .lowRatedQueryCount(negativeFeedback + negativeEvidence)
+                    .build();
+        } catch (Exception e) {
+            return RagEvaluationOverview.builder().build();
+        }
+    }
+
+    public List<RagEvaluationSample> getLowRatedSamples(String knowledgeBaseId, int limit) {
+        try {
+            String sql = """
+                    SELECT
+                        a.id AS response_id,
+                        a.user_id,
+                        COALESCE(r.knowledge_base_id, e.knowledge_base_id, a.session_id) AS knowledge_base_id,
+                        a.user_message,
+                        a.ai_response,
+                        COALESCE(r.feedback, 'down') AS feedback,
+                        COALESCE(r.comment, '') AS comment,
+                        COALESCE(e.negative_evidence_count, 0) AS evidence_negative_count,
+                        a.created_at
+                    FROM ai_audit_logs a
+                    LEFT JOIN ai_response_feedback r ON r.response_id = a.id AND r.source_type = 'rag'
+                    LEFT JOIN (
+                        SELECT response_id, knowledge_base_id,
+                               COUNT(*) FILTER (WHERE feedback = 'down') AS negative_evidence_count
+                        FROM ai_evidence_feedback
+                        GROUP BY response_id, knowledge_base_id
+                    ) e ON e.response_id = a.id
+                    WHERE a.agent_type = 'rag'
+                      AND (COALESCE(r.feedback, '') = 'down' OR COALESCE(e.negative_evidence_count, 0) > 0)
+                    """ + ((knowledgeBaseId == null || knowledgeBaseId.isBlank()) ? "" : " AND COALESCE(r.knowledge_base_id, e.knowledge_base_id, a.session_id) = ?") +
+                    " ORDER BY a.created_at DESC LIMIT ?";
+            Object[] args = (knowledgeBaseId == null || knowledgeBaseId.isBlank())
+                    ? new Object[]{limit}
+                    : new Object[]{knowledgeBaseId, limit};
+            return jdbcTemplate.query(sql,
+                    (rs, rowNum) -> RagEvaluationSample.builder()
+                            .responseId(rs.getString("response_id"))
+                            .userId(rs.getString("user_id"))
+                            .knowledgeBaseId(rs.getString("knowledge_base_id"))
+                            .question(rs.getString("user_message"))
+                            .answer(rs.getString("ai_response"))
+                            .feedback(rs.getString("feedback"))
+                            .comment(rs.getString("comment"))
+                            .evidenceNegativeCount(rs.getLong("evidence_negative_count"))
+                            .createdAt(rs.getTimestamp("created_at").toLocalDateTime())
+                            .build(),
+                    args);
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
+    }
+
     private String normalizeFeedback(String feedback) {
         String normalized = feedback == null ? "" : feedback.trim().toLowerCase(Locale.ROOT);
         if (!"up".equals(normalized) && !"down".equals(normalized)) {
@@ -167,5 +275,10 @@ public class RagAuditService {
             return null;
         }
         return value.length() > maxLength ? value.substring(0, maxLength) : value;
+    }
+
+    private long getLong(java.util.Map<String, Object> map, String key) {
+        Object value = map.get(key);
+        return value instanceof Number number ? number.longValue() : 0L;
     }
 }

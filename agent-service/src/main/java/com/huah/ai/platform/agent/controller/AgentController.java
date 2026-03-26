@@ -2,23 +2,32 @@ package com.huah.ai.platform.agent.controller;
 
 import com.huah.ai.platform.agent.audit.AiAuditLog;
 import com.huah.ai.platform.agent.audit.AiAuditLogMapper;
+import com.huah.ai.platform.agent.audit.AiToolAuditLog;
+import com.huah.ai.platform.agent.audit.AiToolAuditLogMapper;
 import com.huah.ai.platform.agent.audit.ResponseFeedbackService;
+import com.huah.ai.platform.agent.audit.TracePhaseRecord;
 import com.huah.ai.platform.agent.dto.AgentChatRequest;
 import com.huah.ai.platform.agent.dto.AgentChatResponse;
 import com.huah.ai.platform.agent.dto.McpServerListResponse;
 import com.huah.ai.platform.agent.dto.MultiAgentTaskRequest;
 import com.huah.ai.platform.agent.dto.ResponseFeedbackRequest;
 import com.huah.ai.platform.agent.dto.SessionTitleRequest;
+import com.huah.ai.platform.agent.dto.SessionConfigRequest;
+import com.huah.ai.platform.agent.dto.SessionConfigResponse;
 import com.huah.ai.platform.agent.dto.SessionToggleRequest;
 import com.huah.ai.platform.agent.memory.ConversationMemoryService;
 import com.huah.ai.platform.agent.metrics.AiMetricsCollector;
 import com.huah.ai.platform.agent.multi.MultiAgentOrchestrator;
 import com.huah.ai.platform.agent.security.AgentAccessChecker;
 import com.huah.ai.platform.agent.service.AgentChatResult;
+import com.huah.ai.platform.agent.service.AgentExecutionMetrics;
+import com.huah.ai.platform.agent.service.AgentExecutionMetricsContext;
 import com.huah.ai.platform.agent.service.AssistantAgent;
 import com.huah.ai.platform.agent.service.AssistantAgentRegistry;
 import com.huah.ai.platform.agent.service.McpServerCatalogService;
 import com.huah.ai.platform.common.dto.Result;
+import com.huah.ai.platform.common.trace.TraceIdContext;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +54,7 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.ArrayList;
 
 @Slf4j
 @RestController
@@ -58,11 +68,13 @@ public class AgentController {
     private final MultiAgentOrchestrator multiAgentOrchestrator;
     private final ConversationMemoryService memoryService;
     private final AiAuditLogMapper auditLogMapper;
+    private final AiToolAuditLogMapper toolAuditLogMapper;
     private final ResponseFeedbackService feedbackService;
     private final AgentAccessChecker accessChecker;
     private final AiMetricsCollector metricsCollector;
     private final AgentRequestContextResolver requestContextResolver;
     private final McpServerCatalogService mcpServerCatalogService;
+    private final ObjectMapper objectMapper;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     @PostMapping("/{agentType}/chat")
@@ -92,6 +104,9 @@ public class AgentController {
         if (message == null || message.isBlank()) {
             return Result.fail(400, "message 不能为空");
         }
+        if (body.getSessionConfig() != null) {
+            memoryService.saveSessionConfig(sessionId, body.getSessionConfig());
+        }
 
         log.info("[Chat] received agent={}, userId={}, sessionId={}, messageLength={}",
                 agentType, userId, sessionId, message.length());
@@ -100,9 +115,16 @@ public class AgentController {
 
         long startTime = System.currentTimeMillis();
         try {
+            long agentStartTime = System.currentTimeMillis();
             AgentChatResult result = routeToAgent(agentType, userId, sessionId, message);
             long latency = System.currentTimeMillis() - startTime;
+            long persistenceStartTime = System.currentTimeMillis();
+            AgentExecutionMetrics executionMetrics = result.getExecutionMetrics();
             String responseId = saveAuditLog(userId, sessionId, agentType, message, result.getContent(), latency, true, null,
+                    Math.max(0, agentStartTime - startTime),
+                    executionMetrics != null ? executionMetrics.getPreparationLatencyMs() : 0L,
+                    executionMetrics != null ? executionMetrics.getModelLatencyMs() : Math.max(0, System.currentTimeMillis() - agentStartTime),
+                    Math.max(0, System.currentTimeMillis() - persistenceStartTime),
                     result.getPromptTokens(), result.getCompletionTokens());
             metricsCollector.recordModelCall(agentType, latency, true);
             metricsCollector.recordRequest(null, agentType, latency, true,
@@ -169,6 +191,9 @@ public class AgentController {
             sendDone(emitter, null);
             return emitter;
         }
+        if (body.getSessionConfig() != null) {
+            memoryService.saveSessionConfig(sessionId, body.getSessionConfig());
+        }
 
         log.info("[Stream] received agent={}, userId={}, sessionId={}, messageLength={}",
                 agentType, userId, sessionId, message.length());
@@ -218,13 +243,15 @@ public class AgentController {
                     log.info("[Stream] multi-agent completed userId={}, latency={}ms, tokens={}/{}",
                             userId, latency, totalPrompt, totalCompletion);
                     String responseId = saveAuditLog(userId, sessionId, "multi", message, truncate(criticResult.getContent(), 500),
-                            latency, true, null, totalPrompt, totalCompletion);
+                            latency, true, null, 0L, 0L, latency, 0L, totalPrompt, totalCompletion);
                     accessChecker.recordActualTokens(userId, totalPrompt + totalCompletion, PRE_DEDUCT_TOKENS);
                     sendDone(emitter, responseId);
                     return;
                 }
 
+                long agentStartTime = System.currentTimeMillis();
                 Flux<ChatResponse> flux = routeToAgentStream(agentType, userId, sessionId, message);
+                AgentExecutionMetrics executionMetrics = AgentExecutionMetricsContext.getAndClear();
                 flux.doOnNext(chatResponse -> {
                             chunkCount.incrementAndGet();
                             String chunk = "";
@@ -250,6 +277,7 @@ public class AgentController {
                         .doOnComplete(() -> {
                             metricsCollector.decrementActive();
                             long latency = System.currentTimeMillis() - startTime;
+                            long persistenceStartTime = System.currentTimeMillis();
                             metricsCollector.recordModelCall(agentType, latency, true);
                             metricsCollector.recordRequest(null, agentType, latency, true,
                                     totalPromptTokens.get(), totalCompletionTokens.get());
@@ -262,19 +290,29 @@ public class AgentController {
                                     totalPromptTokens.get() + totalCompletionTokens.get(),
                                     PRE_DEDUCT_TOKENS);
                             String responseId = saveAuditLog(userId, sessionId, agentType, message, response, latency, true, null,
+                                    Math.max(0, agentStartTime - startTime),
+                                    executionMetrics != null ? executionMetrics.getPreparationLatencyMs() : 0L,
+                                    Math.max(0, System.currentTimeMillis() - agentStartTime),
+                                    Math.max(0, System.currentTimeMillis() - persistenceStartTime),
                                     totalPromptTokens.get(), totalCompletionTokens.get());
                             sendDone(emitter, responseId);
                         })
                         .doOnError(e -> {
                             metricsCollector.decrementActive();
                             long latency = System.currentTimeMillis() - startTime;
+                            long persistenceStartTime = System.currentTimeMillis();
                             metricsCollector.recordModelCall(agentType, latency, false);
                             metricsCollector.recordRequest(null, agentType, latency, false, 0, 0);
                             log.error("[Stream] failed agent={}, userId={}, latency={}ms, chunks={}, partialResponse={}, error={}",
                                     agentType, userId, latency, chunkCount.get(),
                                     truncate(fullResponse.toString(), 200), e.getMessage(), e);
                             accessChecker.recordActualTokens(userId, 0, PRE_DEDUCT_TOKENS);
-                            saveAuditLog(userId, sessionId, agentType, message, null, latency, false, e.getMessage(), 0, 0);
+                            saveAuditLog(userId, sessionId, agentType, message, null, latency, false, e.getMessage(),
+                                    Math.max(0, agentStartTime - startTime),
+                                    executionMetrics != null ? executionMetrics.getPreparationLatencyMs() : 0L,
+                                    Math.max(0, System.currentTimeMillis() - agentStartTime),
+                                    Math.max(0, System.currentTimeMillis() - persistenceStartTime),
+                                    0, 0);
                             memoryService.rollbackLastUserMessage(sessionId);
                             sendChunk(emitter, "\n\n[AI 服务异常，请稍后重试]");
                             sendDone(emitter, null);
@@ -379,11 +417,44 @@ public class AgentController {
     @GetMapping("/{agentType}/sessions")
     public Result<List<Map<String, String>>> listSessions(
             @PathVariable(name = "agentType") String agentType,
+            @RequestHeader(value = "X-Session-Id", required = false) String ignoredSessionId,
+            @org.springframework.web.bind.annotation.RequestParam(name = "keyword", required = false) String keyword,
+            @org.springframework.web.bind.annotation.RequestParam(name = "includeArchived", defaultValue = "false") boolean includeArchived,
+            @org.springframework.web.bind.annotation.RequestParam(name = "pinnedOnly", defaultValue = "false") boolean pinnedOnly,
+            @org.springframework.web.bind.annotation.RequestParam(name = "updatedAfter", required = false) Long updatedAfter,
+            @org.springframework.web.bind.annotation.RequestParam(name = "updatedBefore", required = false) Long updatedBefore,
+            @org.springframework.web.bind.annotation.RequestParam(name = "limit", required = false) Integer limit,
             HttpServletRequest request) {
         String userId = requestContextResolver.resolve(request).getUserId();
         String prefix = buildSessionPrefix(userId, agentType);
         log.info("[Sessions] list agent={}, userId={}, prefix={}", agentType, userId, prefix);
-        return Result.ok(memoryService.listSessions(prefix));
+        return Result.ok(memoryService.searchSessions(prefix, keyword, includeArchived, pinnedOnly, updatedAfter, updatedBefore, limit));
+    }
+
+    @GetMapping("/{agentType}/sessions/config")
+    public Result<SessionConfigResponse> getSessionConfig(
+            @PathVariable(name = "agentType") String agentType,
+            @RequestHeader(value = "X-Session-Id") String sessionId,
+            HttpServletRequest request) {
+        String userId = requestContextResolver.resolve(request).getUserId();
+        if (!ownsSession(userId, agentType, sessionId)) {
+            return Result.fail(403, "无权查看该会话配置");
+        }
+        return Result.ok(memoryService.getSessionConfig(sessionId));
+    }
+
+    @PostMapping("/{agentType}/sessions/config")
+    public Result<String> saveSessionConfig(
+            @PathVariable(name = "agentType") String agentType,
+            @RequestHeader(value = "X-Session-Id") String sessionId,
+            @RequestBody SessionConfigRequest body,
+            HttpServletRequest request) {
+        String userId = requestContextResolver.resolve(request).getUserId();
+        if (!ownsSession(userId, agentType, sessionId)) {
+            return Result.fail(403, "无权修改该会话配置");
+        }
+        memoryService.saveSessionConfig(sessionId, body);
+        return Result.ok("会话配置已更新");
     }
 
     @PostMapping("/{agentType}/sessions/title")
@@ -464,6 +535,17 @@ public class AgentController {
         return Result.ok(mcpServerCatalogService.listServers());
     }
 
+    @GetMapping("/tools/audit")
+    public Result<List<AiToolAuditLog>> listToolAuditLogs(
+            @org.springframework.web.bind.annotation.RequestParam(name = "agentType", required = false) String agentType,
+            @org.springframework.web.bind.annotation.RequestParam(name = "toolName", required = false) String toolName,
+            @org.springframework.web.bind.annotation.RequestParam(name = "limit", defaultValue = "50") Integer limit,
+            HttpServletRequest request) {
+        String userId = requestContextResolver.resolve(request).getUserId();
+        int safeLimit = limit == null ? 50 : Math.max(1, Math.min(limit, 200));
+        return Result.ok(toolAuditLogMapper.selectRecent(userId, agentType, toolName, safeLimit));
+    }
+
     private boolean ownsSession(String userId, String agentType, String sessionId) {
         return sessionId != null && sessionId.startsWith(buildSessionPrefix(userId, agentType));
     }
@@ -519,9 +601,12 @@ public class AgentController {
     private String saveAuditLog(String userId, String sessionId, String agentType,
                                 String userMessage, String aiResponse, long latencyMs,
                                 boolean success, String errorMessage,
+                                long authLatencyMs, long preparationLatencyMs,
+                                long modelLatencyMs, long persistenceLatencyMs,
                                 int promptTokens, int completionTokens) {
         String logId = UUID.randomUUID().toString();
         try {
+            String traceId = TraceIdContext.currentTraceId();
             auditLogMapper.insert(AiAuditLog.builder()
                     .id(logId)
                     .userId(userId)
@@ -534,11 +619,75 @@ public class AgentController {
                     .latencyMs(latencyMs)
                     .success(success)
                     .errorMessage(errorMessage)
+                    .traceId(traceId)
+                    .phaseBreakdownJson(buildPhaseBreakdownJson(traceId, latencyMs, authLatencyMs, preparationLatencyMs, modelLatencyMs, persistenceLatencyMs))
                     .createdAt(LocalDateTime.now())
                     .build());
         } catch (Exception e) {
             log.warn("audit log write failed: {}", e.getMessage());
         }
         return logId;
+    }
+
+    private String buildPhaseBreakdownJson(String traceId,
+                                           long totalLatencyMs,
+                                           long authLatencyMs,
+                                           long preparationLatencyMs,
+                                           long modelLatencyMs,
+                                           long persistenceLatencyMs) {
+        if (totalLatencyMs <= 0) {
+            return null;
+        }
+
+        long toolLatencyMs = getToolLatencyByTraceId(traceId);
+        long generationLatencyMs = Math.max(0, modelLatencyMs - toolLatencyMs);
+        long assigned = authLatencyMs + preparationLatencyMs + toolLatencyMs + generationLatencyMs + persistenceLatencyMs;
+        if (assigned < totalLatencyMs) {
+            generationLatencyMs += totalLatencyMs - assigned;
+        }
+
+        List<TracePhaseRecord> phases = new ArrayList<>();
+        phases.add(buildPhaseRecord("auth", "鉴权与上下文", authLatencyMs, totalLatencyMs, "请求进入控制器、权限校验和配额检查。"));
+        phases.add(buildPhaseRecord("preparation", "请求准备", preparationLatencyMs, totalLatencyMs, "会话配置读取、提示词拼装和模型请求准备。"));
+        phases.add(buildPhaseRecord("tools", "工具执行", toolLatencyMs, totalLatencyMs, "来自工具审计日志的真实工具执行耗时。"));
+        phases.add(buildPhaseRecord("generation", "模型生成", generationLatencyMs, totalLatencyMs, "模型推理与流式或非流式回复生成。"));
+        phases.add(buildPhaseRecord("persistence", "落库与审计", persistenceLatencyMs, totalLatencyMs, "审计日志写入与响应收尾。"));
+
+        try {
+            return objectMapper.writeValueAsString(phases);
+        } catch (Exception e) {
+            log.warn("serialize phase breakdown failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private TracePhaseRecord buildPhaseRecord(String key, String label, long latencyMs, long totalLatencyMs, String description) {
+        long normalizedLatency = Math.max(latencyMs, 0);
+        double share = totalLatencyMs <= 0 ? 0d : Math.round((normalizedLatency * 10000d / totalLatencyMs)) / 100d;
+        return TracePhaseRecord.builder()
+                .key(key)
+                .label(label)
+                .latencyMs(normalizedLatency)
+                .share(share)
+                .estimated(false)
+                .description(description)
+                .build();
+    }
+
+    private long getToolLatencyByTraceId(String traceId) {
+        if (traceId == null || traceId.isBlank()) {
+            return 0L;
+        }
+        try {
+            return toolAuditLogMapper.selectList(
+                            new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<AiToolAuditLog>()
+                                    .eq("trace_id", traceId))
+                    .stream()
+                    .mapToLong(item -> Math.max(item.getLatencyMs() == null ? 0L : item.getLatencyMs(), 0L))
+                    .sum();
+        } catch (Exception e) {
+            log.warn("load tool latency by traceId failed: {}", e.getMessage());
+            return 0L;
+        }
     }
 }

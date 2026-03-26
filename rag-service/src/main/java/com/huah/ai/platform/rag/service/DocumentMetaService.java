@@ -1,6 +1,7 @@
 package com.huah.ai.platform.rag.service;
 
 import com.huah.ai.platform.common.exception.BizException;
+import com.huah.ai.platform.common.exception.PermissionDeniedException;
 import com.huah.ai.platform.rag.mapper.DocumentMetaMapper;
 import com.huah.ai.platform.rag.mapper.KnowledgeBaseMapper;
 import com.huah.ai.platform.rag.metrics.RagMetricsService;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 
 @Slf4j
 @Service
@@ -34,8 +36,16 @@ public class DocumentMetaService {
         return kb;
     }
 
-    public List<KnowledgeBase> listKnowledgeBases() {
-        return kbMapper.selectList(null);
+    public KnowledgeBase getKnowledgeBase(String id, AccessContext context) {
+        KnowledgeBase kb = getKnowledgeBase(id);
+        ensureKnowledgeBaseAccessible(kb, context);
+        return kb;
+    }
+
+    public List<KnowledgeBase> listKnowledgeBases(AccessContext context) {
+        return kbMapper.selectList(null).stream()
+                .filter(kb -> isKnowledgeBaseAccessible(kb, context))
+                .toList();
     }
 
     public KnowledgeBase createKnowledgeBase(KnowledgeBase kb) {
@@ -60,8 +70,17 @@ public class DocumentMetaService {
         if (update.getChunkOverlap() >= 0) {
             kb.setChunkOverlap(update.getChunkOverlap());
         }
+        if (update.getChunkStrategy() != null && !update.getChunkStrategy().isBlank()) {
+            kb.setChunkStrategy(update.getChunkStrategy().trim().toUpperCase(Locale.ROOT));
+        }
+        if (update.getStructuredBatchSize() > 0) {
+            kb.setStructuredBatchSize(update.getStructuredBatchSize());
+        }
         if (update.getStatus() != null) {
             kb.setStatus(update.getStatus());
+        }
+        if (update.getVisibilityScope() != null) {
+            kb.setVisibilityScope(update.getVisibilityScope());
         }
         kbMapper.updateById(kb);
         return kb;
@@ -165,8 +184,15 @@ public class DocumentMetaService {
         return meta;
     }
 
-    public List<DocumentMeta> listDocuments(String kbId) {
+    public List<DocumentMeta> listDocuments(String kbId, AccessContext context) {
+        getKnowledgeBase(kbId, context);
         return docMapper.selectByKnowledgeBaseId(kbId);
+    }
+
+    public DocumentMeta getDocument(String docId, AccessContext context) {
+        DocumentMeta doc = getDocument(docId);
+        getKnowledgeBase(doc.getKnowledgeBaseId(), context);
+        return doc;
     }
 
     public List<DocumentMeta> listRetryableFailedDocuments(int limit) {
@@ -232,5 +258,44 @@ public class DocumentMetaService {
             log.error("Document vector deletion failed: docId={}, error={}", docId, e.getMessage());
             throw new BizException("Failed to clean document vectors: " + e.getMessage());
         }
+    }
+
+    public void ensureKnowledgeBaseAccessible(String knowledgeBaseId, AccessContext context) {
+        getKnowledgeBase(knowledgeBaseId, context);
+    }
+
+    private void ensureKnowledgeBaseAccessible(KnowledgeBase kb, AccessContext context) {
+        if (!isKnowledgeBaseAccessible(kb, context)) {
+            throw new PermissionDeniedException("无权限访问该知识库");
+        }
+    }
+
+    private boolean isKnowledgeBaseAccessible(KnowledgeBase kb, AccessContext context) {
+        if (context == null || context.admin()) {
+            return true;
+        }
+        String visibilityScope = normalize(kb.getVisibilityScope());
+        String department = normalize(kb.getDepartment());
+        String createdBy = normalize(kb.getCreatedBy());
+        String requestDepartment = normalize(context.department());
+        String userId = normalize(context.userId());
+
+        if ("public".equals(visibilityScope) || department.isBlank()) {
+            return true;
+        }
+        if ("private".equals(visibilityScope)) {
+            return !createdBy.isBlank() && createdBy.equals(userId);
+        }
+        if (!createdBy.isBlank() && createdBy.equals(userId)) {
+            return true;
+        }
+        return department.equals(requestDepartment);
+    }
+
+    private String normalize(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    public record AccessContext(String userId, String department, boolean admin) {
     }
 }

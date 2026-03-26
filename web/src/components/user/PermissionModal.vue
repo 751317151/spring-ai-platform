@@ -83,8 +83,8 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { useUserStore } from '@/stores/user'
 import { getPermission } from '@/api/auth'
+import { useUserStore } from '@/stores/user'
 import { BOT_LABELS, ROLE_COLORS } from '@/utils/constants'
 
 const props = defineProps<{ permissionId: string | null }>()
@@ -234,7 +234,7 @@ async function handleSave() {
   cursor: pointer;
 }
 
-.choice-item input[type="checkbox"] {
+.choice-item input[type='checkbox'] {
   display: none;
 }
 

@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { LoginResponse, Result } from './types'
+import router from '@/router'
 
 const client = axios.create({
   timeout: 30000
@@ -46,10 +47,15 @@ async function refreshAccessToken(): Promise<LoginResponse | null> {
   return payload.data
 }
 
-function redirectToLogin() {
+async function redirectToLogin() {
   clearAuth()
-  if (window.location.pathname !== '/login') {
-    window.location.href = '/login'
+  if (router.currentRoute.value.name !== 'login') {
+    await router.replace({
+      name: 'login',
+      query: {
+        redirect: `${window.location.pathname}${window.location.search}${window.location.hash}`
+      }
+    })
   }
 }
 
@@ -90,12 +96,12 @@ client.interceptors.response.use(
         return client(originalRequest)
       }
 
-      redirectToLogin()
+      await redirectToLogin()
       return Promise.reject(error)
     }
 
     if (error.response?.status === 401) {
-      redirectToLogin()
+      await redirectToLogin()
     }
 
     return Promise.reject(error)
@@ -120,4 +126,10 @@ export function buildHeaders(extra?: Record<string, string>): Record<string, str
     Object.assign(headers, extra)
   }
   return headers
+}
+
+export const __clientTestUtils = {
+  applyAuth,
+  clearAuth,
+  redirectToLogin
 }

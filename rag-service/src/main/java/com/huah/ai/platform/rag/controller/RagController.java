@@ -9,6 +9,8 @@ import com.huah.ai.platform.rag.model.DocumentMeta;
 import com.huah.ai.platform.rag.model.KnowledgeBase;
 import com.huah.ai.platform.rag.model.RagQueryRequest;
 import com.huah.ai.platform.rag.model.RagQueryResponse;
+import com.huah.ai.platform.rag.model.RagEvaluationOverview;
+import com.huah.ai.platform.rag.model.RagEvaluationSample;
 import com.huah.ai.platform.rag.model.ResponseFeedbackRequest;
 import com.huah.ai.platform.rag.service.DocumentIngestionService;
 import com.huah.ai.platform.rag.service.RagAuditService;
@@ -65,8 +67,10 @@ public class RagController {
         long start = System.currentTimeMillis();
         int topK = req.getTopK() != null ? req.getTopK() : 5;
         String userId = resolveUserId(request);
+        var accessContext = resolveAccessContext(request);
 
         try {
+            metaService.ensureKnowledgeBaseAccessible(req.getKnowledgeBaseId(), accessContext);
             String answer = ragService.query(req.getQuestion(), req.getKnowledgeBaseId(), topK);
             List<RagQueryResponse.SourceDocument> sources = mapSourceDocuments(
                     ragService.search(req.getQuestion(), req.getKnowledgeBaseId(), topK)
@@ -99,10 +103,12 @@ public class RagController {
     public SseEmitter queryStream(@RequestBody RagQueryRequest req, HttpServletRequest request) {
         SseEmitter emitter = new SseEmitter(60_000L);
         String userId = resolveUserId(request);
+        var accessContext = resolveAccessContext(request);
         executor.submit(() -> {
             try {
                 int topK = req.getTopK() != null ? req.getTopK() : 5;
                 long start = System.currentTimeMillis();
+                metaService.ensureKnowledgeBaseAccessible(req.getKnowledgeBaseId(), accessContext);
                 List<RagQueryResponse.SourceDocument> sources = mapSourceDocuments(
                         ragService.search(req.getQuestion(), req.getKnowledgeBaseId(), topK)
                 );
@@ -192,8 +198,32 @@ public class RagController {
     public Result<List<Document>> search(
             @RequestParam String query,
             @RequestParam String knowledgeBaseId,
-            @RequestParam(defaultValue = "5") int topK) {
+            @RequestParam(defaultValue = "5") int topK,
+            HttpServletRequest request) {
+        metaService.ensureKnowledgeBaseAccessible(knowledgeBaseId, resolveAccessContext(request));
         return Result.ok(ragService.search(query, knowledgeBaseId, topK));
+    }
+
+    @GetMapping("/evaluation/overview")
+    public Result<RagEvaluationOverview> evaluationOverview(
+            @RequestParam(name = "knowledgeBaseId", required = false) String knowledgeBaseId,
+            HttpServletRequest request) {
+        if (knowledgeBaseId != null && !knowledgeBaseId.isBlank()) {
+            metaService.ensureKnowledgeBaseAccessible(knowledgeBaseId, resolveAccessContext(request));
+        }
+        return Result.ok(ragAuditService.getEvaluationOverview(knowledgeBaseId));
+    }
+
+    @GetMapping("/evaluation/low-rated")
+    public Result<List<RagEvaluationSample>> lowRatedSamples(
+            @RequestParam(name = "knowledgeBaseId", required = false) String knowledgeBaseId,
+            @RequestParam(name = "limit", defaultValue = "20") int limit,
+            HttpServletRequest request) {
+        if (knowledgeBaseId != null && !knowledgeBaseId.isBlank()) {
+            metaService.ensureKnowledgeBaseAccessible(knowledgeBaseId, resolveAccessContext(request));
+        }
+        int safeLimit = Math.max(1, Math.min(limit, 100));
+        return Result.ok(ragAuditService.getLowRatedSamples(knowledgeBaseId, safeLimit));
     }
 
     @PostMapping("/knowledge-bases")
@@ -203,13 +233,13 @@ public class RagController {
     }
 
     @GetMapping("/knowledge-bases")
-    public Result<List<KnowledgeBase>> listKnowledgeBases() {
-        return Result.ok(metaService.listKnowledgeBases());
+    public Result<List<KnowledgeBase>> listKnowledgeBases(HttpServletRequest request) {
+        return Result.ok(metaService.listKnowledgeBases(resolveAccessContext(request)));
     }
 
     @GetMapping("/knowledge-bases/{id}")
-    public Result<KnowledgeBase> getKnowledgeBase(@PathVariable String id) {
-        return Result.ok(metaService.getKnowledgeBase(id));
+    public Result<KnowledgeBase> getKnowledgeBase(@PathVariable String id, HttpServletRequest request) {
+        return Result.ok(metaService.getKnowledgeBase(id, resolveAccessContext(request)));
     }
 
     @PutMapping("/knowledge-bases/{id}")
@@ -248,17 +278,18 @@ public class RagController {
     }
 
     @GetMapping("/documents")
-    public Result<List<DocumentMeta>> listDocuments(@RequestParam("knowledgeBaseId") String knowledgeBaseId) {
-        return Result.ok(metaService.listDocuments(knowledgeBaseId));
+    public Result<List<DocumentMeta>> listDocuments(@RequestParam("knowledgeBaseId") String knowledgeBaseId, HttpServletRequest request) {
+        return Result.ok(metaService.listDocuments(knowledgeBaseId, resolveAccessContext(request)));
     }
 
     @GetMapping("/documents/{id}")
-    public Result<DocumentMeta> getDocument(@PathVariable("id") String id) {
-        return Result.ok(metaService.getDocument(id));
+    public Result<DocumentMeta> getDocument(@PathVariable("id") String id, HttpServletRequest request) {
+        return Result.ok(metaService.getDocument(id, resolveAccessContext(request)));
     }
 
     @GetMapping("/documents/{id}/chunks")
-    public Result<List<DocumentChunkPreview>> listDocumentChunks(@PathVariable("id") String id) {
+    public Result<List<DocumentChunkPreview>> listDocumentChunks(@PathVariable("id") String id, HttpServletRequest request) {
+        metaService.getDocument(id, resolveAccessContext(request));
         return Result.ok(metaService.listDocumentChunks(id));
     }
 
@@ -281,8 +312,8 @@ public class RagController {
     }
 
     @GetMapping("/documents/{id}/download")
-    public ResponseEntity<InputStreamResource> downloadDocument(@PathVariable("id") String id) {
-        DocumentMeta doc = metaService.getDocument(id);
+    public ResponseEntity<InputStreamResource> downloadDocument(@PathVariable("id") String id, HttpServletRequest request) {
+        DocumentMeta doc = metaService.getDocument(id, resolveAccessContext(request));
         if (doc.getStoragePath() == null) {
             throw new BizException("Document source file is not available.");
         }
@@ -296,8 +327,8 @@ public class RagController {
     }
 
     @GetMapping("/documents/{id}/preview")
-    public Result<Map<String, String>> previewDocument(@PathVariable("id") String id) {
-        DocumentMeta doc = metaService.getDocument(id);
+    public Result<Map<String, String>> previewDocument(@PathVariable("id") String id, HttpServletRequest request) {
+        DocumentMeta doc = metaService.getDocument(id, resolveAccessContext(request));
         if (doc.getStoragePath() == null) {
             throw new BizException("Document source file is not available.");
         }
@@ -356,5 +387,15 @@ public class RagController {
         }
         String header = request.getHeader("X-User-Id");
         return header != null && !header.isBlank() ? header : "anonymous";
+    }
+
+    private DocumentMetaService.AccessContext resolveAccessContext(HttpServletRequest request) {
+        String userId = resolveUserId(request);
+        Object departmentAttr = request.getAttribute("X-Department");
+        Object rolesAttr = request.getAttribute("X-Roles");
+        String department = departmentAttr != null ? String.valueOf(departmentAttr) : request.getHeader("X-Department");
+        String roles = rolesAttr != null ? String.valueOf(rolesAttr) : request.getHeader("X-Roles");
+        boolean isAdmin = roles != null && roles.contains("ROLE_ADMIN");
+        return new DocumentMetaService.AccessContext(userId, department, isAdmin);
     }
 }

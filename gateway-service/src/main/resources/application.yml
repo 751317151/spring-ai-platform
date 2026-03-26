@@ -36,6 +36,11 @@ ai:
   models:
     default-model: deepseek-chat
     load-balance-strategy: round-robin  # round-robin | weighted | least-latency
+    health-probe:
+      enabled: ${AI_MODEL_HEALTH_PROBE_ENABLED:true}
+      interval-ms: ${AI_MODEL_HEALTH_PROBE_INTERVAL_MS:300000}
+      prompt: ${AI_MODEL_HEALTH_PROBE_PROMPT:ping}
+      run-on-startup: ${AI_MODEL_HEALTH_PROBE_ON_STARTUP:true}
 
     # 场景路由规则
     scene-routes:
@@ -56,6 +61,8 @@ ai:
         weight: 2
         capabilities: [chat, code, analysis]
         rpm-limit: 60
+        prompt-cost-per-1k-tokens: 0.005
+        completion-cost-per-1k-tokens: 0.015
 
       # OpenAI GPT-4o-mini
       - id: gpt-4o-mini
@@ -67,6 +74,8 @@ ai:
         weight: 3
         capabilities: [chat]
         rpm-limit: 500
+        prompt-cost-per-1k-tokens: 0.00015
+        completion-cost-per-1k-tokens: 0.0006
 
       # DeepSeek（OpenAI 协议兼容）
       - id: deepseek-chat
@@ -78,6 +87,8 @@ ai:
         weight: 3
         capabilities: [chat, code]
         rpm-limit: 60
+        prompt-cost-per-1k-tokens: 0.00027
+        completion-cost-per-1k-tokens: 0.0011
 
       # 通义千问（OpenAI 协议兼容）
       - id: qwen-plus
@@ -89,6 +100,8 @@ ai:
         weight: 2
         capabilities: [chat, document]
         rpm-limit: 60
+        prompt-cost-per-1k-tokens: 0.0008
+        completion-cost-per-1k-tokens: 0.002
 
       # Anthropic Claude
       - id: claude-3-5-sonnet
@@ -99,6 +112,8 @@ ai:
         weight: 2
         capabilities: [chat, analysis, code]
         rpm-limit: 50
+        prompt-cost-per-1k-tokens: 0.003
+        completion-cost-per-1k-tokens: 0.015
 
       # Ollama 本地 Llama3（私有化部署）
       - id: llama3-local
@@ -109,6 +124,8 @@ ai:
         weight: 1
         capabilities: [chat]
         rpm-limit: 999
+        prompt-cost-per-1k-tokens: 0
+        completion-cost-per-1k-tokens: 0
 
 # ======== Resilience4j 熔断配置 ========
 resilience4j:

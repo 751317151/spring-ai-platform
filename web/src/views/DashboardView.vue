@@ -16,6 +16,33 @@
       </div>
     </div>
 
+    <div class="card section-gap quick-actions-card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">快捷操作</div>
+          <div class="card-subtitle">从总览直接进入高频页面，减少来回跳转。</div>
+        </div>
+      </div>
+      <div class="quick-actions-grid">
+        <button class="quick-action-item action-tile" @click="router.push({ path: '/chat', query: { source: 'dashboard' } })">
+          <span class="quick-action-title action-tile-title">进入 AI 助手</span>
+          <span class="quick-action-desc action-tile-desc">继续最近会话，处理对话和草稿。</span>
+        </button>
+        <button class="quick-action-item action-tile" @click="router.push('/rag')">
+          <span class="quick-action-title action-tile-title">进入知识库</span>
+          <span class="quick-action-desc action-tile-desc">上传文档、检查状态并验证证据。</span>
+        </button>
+        <button class="quick-action-item action-tile warning" @click="openRagWithContext({ status: 'FAILED' }, { source: 'dashboard' })">
+          <span class="quick-action-title action-tile-title">处理失败文档</span>
+          <span class="quick-action-desc action-tile-desc">直接带失败筛选进入知识库，优先处理异常文档。</span>
+        </button>
+        <button class="quick-action-item action-tile" @click="router.push('/monitor')">
+          <span class="quick-action-title action-tile-title">进入运行监控</span>
+          <span class="quick-action-desc action-tile-desc">查看慢请求、失败样本和近期反馈。</span>
+        </button>
+      </div>
+    </div>
+
     <div class="metrics-grid">
       <MetricCard label="今日请求数" :value="overview?.totalRequests ?? '--'" sub="实时统计" color="blue" />
       <MetricCard label="令牌用量" :value="formatTokens(overview?.totalTokens ?? 0)" sub="输入令牌 + 输出令牌" color="green" />
@@ -28,26 +55,49 @@
     </div>
 
     <div class="summary-grid">
-      <div class="card summary-card">
-        <div class="summary-label">最慢助手链路</div>
+      <div class="card summary-card elevated-summary-card interactive-metric-card">
+        <div class="summary-label">当前最慢助手链路</div>
         <div class="summary-value">{{ slowestSummary.title }}</div>
         <div class="summary-sub">{{ slowestSummary.sub }}</div>
         <button v-if="slowestSummary.agent" class="summary-link" @click="openMonitorWithContext({ agent: slowestSummary.agent })">在监控页打开</button>
       </div>
-      <div class="card summary-card">
-        <div class="summary-label">最高风险助手</div>
+      <div class="card summary-card elevated-summary-card interactive-metric-card">
+        <div class="summary-label">当前最高风险助手</div>
         <div class="summary-value">{{ riskSummary.title }}</div>
         <div class="summary-sub">{{ riskSummary.sub }}</div>
         <button v-if="riskSummary.agent" class="summary-link" @click="openMonitorWithContext({ agent: riskSummary.agent })">在监控页打开</button>
       </div>
-      <div class="card summary-card">
-        <div class="summary-label">主力模型</div>
-        <div class="summary-value">{{ modelSummary.title }}</div>
-        <div class="summary-sub">{{ modelSummary.sub }}</div>
+      <div class="card summary-card elevated-summary-card interactive-metric-card">
+        <div class="summary-label">知识库待处理项</div>
+        <div class="summary-value">{{ ragFocusSummary.title }}</div>
+        <div class="summary-sub">{{ ragFocusSummary.sub }}</div>
+        <button class="summary-link" @click="openRagWithContext(ragFocusSummary.context, { source: 'dashboard' })">在知识库页打开</button>
       </div>
     </div>
 
-    <div class="grid-21" style="margin-bottom: 16px">
+    <div class="card section-gap focus-card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">今日处理建议</div>
+          <div class="card-subtitle">按当前数据优先级给出下一步入口，减少在总览页停留后还要自己判断去哪。</div>
+        </div>
+      </div>
+      <div class="focus-grid">
+        <button
+          v-for="item in focusActions"
+          :key="item.title"
+          class="focus-item action-tile"
+          type="button"
+          @click="item.run"
+        >
+          <span class="focus-kicker">{{ item.kicker }}</span>
+          <span class="focus-title action-tile-title">{{ item.title }}</span>
+          <span class="focus-desc action-tile-desc">{{ item.desc }}</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="grid-21 section-gap">
       <div class="card card-lg">
         <div class="card-header">
           <div>
@@ -57,7 +107,7 @@
         </div>
         <div class="chart-container">
           <Line v-if="lineData" :data="lineData" :options="lineOptions" />
-          <div v-else class="chart-empty">暂无请求趋势数据。</div>
+          <EmptyState v-else icon="24h" title="暂无请求趋势数据" description="等待监控指标上报后，这里会展示最近 24 小时的请求变化。" variant="compact" />
         </div>
       </div>
 
@@ -70,7 +120,7 @@
         </div>
         <div class="chart-container">
           <Doughnut v-if="doughnutData" :data="doughnutData" :options="doughnutOptions" />
-          <div v-else class="chart-empty">暂无助手分布数据。</div>
+          <EmptyState v-else icon="A" title="暂无助手分布数据" description="当有助手调用记录后，这里会自动汇总各助手流量占比。" variant="compact" />
         </div>
       </div>
     </div>
@@ -94,7 +144,9 @@
           </thead>
           <tbody>
             <tr v-if="!monitorStore.models.length">
-              <td colspan="4" class="table-empty">暂无模型数据。</td>
+              <td colspan="4" class="table-empty-cell">
+                <EmptyState icon="M" title="暂无模型数据" description="模型被调用后，这里会展示请求量、延迟和在线状态。" variant="compact" />
+              </td>
             </tr>
             <tr v-for="model in sortedModels" :key="model.id">
               <td>
@@ -127,7 +179,9 @@
           </thead>
           <tbody>
             <tr v-if="!monitorStore.auditLogs.length">
-              <td colspan="4" class="table-empty">暂无审计日志。</td>
+              <td colspan="4" class="table-empty-cell">
+                <EmptyState icon="L" title="暂无审计日志" description="后续的用户调用和操作行为会自动沉淀到这里。" variant="compact" />
+              </td>
             </tr>
             <tr v-for="log in monitorStore.auditLogs" :key="log.id">
               <td class="subtle-text">{{ formatTime(log.created_at) }}</td>
@@ -156,6 +210,7 @@ import { computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Doughnut, Line } from 'vue-chartjs'
 import { ArcElement, CategoryScale, Chart as ChartJS, Filler, Legend, LinearScale, LineElement, PointElement, Tooltip } from 'chart.js'
+import EmptyState from '@/components/common/EmptyState.vue'
 import MetricCard from '@/components/common/MetricCard.vue'
 import { useToast } from '@/composables/useToast'
 import { useMonitorStore } from '@/stores/monitor'
@@ -195,17 +250,58 @@ const riskSummary = computed(() => {
     : { title: '暂无数据', sub: '当前尚未发现集中风险。', agent: '' }
 })
 
-const modelSummary = computed(() => {
-  const model = sortedModels.value[0]
-  return model
-    ? { title: model.name, sub: `${model.totalCalls} 次调用，平均延迟 ${model.avgLatencyMs}ms` }
-    : { title: '暂无数据', sub: '模型统计尚未就绪。' }
+const ragFocusSummary = computed(() => {
+  const failedLogs = monitorStore.auditLogs.filter((item) => item.success === false).length
+  if (failedLogs > 0) {
+    return {
+      title: '优先处理失败项',
+      sub: `最近审计中有 ${failedLogs} 条失败记录，建议先查看失败文档或异常索引。`,
+      context: { status: 'FAILED' }
+    }
+  }
+  return {
+    title: '检查处理中项',
+    sub: '可直接打开知识库处理中筛选，确认是否有长时间未完成的文档。',
+    context: { status: 'PROCESSING' }
+  }
+})
+
+const focusActions = computed(() => {
+  const actions: Array<{ kicker: string; title: string; desc: string; run: () => void }> = []
+  const latestFailed = monitorStore.auditLogs.find((item) => item.success === false)
+
+  if (latestFailed) {
+    actions.push({
+      kicker: '优先级 P1',
+      title: '先处理失败文档或异常索引',
+      desc: `最近出现失败记录，可直接带着失败筛选进入知识库处理。`,
+      run: () => openRagWithContext({ status: 'FAILED' }, { source: 'dashboard' })
+    })
+  }
+
+  if (slowestSummary.value.agent) {
+    actions.push({
+      kicker: '优先级 P2',
+      title: `检查 ${slowestSummary.value.title} 的慢链路`,
+      desc: slowestSummary.value.sub,
+      run: () => openMonitorWithContext({ agent: slowestSummary.value.agent })
+    })
+  }
+
+    actions.push({
+      kicker: '优先级 P3',
+      title: '继续最近 AI 会话',
+      desc: '回到聊天工作台，继续处理当前草稿、对话和未完成事项。',
+      run: () => router.push({ path: '/chat', query: { source: 'dashboard' } })
+    })
+
+  return actions.slice(0, 3)
 })
 
 const lineData = computed(() => {
   const stats = monitorStore.hourlyStats
   if (!stats.length) return null
-  const hours = Array.from({ length: 24 }, (_, i) => `${i}:00`)
+  const hours = Array.from({ length: 24 }, (_, index) => `${index}:00`)
   const values = new Array(24).fill(0)
   stats.forEach((item) => {
     if (item.hour >= 0 && item.hour < 24) values[item.hour] = item.total || 0
@@ -263,6 +359,14 @@ function openMonitorWithContext(context: { userId?: string; agent?: string }) {
   router.push({ name: 'monitor', query })
 }
 
+function openRagWithContext(context: { status?: string; kb?: string }, options?: { source?: string }) {
+  const query: Record<string, string> = {}
+  if (context.status) query.status = context.status
+  if (context.kb) query.kb = context.kb
+  if (options?.source) query.source = options.source
+  router.push({ path: '/rag', query })
+}
+
 async function copyText(value: string, message: string) {
   try {
     await navigator.clipboard.writeText(value)
@@ -283,6 +387,104 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.section-gap {
+  margin-bottom: 16px;
+}
+
+.quick-actions-card {
+  margin-bottom: 16px;
+}
+
+.focus-card {
+  overflow: hidden;
+}
+
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.focus-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.focus-item {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(79, 142, 247, 0.08), transparent 42%),
+    rgba(255, 255, 255, 0.03);
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--transition), border-color var(--transition), box-shadow var(--transition);
+}
+
+.focus-item:hover {
+  transform: translateY(-2px);
+  border-color: rgba(79, 142, 247, 0.24);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+.focus-kicker {
+  font-size: 11px;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.focus-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.focus-desc {
+  font-size: 12px;
+  color: var(--text3);
+  line-height: 1.6;
+}
+
+.quick-action-item {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--transition), border-color var(--transition), box-shadow var(--transition);
+}
+
+.quick-action-item:hover {
+  transform: translateY(-2px);
+  border-color: rgba(79, 142, 247, 0.24);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+.quick-action-item.warning {
+  border-color: rgba(245, 158, 11, 0.22);
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.quick-action-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.quick-action-desc {
+  font-size: 12px;
+  color: var(--text3);
+  line-height: 1.6;
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -335,11 +537,8 @@ onUnmounted(() => {
   color: var(--accent);
 }
 
-.chart-empty,
-.table-empty {
-  text-align: center;
-  color: var(--text3);
-  padding: 18px 10px;
+.table-empty-cell {
+  padding: 12px;
 }
 
 .primary-cell {
@@ -370,7 +569,9 @@ onUnmounted(() => {
 }
 
 @media (max-width: 960px) {
-  .summary-grid {
+  .quick-actions-grid,
+  .summary-grid,
+  .focus-grid {
     grid-template-columns: 1fr;
   }
 }

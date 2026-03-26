@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS knowledge_bases (
     name VARCHAR(128) NOT NULL,
     description TEXT,
     department VARCHAR(128),
+    visibility_scope VARCHAR(16) DEFAULT 'DEPARTMENT',
     chunk_size INT DEFAULT 1000,
     chunk_overlap INT DEFAULT 200,
     created_by VARCHAR(64),
@@ -89,6 +90,7 @@ CREATE TABLE IF NOT EXISTS ai_audit_logs (
     error_message TEXT,
     client_ip VARCHAR(64),
     session_id VARCHAR(128),
+    trace_id VARCHAR(64),
     created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -118,6 +120,7 @@ CREATE TABLE IF NOT EXISTS ai_evidence_feedback (
 CREATE INDEX IF NOT EXISTS idx_audit_user_id ON ai_audit_logs (user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON ai_audit_logs (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_agent ON ai_audit_logs (agent_type);
+CREATE INDEX IF NOT EXISTS idx_audit_trace_id ON ai_audit_logs (trace_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_created ON ai_response_feedback (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_feedback_source ON ai_response_feedback (source_type, feedback);
 CREATE INDEX IF NOT EXISTS idx_evidence_feedback_created ON ai_evidence_feedback (created_at DESC);
@@ -168,6 +171,7 @@ INSERT INTO knowledge_bases (
     name,
     description,
     department,
+    visibility_scope,
     created_by,
     chunk_size,
     chunk_overlap,
@@ -176,7 +180,7 @@ INSERT INTO knowledge_bases (
     total_chunks,
     created_at
 ) VALUES
-    ('kb-001', '企业通用知识库', '公司政策、HR 规定、行政制度等通用知识', '全公司', 'system', 1000, 200, 'ACTIVE', 0, 0, NOW()),
-    ('kb-002', '研发技术知识库', '技术规范、API 文档、架构设计、代码规范', '研发中心', 'system', 1000, 200, 'ACTIVE', 0, 0, NOW()),
-    ('kb-003', '销售产品知识库', '产品手册、报价策略、客户案例、竞品分析', '销售部', 'system', 1000, 200, 'ACTIVE', 0, 0, NOW())
+    ('kb-001', '企业通用知识库', '公司政策、HR 规定、行政制度等通用知识', '全公司', 'PUBLIC', 'system', 1000, 200, 'ACTIVE', 0, 0, NOW()),
+    ('kb-002', '研发技术知识库', '技术规范、API 文档、架构设计、代码规范', '研发中心', 'DEPARTMENT', 'system', 1000, 200, 'ACTIVE', 0, 0, NOW()),
+    ('kb-003', '销售产品知识库', '产品手册、报价策略、客户案例、竞品分析', '销售部', 'DEPARTMENT', 'system', 1000, 200, 'ACTIVE', 0, 0, NOW())
 ON CONFLICT DO NOTHING;

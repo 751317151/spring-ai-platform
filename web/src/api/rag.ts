@@ -1,6 +1,14 @@
 import client from './client'
 import { buildHeaders } from './client'
-import type { KnowledgeBase, DocumentChunkPreview, DocumentMeta, RagQueryRequest, RagQueryResponse } from './types'
+import type {
+  KnowledgeBase,
+  DocumentChunkPreview,
+  DocumentMeta,
+  RagQueryRequest,
+  RagQueryResponse,
+  RagEvaluationOverview,
+  RagEvaluationSample
+} from './types'
 
 const BASE = '/api/v1/rag'
 
@@ -97,6 +105,21 @@ export function submitEvidenceFeedback(
   comment?: string
 ): Promise<void> {
   return client.post(`${BASE}/feedback/evidence`, { responseId, chunkId, knowledgeBaseId, feedback, comment })
+}
+
+export function getEvaluationOverview(knowledgeBaseId?: string): Promise<RagEvaluationOverview> {
+  return client.get(`${BASE}/evaluation/overview`, {
+    params: knowledgeBaseId ? { knowledgeBaseId } : undefined
+  })
+}
+
+export function getLowRatedSamples(knowledgeBaseId?: string, limit = 10): Promise<RagEvaluationSample[]> {
+  return client.get(`${BASE}/evaluation/low-rated`, {
+    params: {
+      limit,
+      ...(knowledgeBaseId ? { knowledgeBaseId } : {})
+    }
+  })
 }
 
 export function ragQueryStream(

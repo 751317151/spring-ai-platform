@@ -22,6 +22,8 @@ public class FailureSampleView {
     private long latencyMs;
     @JsonProperty("session_id")
     private String sessionId;
+    @JsonProperty("trace_id")
+    private String traceId;
     @JsonProperty("created_at")
     private LocalDateTime createdAt;
 }

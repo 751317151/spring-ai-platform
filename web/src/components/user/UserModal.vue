@@ -16,7 +16,12 @@
 
         <div class="modal-field">
           <label class="modal-label">{{ userId ? '新密码' : '密码' }}</label>
-          <input class="form-input" v-model="form.password" type="password" :placeholder="userId ? '留空则保持当前密码不变' : '请输入密码'">
+          <input
+            class="form-input"
+            v-model="form.password"
+            type="password"
+            :placeholder="userId ? '留空则保持当前密码不变' : '请输入密码'"
+          >
         </div>
 
         <div class="modal-grid">
@@ -51,7 +56,7 @@ import { useUserStore } from '@/stores/user'
 import { getUser } from '@/api/auth'
 
 const props = defineProps<{ userId: string | null }>()
-const emit = defineEmits<{ close: []; saved: [] }>()
+const emit = defineEmits<{ close: []; saved: [userId: string] }>()
 const userStore = useUserStore()
 
 const form = reactive({
@@ -84,17 +89,20 @@ async function handleSave() {
       roles: form.roles
     }
     if (form.password) data.password = form.password
-    const ok = await userStore.updateUser(props.userId, data)
-    if (ok) emit('saved')
+    const saved = await userStore.updateUser(props.userId, data)
+    if (saved) emit('saved', props.userId)
   } else {
-    const ok = await userStore.createUser({
+    const saved = await userStore.createUser({
       username: form.username,
       password: form.password,
       employeeId: form.employeeId,
       department: form.department,
       roles: form.roles
     })
-    if (ok) emit('saved')
+    if (saved) {
+      const createdUser = userStore.users.find((item) => item.username === form.username)
+      emit('saved', createdUser?.id || form.username)
+    }
   }
 }
 </script>

@@ -1,5 +1,7 @@
 package com.huah.ai.platform.agent.memory;
 
+import com.huah.ai.platform.agent.dto.SessionConfigRequest;
+import com.huah.ai.platform.agent.dto.SessionConfigResponse;
 import com.huah.ai.platform.agent.metrics.AiMetricsCollector;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +33,11 @@ public class ConversationMemoryService {
     private static final String UPDATED_AT_KEY = "updatedAt";
     private static final String PINNED_KEY = "pinned";
     private static final String ARCHIVED_KEY = "archived";
+    private static final String MODEL_KEY = "model";
+    private static final String TEMPERATURE_KEY = "temperature";
+    private static final String MAX_CONTEXT_MESSAGES_KEY = "maxContextMessages";
+    private static final String KNOWLEDGE_ENABLED_KEY = "knowledgeEnabled";
+    private static final String SYSTEM_PROMPT_TEMPLATE_KEY = "systemPromptTemplate";
     private static final String DEFAULT_SESSION_TITLE = "新对话";
     private static final String CONVERSATION_SUMMARY_PREFIX = "[会话摘要]\n";
     private static final int MAX_MESSAGES_BEFORE_COMPRESSION = 24;
@@ -148,14 +155,67 @@ public class ConversationMemoryService {
     }
 
     public List<Map<String, String>> listSessions(String prefix) {
+        return searchSessions(prefix, null, false, false, null, null, null);
+    }
+
+    public List<Map<String, String>> searchSessions(String prefix,
+                                                    String keyword,
+                                                    boolean includeArchived,
+                                                    boolean pinnedOnly,
+                                                    Long updatedAfter,
+                                                    Long updatedBefore,
+                                                    Integer limit) {
+        String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase();
         return chatMemoryRepository.findConversationIds().stream()
                 .filter(id -> id.startsWith(prefix))
                 .map(this::buildSessionInfo)
+                .filter(session -> includeArchived || !Boolean.parseBoolean(session.getOrDefault(ARCHIVED_KEY, "false")))
+                .filter(session -> !pinnedOnly || Boolean.parseBoolean(session.getOrDefault(PINNED_KEY, "false")))
+                .filter(session -> matchesKeyword(session, normalizedKeyword))
+                .filter(session -> matchesUpdatedRange(session, updatedAfter, updatedBefore))
                 .sorted(Comparator
                         .comparing((Map<String, String> session) -> Boolean.parseBoolean(session.getOrDefault(ARCHIVED_KEY, "false")))
                         .thenComparing((Map<String, String> session) -> Boolean.parseBoolean(session.getOrDefault(PINNED_KEY, "false")), Comparator.reverseOrder())
                         .thenComparing(session -> session.getOrDefault(UPDATED_AT_KEY, "0"), Comparator.reverseOrder()))
+                .limit(limit != null && limit > 0 ? limit : Long.MAX_VALUE)
                 .toList();
+    }
+
+    public void saveSessionConfig(String sessionId, SessionConfigRequest request) {
+        if (request == null) {
+            return;
+        }
+        try {
+            String redisKey = SESSION_META_KEY + sessionId;
+            Map<Object, Object> existing = redisTemplate.opsForHash().entries(redisKey);
+            Map<String, String> metadata = new HashMap<>();
+            metadata.put(SUMMARY_KEY, String.valueOf(existing.getOrDefault(SUMMARY_KEY, deriveSummary(sessionId))));
+            metadata.put(PINNED_KEY, String.valueOf(existing.getOrDefault(PINNED_KEY, "false")));
+            metadata.put(ARCHIVED_KEY, String.valueOf(existing.getOrDefault(ARCHIVED_KEY, "false")));
+            mergeIfPresent(metadata, MODEL_KEY, normalizeNullable(request.getModel()));
+            mergeIfPresent(metadata, TEMPERATURE_KEY, request.getTemperature() != null ? String.valueOf(request.getTemperature()) : null);
+            mergeIfPresent(metadata, MAX_CONTEXT_MESSAGES_KEY, request.getMaxContextMessages() != null ? String.valueOf(request.getMaxContextMessages()) : null);
+            mergeIfPresent(metadata, KNOWLEDGE_ENABLED_KEY, request.getKnowledgeEnabled() != null ? String.valueOf(request.getKnowledgeEnabled()) : null);
+            mergeIfPresent(metadata, SYSTEM_PROMPT_TEMPLATE_KEY, normalizeNullable(request.getSystemPromptTemplate()));
+            metadata.put(UPDATED_AT_KEY, String.valueOf(System.currentTimeMillis()));
+            redisTemplate.opsForHash().putAll(redisKey, metadata);
+            redisTemplate.expire(redisKey, 30, TimeUnit.DAYS);
+        } catch (Exception e) {
+            metricsCollector.recordDependencyFailure("redis", "save-session-config");
+            log.warn("Redis session config write failed: sessionId={}, error={}", sessionId, e.getMessage());
+        }
+    }
+
+    public SessionConfigResponse getSessionConfig(String sessionId) {
+        Map<Object, Object> metadata = loadSessionMetadata(sessionId);
+        return SessionConfigResponse.builder()
+                .model(asNullableString(metadata.get(MODEL_KEY)))
+                .temperature(asNullableDouble(metadata.get(TEMPERATURE_KEY)))
+                .maxContextMessages(asNullableInteger(metadata.get(MAX_CONTEXT_MESSAGES_KEY)))
+                .knowledgeEnabled(asNullableBoolean(metadata.get(KNOWLEDGE_ENABLED_KEY)))
+                .systemPromptTemplate(asNullableString(metadata.get(SYSTEM_PROMPT_TEMPLATE_KEY)))
+                .updatedAt(asNullableLong(metadata.get(UPDATED_AT_KEY)))
+                .build();
     }
 
     public int getActiveSessionCount() {
@@ -234,6 +294,8 @@ public class ConversationMemoryService {
         session.put("updatedAt", String.valueOf(metadata.getOrDefault(UPDATED_AT_KEY, "0")));
         session.put("pinned", String.valueOf(metadata.getOrDefault(PINNED_KEY, "false")));
         session.put("archived", String.valueOf(metadata.getOrDefault(ARCHIVED_KEY, "false")));
+        session.put("model", String.valueOf(metadata.getOrDefault(MODEL_KEY, "")));
+        session.put("knowledgeEnabled", String.valueOf(metadata.getOrDefault(KNOWLEDGE_ENABLED_KEY, "false")));
         return session;
     }
 
@@ -261,6 +323,21 @@ public class ConversationMemoryService {
             metadata.put(ARCHIVED_KEY, archived != null
                     ? String.valueOf(archived)
                     : String.valueOf(existing.getOrDefault(ARCHIVED_KEY, "false")));
+            if (existing.containsKey(MODEL_KEY)) {
+                metadata.put(MODEL_KEY, String.valueOf(existing.get(MODEL_KEY)));
+            }
+            if (existing.containsKey(TEMPERATURE_KEY)) {
+                metadata.put(TEMPERATURE_KEY, String.valueOf(existing.get(TEMPERATURE_KEY)));
+            }
+            if (existing.containsKey(MAX_CONTEXT_MESSAGES_KEY)) {
+                metadata.put(MAX_CONTEXT_MESSAGES_KEY, String.valueOf(existing.get(MAX_CONTEXT_MESSAGES_KEY)));
+            }
+            if (existing.containsKey(KNOWLEDGE_ENABLED_KEY)) {
+                metadata.put(KNOWLEDGE_ENABLED_KEY, String.valueOf(existing.get(KNOWLEDGE_ENABLED_KEY)));
+            }
+            if (existing.containsKey(SYSTEM_PROMPT_TEMPLATE_KEY)) {
+                metadata.put(SYSTEM_PROMPT_TEMPLATE_KEY, String.valueOf(existing.get(SYSTEM_PROMPT_TEMPLATE_KEY)));
+            }
             metadata.put(UPDATED_AT_KEY, String.valueOf(System.currentTimeMillis()));
             redisTemplate.opsForHash().putAll(redisKey, metadata);
             redisTemplate.expire(redisKey, 30, TimeUnit.DAYS);
@@ -289,6 +366,87 @@ public class ConversationMemoryService {
             return DEFAULT_SESSION_TITLE;
         }
         return text.replaceAll("\\s+", " ").trim();
+    }
+
+    private boolean matchesKeyword(Map<String, String> session, String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return true;
+        }
+        String haystack = (session.getOrDefault("summary", "") + " " + session.getOrDefault("sessionId", "")).toLowerCase();
+        return haystack.contains(keyword);
+    }
+
+    private boolean matchesUpdatedRange(Map<String, String> session, Long updatedAfter, Long updatedBefore) {
+        long updatedAt = asNullableLong(session.get(UPDATED_AT_KEY)) == null ? 0L : asNullableLong(session.get(UPDATED_AT_KEY));
+        if (updatedAfter != null && updatedAt < updatedAfter) {
+            return false;
+        }
+        if (updatedBefore != null && updatedAt > updatedBefore) {
+            return false;
+        }
+        return true;
+    }
+
+    private void mergeIfPresent(Map<String, String> target, String key, String value) {
+        if (value != null) {
+            target.put(key, value);
+        }
+    }
+
+    private String normalizeNullable(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    private String asNullableString(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = value.toString();
+        return text.isBlank() ? null : text;
+    }
+
+    private Integer asNullableInteger(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(value.toString());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Long asNullableLong(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Long.parseLong(value.toString());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Double asNullableDouble(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Double.parseDouble(value.toString());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Boolean asNullableBoolean(Object value) {
+        if (value == null) {
+            return null;
+        }
+        return Boolean.parseBoolean(value.toString());
     }
 
     private String truncate(String text, int maxLength) {

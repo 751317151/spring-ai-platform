@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * AI 模型网关 — 多模型路由、负载均衡、熔断降级
@@ -16,6 +17,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
  */
 @SpringBootApplication
 @EnableAsync
+@EnableScheduling
 @EnableConfigurationProperties
 @ComponentScan(basePackages = {"com.huah.ai.platform.gateway", "com.huah.ai.platform.common"})
 public class GatewayServiceApplication {

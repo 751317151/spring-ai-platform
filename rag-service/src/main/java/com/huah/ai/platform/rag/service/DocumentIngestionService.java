@@ -5,6 +5,7 @@ import com.huah.ai.platform.rag.metrics.RagMetricsService;
 import com.huah.ai.platform.rag.model.DocumentMeta;
 import com.huah.ai.platform.rag.model.KnowledgeBase;
 import com.huah.ai.platform.rag.parser.ExcelDocumentParser;
+import com.huah.ai.platform.rag.parser.StructuredDocumentParser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
@@ -21,6 +22,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,16 +37,15 @@ public class DocumentIngestionService {
 
     private static final int CHUNK_PREVIEW_LENGTH = 160;
     private static final Set<String> SUPPORTED_EXTENSIONS = Set.of(
-            "pdf", "xlsx", "xls", "doc", "docx", "ppt", "pptx", "html", "htm", "txt", "md"
+            "pdf", "xlsx", "xls", "doc", "docx", "ppt", "pptx", "html", "htm", "txt", "md", "csv", "json", "xml"
     );
-    private static final Set<String> GRACEFUL_UNSUPPORTED_EXTENSIONS = Set.of(
-            "csv", "json", "xml", "mol", "sdf", "cdx"
-    );
+    private static final Set<String> STRUCTURED_EXTENSIONS = Set.of("csv", "json", "xml");
 
     private final VectorStore vectorStore;
     private final DocumentMetaService metaService;
     private final FileStorageService fileStorageService;
     private final ExcelDocumentParser excelParser;
+    private final StructuredDocumentParser structuredParser;
     private final RagMetricsService metricsService;
 
     public DocumentMeta ingestDocument(MultipartFile file, String knowledgeBaseId, String uploadedBy) {
@@ -88,9 +90,6 @@ public class DocumentIngestionService {
             fileStorageService.upload(storageKey, file.getInputStream(), file.getSize(), contentType);
             uploaded = true;
 
-            if (GRACEFUL_UNSUPPORTED_EXTENSIONS.contains(extension)) {
-                return metaService.markDocumentFailed(docId, unsupportedStructuredFileMessage(extension));
-            }
             if (!SUPPORTED_EXTENSIONS.contains(extension)) {
                 throw new BizException("Unsupported file type: " + extension);
             }
@@ -110,13 +109,8 @@ public class DocumentIngestionService {
     public DocumentMeta retryDocument(String docId) {
         DocumentMeta meta = metaService.resetFailedDocumentForRetry(docId);
         KnowledgeBase kb = metaService.getKnowledgeBase(meta.getKnowledgeBaseId());
-        String extension = getFileExtension(meta.getFilename()).toLowerCase();
 
         try (InputStream inputStream = fileStorageService.download(meta.getStoragePath())) {
-            if (GRACEFUL_UNSUPPORTED_EXTENSIONS.contains(extension)) {
-                return metaService.markDocumentFailed(docId, unsupportedStructuredFileMessage(extension));
-            }
-
             byte[] content = StreamUtils.copyToByteArray(inputStream);
             log.info("Retry failed document: {}, knowledgeBaseId={}, docId={}", meta.getFilename(), meta.getKnowledgeBaseId(), docId);
             return ingestContent(
@@ -147,13 +141,8 @@ public class DocumentIngestionService {
     public DocumentMeta reindexDocument(String docId) {
         DocumentMeta meta = metaService.prepareDocumentForReindex(docId);
         KnowledgeBase kb = metaService.getKnowledgeBase(meta.getKnowledgeBaseId());
-        String extension = getFileExtension(meta.getFilename()).toLowerCase();
 
         try (InputStream inputStream = fileStorageService.download(meta.getStoragePath())) {
-            if (GRACEFUL_UNSUPPORTED_EXTENSIONS.contains(extension)) {
-                return metaService.markDocumentFailed(docId, unsupportedStructuredFileMessage(extension));
-            }
-
             byte[] content = StreamUtils.copyToByteArray(inputStream);
             log.info("Reindex document: {}, knowledgeBaseId={}, docId={}", meta.getFilename(), meta.getKnowledgeBaseId(), docId);
             return ingestContent(
@@ -204,20 +193,17 @@ public class DocumentIngestionService {
                 "file_type", getFileExtension(filename)
         )));
 
-        TokenTextSplitter splitter = new TokenTextSplitter(
-                kb.getChunkSize(),
-                kb.getChunkOverlap(),
-                5, 10000, true
-        );
-        List<Document> chunks = splitter.apply(documents);
+        String chunkStrategy = resolveChunkStrategy(kb, filename);
+        List<Document> chunks = splitDocuments(documents, kb, chunkStrategy);
         for (int i = 0; i < chunks.size(); i++) {
             Document chunk = chunks.get(i);
             String text = chunk.getText() == null ? "" : chunk.getText();
             chunk.getMetadata().put("chunk_index", i + 1);
             chunk.getMetadata().put("chunk_preview", buildChunkPreview(text));
             chunk.getMetadata().put("char_count", text.length());
+            chunk.getMetadata().put("chunk_strategy", chunkStrategy);
         }
-        log.info("Document chunked: {}, chunks={}", filename, chunks.size());
+        log.info("Document chunked: {}, chunks={}, strategy={}", filename, chunks.size(), chunkStrategy);
 
         long vectorizeStart = System.nanoTime();
         vectorStore.add(chunks);
@@ -256,6 +242,9 @@ public class DocumentIngestionService {
             return switch (ext) {
                 case "pdf" -> parsePdf(resource);
                 case "xlsx", "xls" -> excelParser.parse(resource);
+                case "csv" -> structuredParser.parseCsv(resource);
+                case "json" -> structuredParser.parseJson(resource);
+                case "xml" -> structuredParser.parseXml(resource);
                 case "doc", "docx", "ppt", "pptx", "html", "htm", "txt", "md" -> parseTika(resource);
                 default -> throw new BizException("Unsupported file type: " + ext);
             };
@@ -266,6 +255,57 @@ public class DocumentIngestionService {
             log.error("Document parsing failed: filename={}, ext={}, error={}", filename, ext, e.getMessage(), e);
             throw new BizException("Document parsing failed: " + e.getMessage());
         }
+    }
+
+    private List<Document> splitDocuments(List<Document> documents, KnowledgeBase kb, String chunkStrategy) {
+        if ("STRUCTURED".equals(chunkStrategy)) {
+            return splitStructuredDocuments(documents, kb.getStructuredBatchSize());
+        }
+        TokenTextSplitter splitter = new TokenTextSplitter(
+                kb.getChunkSize(),
+                kb.getChunkOverlap(),
+                5, 10000, true
+        );
+        return splitter.apply(documents);
+    }
+
+    private String resolveChunkStrategy(KnowledgeBase kb, String filename) {
+        String configured = kb.getChunkStrategy() == null ? "TOKEN" : kb.getChunkStrategy().trim().toUpperCase();
+        String extension = getFileExtension(filename).toLowerCase();
+        if ("STRUCTURED".equals(configured) && STRUCTURED_EXTENSIONS.contains(extension)) {
+            return "STRUCTURED";
+        }
+        return "TOKEN";
+    }
+
+    private List<Document> splitStructuredDocuments(List<Document> documents, int configuredBatchSize) {
+        int batchSize = configuredBatchSize > 0 ? configuredBatchSize : 20;
+        if (documents == null || documents.isEmpty()) {
+            return List.of();
+        }
+        if (documents.size() <= batchSize) {
+            return documents;
+        }
+
+        List<Document> result = new ArrayList<>();
+        for (int start = 0; start < documents.size(); start += batchSize) {
+            int end = Math.min(start + batchSize, documents.size());
+            List<Document> batch = documents.subList(start, end);
+            StringBuilder merged = new StringBuilder();
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("structured_type", batch.get(0).getMetadata().getOrDefault("structured_type", "structured"));
+            metadata.put("structured_batch_from", start + 1);
+            metadata.put("structured_batch_to", end);
+            metadata.put("structured_batch_size", batch.size());
+            for (Document item : batch) {
+                if (merged.length() > 0) {
+                    merged.append("\n");
+                }
+                merged.append(item.getText());
+            }
+            result.add(new Document(merged.toString(), metadata));
+        }
+        return result;
     }
 
     private List<Document> parsePdf(Resource resource) {
@@ -297,9 +337,5 @@ public class DocumentIngestionService {
             return normalized;
         }
         return normalized.substring(0, CHUNK_PREVIEW_LENGTH) + "...";
-    }
-
-    private String unsupportedStructuredFileMessage(String extension) {
-        return "Structured file type ." + extension + " is stored successfully, but parsing is not supported yet. You can keep the source file and reprocess it after adding a parser.";
     }
 }

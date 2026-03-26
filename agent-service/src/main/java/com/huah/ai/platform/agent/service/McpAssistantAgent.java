@@ -1,5 +1,6 @@
 package com.huah.ai.platform.agent.service;
 
+import com.huah.ai.platform.agent.memory.ConversationMemoryService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -9,7 +10,9 @@ import org.springframework.stereotype.Service;
 @ConditionalOnProperty(name = "spring.ai.mcp.client.enabled", havingValue = "true")
 public class McpAssistantAgent extends BaseAssistantAgent {
 
-    public McpAssistantAgent(@Qualifier("mcpChatClient") ChatClient chatClient) {
-        super("mcp", chatClient);
+    public McpAssistantAgent(@Qualifier("mcpChatClient") ChatClient chatClient,
+                             ConversationMemoryService conversationMemoryService,
+                             SessionRuntimeInstructionBuilder sessionRuntimeInstructionBuilder) {
+        super("mcp", chatClient, conversationMemoryService, sessionRuntimeInstructionBuilder);
     }
 }

@@ -2,13 +2,20 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import * as agentApi from '@/api/agent'
 import * as authApi from '@/api/auth'
-import type { AgentType, BotPermission, ChatMessage, SessionInfo, SSEChunk } from '@/api/types'
+import type { AgentType, BotPermission, ChatMessage, SendMessageOptions, SessionConfig, SessionInfo, SSEChunk } from '@/api/types'
 import { AGENT_CONFIG, MOCK_RESPONSES } from '@/utils/constants'
 import type { AgentConfig } from '@/utils/constants'
 import { useAuthStore } from './auth'
 import { useRuntimeStore } from './runtime'
 
 const DEFAULT_SESSION_TITLE = '新对话'
+const DEFAULT_SESSION_CONFIG: SessionConfig = {
+  model: 'auto',
+  temperature: 0.7,
+  maxContextMessages: 10,
+  knowledgeEnabled: true,
+  systemPromptTemplate: ''
+}
 
 export const useChatStore = defineStore('chat', () => {
   const currentAgent = ref<AgentType>('rd')
@@ -16,6 +23,7 @@ export const useChatStore = defineStore('chat', () => {
   const sessionList = ref<SessionInfo[]>([])
   const chatHistory = ref<ChatMessage[]>([])
   const sessionDrafts = ref<Record<string, string>>({})
+  const sessionConfig = ref<SessionConfig>({ ...DEFAULT_SESSION_CONFIG })
   const isThinking = ref(false)
   const availableBots = ref<BotPermission[]>([])
   const showArchivedSessions = ref(false)
@@ -23,6 +31,37 @@ export const useChatStore = defineStore('chat', () => {
 
   const authStore = useAuthStore()
   const runtimeStore = useRuntimeStore()
+
+  function normalizeSessionConfig(config?: SessionConfig | null): SessionConfig {
+    const temperature = typeof config?.temperature === 'number'
+      ? Math.min(1, Math.max(0, Number(config.temperature)))
+      : DEFAULT_SESSION_CONFIG.temperature
+    const maxContextMessages = typeof config?.maxContextMessages === 'number'
+      ? Math.min(20, Math.max(1, Math.round(config.maxContextMessages)))
+      : DEFAULT_SESSION_CONFIG.maxContextMessages
+
+    return {
+      model: config?.model?.trim() ? config.model.trim() : DEFAULT_SESSION_CONFIG.model,
+      temperature,
+      maxContextMessages,
+      knowledgeEnabled: typeof config?.knowledgeEnabled === 'boolean'
+        ? config.knowledgeEnabled
+        : DEFAULT_SESSION_CONFIG.knowledgeEnabled,
+      systemPromptTemplate: config?.systemPromptTemplate?.trim() || '',
+      updatedAt: config?.updatedAt ?? null
+    }
+  }
+
+  function normalizeChatMessage(message: ChatMessage): ChatMessage {
+    return {
+      ...message,
+      feedback: message.feedback ?? null,
+      sessionConfigSnapshot: message.sessionConfigSnapshot
+        ? normalizeSessionConfig(message.sessionConfigSnapshot)
+        : null,
+      derivedFrom: message.derivedFrom ?? null
+    }
+  }
 
   function getDraftStorageKey() {
     return `chat_session_drafts_${encodeURIComponent(authStore.userId || 'anonymous')}`
@@ -65,13 +104,8 @@ export const useChatStore = defineStore('chat', () => {
     })
   })
 
-  const activeSessions = computed(() =>
-    sessionList.value.filter((session) => !isArchived(session))
-  )
-
-  const archivedSessions = computed(() =>
-    sessionList.value.filter((session) => isArchived(session))
-  )
+  const activeSessions = computed(() => sessionList.value.filter((session) => !isArchived(session)))
+  const archivedSessions = computed(() => sessionList.value.filter((session) => isArchived(session)))
 
   function getAgentConfig(): AgentConfig {
     const found = agentList.value.find((agent) => agent.type === currentAgent.value)
@@ -107,6 +141,46 @@ export const useChatStore = defineStore('chat', () => {
     })
   }
 
+  function resetSessionConfig() {
+    sessionConfig.value = normalizeSessionConfig(DEFAULT_SESSION_CONFIG)
+  }
+
+  async function loadSessionConfig(sessionId: string | null = currentSessionId.value) {
+    if (!sessionId) {
+      resetSessionConfig()
+      return
+    }
+
+    try {
+      const data = await agentApi.getSessionConfig(currentAgent.value, sessionId)
+      sessionConfig.value = normalizeSessionConfig(data)
+      runtimeStore.markServiceAvailable('chat')
+    } catch {
+      resetSessionConfig()
+    }
+  }
+
+  async function saveCurrentSessionConfig(partial?: Partial<SessionConfig>) {
+    const sessionId = currentSessionId.value
+    if (!sessionId) {
+      return false
+    }
+
+    sessionConfig.value = normalizeSessionConfig({
+      ...sessionConfig.value,
+      ...partial
+    })
+
+    try {
+      await agentApi.saveSessionConfig(currentAgent.value, sessionId, sessionConfig.value)
+      runtimeStore.markServiceAvailable('chat')
+      return true
+    } catch {
+      runtimeStore.markServiceUnavailable('chat', '会话配置保存失败，请稍后重试。')
+      return false
+    }
+  }
+
   async function loadAvailableBots() {
     try {
       const bots = await authApi.getMyBots()
@@ -135,9 +209,10 @@ export const useChatStore = defineStore('chat', () => {
       stopStreaming()
     }
     currentAgent.value = type
-    chatHistory.value = []
     currentSessionId.value = null
     sessionList.value = []
+    chatHistory.value = []
+    resetSessionConfig()
     await loadSessions()
   }
 
@@ -173,13 +248,12 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const data = await agentApi.getHistory(currentAgent.value, sessionId)
       if (data && Array.isArray(data)) {
-        chatHistory.value = data.map((item) => ({
-          ...item,
-          feedback: item.feedback ?? null
-        }))
+        chatHistory.value = data.map((item) => normalizeChatMessage(item))
       }
+      await loadSessionConfig(sessionId)
       runtimeStore.markServiceAvailable('chat')
     } catch {
+      resetSessionConfig()
       runtimeStore.markServiceUnavailable('chat', '历史会话读取失败，请稍后重试。')
     }
   }
@@ -188,10 +262,13 @@ export const useChatStore = defineStore('chat', () => {
     const sid = generateSessionId()
     currentSessionId.value = sid
     chatHistory.value = []
+    resetSessionConfig()
+
     if (!sessionDrafts.value[sid]) {
       sessionDrafts.value[sid] = ''
       persistDrafts()
     }
+
     sessionList.value = sortSessions([
       {
         sessionId: sid,
@@ -287,6 +364,7 @@ export const useChatStore = defineStore('chat', () => {
       if (currentSessionId.value === sessionId) {
         chatHistory.value = []
         currentSessionId.value = null
+        resetSessionConfig()
         if (activeSessions.value.length > 0) {
           await switchSession(activeSessions.value[0].sessionId)
         } else if (sessionList.value.length > 0) {
@@ -307,12 +385,20 @@ export const useChatStore = defineStore('chat', () => {
     showArchivedSessions.value = !showArchivedSessions.value
   }
 
-  async function sendMessage(message: string): Promise<string> {
+  async function sendMessage(message: string, options?: SendMessageOptions): Promise<string> {
     if (!message.trim() || isThinking.value) {
       return ''
     }
 
-    chatHistory.value.push({ role: 'user', content: message })
+    const effectiveConfig = normalizeSessionConfig(options?.sessionConfigOverride ?? sessionConfig.value)
+    const derivedFrom = options?.derivedFrom ?? null
+
+    chatHistory.value.push({
+      role: 'user',
+      content: message,
+      sessionConfigSnapshot: effectiveConfig,
+      derivedFrom
+    })
     isThinking.value = true
 
     const sessionId = currentSessionId.value || generateSessionId()
@@ -328,6 +414,8 @@ export const useChatStore = defineStore('chat', () => {
       }
       session.updatedAt = String(Date.now())
       session.archived = false
+      session.model = String(effectiveConfig.model || '')
+      session.knowledgeEnabled = Boolean(effectiveConfig.knowledgeEnabled)
       sessionList.value = sortSessions(sessionList.value)
     }
 
@@ -335,7 +423,12 @@ export const useChatStore = defineStore('chat', () => {
     let messageIndex = -1
 
     try {
-      const { response, abort } = agentApi.chatStream(currentAgent.value, message, sessionId)
+      const { response, abort } = agentApi.chatStream(
+        currentAgent.value,
+        message,
+        sessionId,
+        effectiveConfig
+      )
       activeStreamAbort.value = abort
       const res = await response
 
@@ -343,7 +436,13 @@ export const useChatStore = defineStore('chat', () => {
         throw new Error(`HTTP ${res.status}`)
       }
 
-      chatHistory.value.push({ role: 'assistant', content: '', feedback: null })
+      chatHistory.value.push({
+        role: 'assistant',
+        content: '',
+        feedback: null,
+        sessionConfigSnapshot: effectiveConfig,
+        derivedFrom
+      })
       messageIndex = chatHistory.value.length - 1
 
       const reader = res.body.getReader()
@@ -426,12 +525,20 @@ export const useChatStore = defineStore('chat', () => {
         const mockFn = MOCK_RESPONSES[currentAgent.value] || MOCK_RESPONSES.rd
         fullResponse = mockFn(message)
         await new Promise((resolve) => setTimeout(resolve, 500))
-        chatHistory.value.push({ role: 'assistant', content: fullResponse, feedback: null })
+        chatHistory.value.push({
+          role: 'assistant',
+          content: fullResponse,
+          feedback: null,
+          sessionConfigSnapshot: effectiveConfig,
+          derivedFrom
+        })
       } else {
         chatHistory.value.push({
           role: 'assistant',
           content: '聊天服务暂不可用，请稍后重试。当前页面不会自动切换到模拟回答。',
-          feedback: null
+          feedback: null,
+          sessionConfigSnapshot: effectiveConfig,
+          derivedFrom
         })
       }
     } finally {
@@ -504,6 +611,7 @@ export const useChatStore = defineStore('chat', () => {
     activeSessions,
     archivedSessions,
     sessionDrafts,
+    sessionConfig,
     showArchivedSessions,
     chatHistory,
     isThinking,
@@ -516,6 +624,10 @@ export const useChatStore = defineStore('chat', () => {
     loadSessions,
     switchSession,
     createNewSession,
+    loadSessionConfig,
+    saveCurrentSessionConfig,
+    resetSessionConfig,
+    normalizeSessionConfig,
     renameSession,
     togglePinSession,
     toggleArchiveSession,

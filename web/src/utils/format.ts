@@ -5,14 +5,14 @@ export function formatTokens(n: number): string {
 }
 
 export function formatFileSize(bytes: number): string {
-  if (!bytes) return '—'
+  if (!bytes) return '--'
   if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB'
   if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return bytes + ' B'
 }
 
 export function formatTime(isoStr: string | undefined): string {
-  if (!isoStr) return '—'
+  if (!isoStr) return '--'
   try {
     return new Date(isoStr).toLocaleString('zh-CN', {
       month: '2-digit',

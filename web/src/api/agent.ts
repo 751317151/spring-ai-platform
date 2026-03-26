@@ -1,12 +1,13 @@
 import client, { buildHeaders } from './client'
-import type { AgentType, ChatMessage, McpServerListResponse, SessionInfo } from './types'
+import type { AgentType, ChatMessage, McpServerListResponse, SessionConfig, SessionInfo } from './types'
 
 const BASE = '/api/v1/agent'
 
 export function chatStream(
   agentType: AgentType,
   message: string,
-  sessionId: string
+  sessionId: string,
+  sessionConfig?: SessionConfig | null
 ): { response: Promise<Response>; abort: () => void } {
   const controller = new AbortController()
   const headers = buildHeaders({
@@ -16,7 +17,7 @@ export function chatStream(
   const response = fetch(`${BASE}/${agentType}/chat/stream`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, sessionConfig }),
     signal: controller.signal
   })
 
@@ -59,6 +60,18 @@ export function archiveSession(agentType: AgentType, sessionId: string, archived
 
 export function deleteSession(agentType: AgentType, sessionId: string): Promise<void> {
   return client.delete(`${BASE}/${agentType}/sessions`, {
+    headers: { 'X-Session-Id': sessionId }
+  })
+}
+
+export function getSessionConfig(agentType: AgentType, sessionId: string): Promise<SessionConfig> {
+  return client.get(`${BASE}/${agentType}/sessions/config`, {
+    headers: { 'X-Session-Id': sessionId }
+  })
+}
+
+export function saveSessionConfig(agentType: AgentType, sessionId: string, config: SessionConfig): Promise<void> {
+  return client.post(`${BASE}/${agentType}/sessions/config`, config, {
     headers: { 'X-Session-Id': sessionId }
   })
 }

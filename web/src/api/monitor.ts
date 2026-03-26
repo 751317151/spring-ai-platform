@@ -1,5 +1,5 @@
 import client, { buildHeaders } from './client'
-import type { MonitorOverview, HourlyStat, AgentStat, TopUser, AuditLog, AlertEvent, FailureSample, ModelStat, SlowRequestSample, FeedbackOverview, FeedbackSample, EvidenceFeedbackSample } from './types'
+import type { MonitorOverview, HourlyStat, AgentStat, TopUser, AuditLog, AlertEvent, AlertWorkflowHistory, FailureSample, ModelStat, SlowRequestSample, FeedbackOverview, FeedbackSample, EvidenceFeedbackSample, TraceDetail, TokenUsage, ToolAudit } from './types'
 
 const BASE = '/api/v1/monitor'
 
@@ -21,12 +21,33 @@ export function getTokenTopUsers(): Promise<TopUser[]> {
   return client.get(`${BASE}/token-top-users`)
 }
 
+export function getTokenUsage(userId: string): Promise<TokenUsage> {
+  return client.get(`${BASE}/token-usage/${encodeURIComponent(userId)}`)
+}
+
 export function getHourlyStats(): Promise<HourlyStat[]> {
   return client.get(`${BASE}/hourly-stats`)
 }
 
 export function getAlerts(): Promise<{ activeAlerts: number; alerts: AlertEvent[] }> {
   return client.get(`${BASE}/alerts`)
+}
+
+export function updateAlertWorkflow(
+  fingerprint: string,
+  workflowStatus: string,
+  workflowNote = '',
+  silencedUntil = ''
+): Promise<string> {
+  return client.post(`${BASE}/alerts/${encodeURIComponent(fingerprint)}/workflow`, {
+    workflowStatus,
+    workflowNote,
+    silencedUntil
+  })
+}
+
+export function getAlertWorkflowHistory(fingerprint: string, limit = 10): Promise<AlertWorkflowHistory[]> {
+  return client.get(`${BASE}/alerts/${encodeURIComponent(fingerprint)}/history`, { params: { limit } })
 }
 
 export function getByModel(): Promise<ModelStat[]> {
@@ -39,6 +60,18 @@ export function getSlowRequests(limit = 10): Promise<SlowRequestSample[]> {
 
 export function getFailureSamples(limit = 10): Promise<FailureSample[]> {
   return client.get(`${BASE}/failure-samples`, { params: { limit } })
+}
+
+export function getToolAudits(limit = 20, userId?: string, agentType?: string, toolName?: string): Promise<ToolAudit[]> {
+  const params: Record<string, unknown> = { limit }
+  if (userId) params.userId = userId
+  if (agentType) params.agentType = agentType
+  if (toolName) params.toolName = toolName
+  return client.get(`${BASE}/tool-audits`, { params })
+}
+
+export function getTraceDetail(traceId: string): Promise<TraceDetail> {
+  return client.get(`${BASE}/trace/${encodeURIComponent(traceId)}`)
 }
 
 export function getFeedbackOverview(): Promise<FeedbackOverview> {

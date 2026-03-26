@@ -1,24 +1,28 @@
 <template>
   <div class="chat-messages" ref="messagesRef" @scroll="handleScroll">
     <div v-if="!chatStore.chatHistory.length" class="chat-empty-state">
-      <div class="chat-empty-icon">{{ chatStore.getAgentConfig().icon }}</div>
-      <div class="chat-empty-title">{{ chatStore.getAgentConfig().name }}</div>
-      <div class="chat-empty-desc">{{ welcomeMessage }}</div>
+      <div class="chat-empty-hero">
+        <div class="chat-empty-icon">{{ chatStore.getAgentConfig().icon }}</div>
+        <div class="chat-empty-copy">
+          <div class="chat-empty-title">{{ chatStore.getAgentConfig().name }}</div>
+          <div class="chat-empty-desc">{{ welcomeMessage }}</div>
+        </div>
+      </div>
 
       <div class="onboarding-panel">
         <div class="onboarding-title">开始使用</div>
         <div class="onboarding-steps">
           <div class="onboarding-step">
             <span>1</span>
-            <div>从左侧选择最符合当前任务的助手。</div>
+            <div>先从左侧选择最适合当前任务的助手角色。</div>
           </div>
           <div class="onboarding-step">
             <span>2</span>
-            <div>尽量直接地说明目标、上下文和约束条件。</div>
+            <div>尽量直接说明目标、上下文和限制条件，回答会更稳定。</div>
           </div>
           <div class="onboarding-step">
             <span>3</span>
-            <div>尽量在同一会话中继续追问，以保持上下文连续。</div>
+            <div>在同一会话里持续追问，可以保留上下文并逐步推进结果。</div>
           </div>
         </div>
       </div>
@@ -44,34 +48,33 @@
         :content="msg.content"
         :response-id="msg.responseId"
         :feedback="msg.feedback"
+        :session-config-snapshot="msg.sessionConfigSnapshot"
+        :agent-type="chatStore.currentAgent"
+        :session-id="chatStore.currentSessionId || undefined"
+        :session-summary="chatStore.sessionList.find((item) => item.sessionId === chatStore.currentSessionId)?.summary"
+        :message-index="idx"
+        :highlighted="highlightedMessageIndex === idx"
         @feedback="handleFeedback(idx, $event)"
         @insert-prompt="$emit('insert-prompt', $event)"
+        @branch-session="$emit('branch-session', idx)"
+        @continue-response="$emit('continue-response', idx)"
+        @regenerate-response="$emit('regenerate-response', idx)"
       />
 
       <div v-if="followUpSuggestions.length || recentPrompts.length" class="chat-followup-panel">
         <div v-if="followUpSuggestions.length" class="followup-block">
           <div class="followup-title">推荐追问</div>
           <div class="followup-chip-list">
-            <button
-              v-for="item in followUpSuggestions"
-              :key="item"
-              class="followup-chip"
-              @click="usePrompt(item, true)"
-            >
+            <button v-for="item in followUpSuggestions" :key="item" class="followup-chip" @click="usePrompt(item, true)">
               {{ item }}
             </button>
           </div>
         </div>
 
-        <div v-if="recentPrompts.length" class="followup-block">
+        <div v-if="recentPrompts.length" class="followup-block recent-block">
           <div class="followup-title">最近追问</div>
           <div class="followup-chip-list">
-            <button
-              v-for="item in recentPrompts"
-              :key="item"
-              class="followup-chip recent"
-              @click="usePrompt(item, false)"
-            >
+            <button v-for="item in recentPrompts" :key="item" class="followup-chip recent" @click="usePrompt(item, false)">
               {{ item }}
             </button>
           </div>
@@ -95,15 +98,24 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import MessageBubble from './MessageBubble.vue'
-import { useChatStore } from '@/stores/chat'
 import { useToast } from '@/composables/useToast'
+import { useChatStore } from '@/stores/chat'
 import { QUICK_PROMPTS } from '@/utils/constants'
+import MessageBubble from './MessageBubble.vue'
 
 const emit = defineEmits<{
   (e: 'use-prompt', value: string): void
   (e: 'insert-prompt', value: string): void
+  (e: 'branch-session', messageIndex: number): void
+  (e: 'continue-response', messageIndex: number): void
+  (e: 'regenerate-response', messageIndex: number): void
 }>()
+
+const props = withDefaults(defineProps<{
+  highlightedMessageIndex?: number | null
+}>(), {
+  highlightedMessageIndex: null
+})
 
 const chatStore = useChatStore()
 const messagesRef = ref<HTMLElement>()
@@ -116,12 +128,10 @@ const restoringScroll = ref(false)
 
 const welcomeMessage = computed(() => {
   const config = chatStore.getAgentConfig()
-  return `你正在与 ${config.name} 对话，可以使用下方推荐提示词，或直接描述任务。`
+  return `你正在与 ${config.name} 对话。可以直接描述任务，也可以先点下面的快捷提示。`
 })
 
-const lastAssistantMessage = computed(() => {
-  return [...chatStore.chatHistory].reverse().find((item) => item.role === 'assistant')?.content || ''
-})
+const lastAssistantMessage = computed(() => [...chatStore.chatHistory].reverse().find((item) => item.role === 'assistant')?.content || '')
 
 const followUpSuggestions = computed(() => {
   const excerpt = compactContent(lastAssistantMessage.value, 96)
@@ -131,7 +141,7 @@ const followUpSuggestions = computed(() => {
   return [
     `请展开说明这一点：${excerpt}`,
     `请把这段回答整理成分步骤计划：${excerpt}`,
-    '这里还需要关注哪些风险或边界情况？'
+    '这里还需要关注哪些风险、边界条件或后续动作？'
   ]
 })
 
@@ -139,7 +149,7 @@ async function handleFeedback(messageIndex: number, feedback: 'up' | 'down') {
   try {
     const saved = await chatStore.submitFeedback(messageIndex, feedback)
     if (saved) {
-      showToast(feedback === 'up' ? '已记录正向反馈' : '已记录负向反馈')
+      showToast(feedback === 'up' ? '已记录正向反馈' : '已记录改进反馈')
     }
   } catch {
     showToast('提交反馈失败')
@@ -219,6 +229,18 @@ async function restoreScrollPosition() {
   el.scrollTop = 0
 }
 
+async function scrollToHighlightedMessage() {
+  await nextTick()
+  const el = messagesRef.value
+  if (!el || props.highlightedMessageIndex === null || props.highlightedMessageIndex === undefined) {
+    return
+  }
+  const target = el.querySelector<HTMLElement>(`.msg[data-message-index="${props.highlightedMessageIndex}"]`)
+  if (target && typeof target.scrollIntoView === 'function') {
+    target.scrollIntoView({ block: 'center', behavior: 'auto' })
+  }
+}
+
 function handleScroll() {
   if (restoringScroll.value) {
     return
@@ -234,7 +256,16 @@ watch(
     }
     restoringScroll.value = true
     await restoreScrollPosition()
+    await scrollToHighlightedMessage()
     restoringScroll.value = false
+  },
+  { immediate: true }
+)
+
+watch(
+  () => props.highlightedMessageIndex,
+  async () => {
+    await scrollToHighlightedMessage()
   },
   { immediate: true }
 )
@@ -300,68 +331,86 @@ onMounted(() => {
   }
 
   restoreScrollPosition()
+  scrollToHighlightedMessage()
 })
 </script>
 
 <style scoped>
+.chat-empty-hero {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.chat-empty-copy {
+  display: grid;
+  gap: 6px;
+}
+
 .onboarding-panel {
   width: 100%;
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 16px;
-  padding: 14px 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+  border-radius: 20px;
+  padding: 16px 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .onboarding-title {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text);
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .onboarding-steps {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .onboarding-step {
   display: grid;
-  grid-template-columns: 24px 1fr;
-  gap: 10px;
+  grid-template-columns: 28px 1fr;
+  gap: 12px;
   align-items: start;
   color: var(--text2);
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.7;
 }
 
 .onboarding-step span {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--accent-dim);
+  background: linear-gradient(135deg, rgba(79, 142, 247, 0.16), rgba(79, 142, 247, 0.08));
   color: var(--accent2);
-  font-weight: 600;
+  font-weight: 700;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .chat-followup-panel {
   display: grid;
   gap: 12px;
-  padding-top: 4px;
+  padding-top: 6px;
 }
 
 .followup-block {
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.03);
+  border-radius: 18px;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+}
+
+.recent-block {
+  background: linear-gradient(180deg, rgba(79, 142, 247, 0.05), rgba(255, 255, 255, 0.02));
 }
 
 .followup-title {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text);
   margin-bottom: 10px;
   letter-spacing: 0.04em;
@@ -378,7 +427,7 @@ onMounted(() => {
   background: transparent;
   color: var(--text2);
   border-radius: 999px;
-  padding: 6px 12px;
+  padding: 7px 12px;
   font-size: 12px;
   cursor: pointer;
   transition: all var(--transition);
@@ -388,5 +437,12 @@ onMounted(() => {
   color: var(--text);
   background: var(--surface2);
   border-color: var(--border2);
+}
+
+@media (max-width: 820px) {
+  .chat-empty-hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>

@@ -16,7 +16,9 @@
       </thead>
       <tbody>
         <tr v-if="!routeEntries.length">
-          <td colspan="4" class="empty-cell">暂无路由规则。</td>
+          <td colspan="4" class="empty-cell">
+            <EmptyState icon="R" title="暂无路由规则" description="配置场景路由后，这里会展示主模型和兜底链路。" variant="compact" />
+          </td>
         </tr>
         <tr v-for="[scene, models] in routeEntries" :key="scene">
           <td>{{ sceneLabels[scene] || scene }}</td>
@@ -31,11 +33,16 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { SCENE_LABELS } from '@/utils/constants'
+import EmptyState from '@/components/common/EmptyState.vue'
+
+const sceneLabels: Record<string, string> = {
+  code: '编程开发',
+  analysis: '数据分析',
+  document: '文档处理',
+  default: '通用对话'
+}
 
 const props = defineProps<{ routes: Record<string, string[]> }>()
-const sceneLabels = SCENE_LABELS
-
 const routeEntries = computed(() => Object.entries(props.routes))
 </script>
 
@@ -63,8 +70,7 @@ const routeEntries = computed(() => Object.entries(props.routes))
 }
 
 .empty-cell {
-  text-align: center;
-  color: var(--text3);
+  padding: 12px;
 }
 
 .route-note {

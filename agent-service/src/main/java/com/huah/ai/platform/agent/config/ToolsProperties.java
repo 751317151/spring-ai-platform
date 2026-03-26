@@ -13,6 +13,7 @@ public class ToolsProperties {
     private WeatherConfig weather = new WeatherConfig();
     private DataAnalysisConfig dataAnalysis = new DataAnalysisConfig();
     private InternalApiConfig internalApi = new InternalApiConfig();
+    private SecurityConfig security = new SecurityConfig();
 
     @Data
     public static class SearchConfig {
@@ -63,6 +64,12 @@ public class ToolsProperties {
     @Data
     public static class InternalApiConfig {
         private java.util.Map<String, ConnectorDefinition> connectors = new java.util.LinkedHashMap<>();
+    }
+
+    @Data
+    public static class SecurityConfig {
+        private boolean enabled = false;
+        private java.util.Map<String, java.util.List<String>> agentToolAllowlist = new java.util.LinkedHashMap<>();
     }
 
     @Data

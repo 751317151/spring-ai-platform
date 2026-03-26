@@ -6,6 +6,39 @@
 - It focuses on visual hierarchy, interaction efficiency, state feedback, and product polish.
 - It is intended to be used as the execution baseline for future frontend refinements.
 
+## Execution Status
+
+### Completed
+
+- Chat workspace:
+  - session search, recent grouping, archive/pin/batch actions
+  - response copy, quote, continue, regenerate, branch session
+  - per-session draft persistence and continuation cards
+- RAG workflow:
+  - clearer 3-step page rhythm
+  - status-focused document operations and failure handling
+  - chunk preview navigation and summary copy
+- Dashboard, monitor, user pages:
+  - summary cards, quick actions, recent-operation guidance
+  - cross-page deep links between dashboard, chat, RAG, and monitor
+- Global interaction:
+  - command palette / quick jump
+  - notification center
+  - shortcut help panel
+  - route-loading fallback and page transition guard
+  - mobile quick-entry trays for recent views and common actions
+- Table and card consistency:
+  - user, monitor, RAG, and dashboard cards now share clearer action density and empty-state handling
+- Frontend tests:
+  - major view interaction specs are in place
+  - store specs now cover `auth`, `chat`, `gateway`, `monitor`, `rag`, `runtime`, and `user`
+
+### Remaining Low-Priority Items
+
+- Fine-grained motion polish for more page-to-page transitions
+- More advanced chart drill-down interactions in monitor
+- End-to-end smoke coverage for key frontend journeys
+
 ## Current Assessment
 
 - The current frontend already covers the main business flows:

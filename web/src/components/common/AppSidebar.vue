@@ -13,6 +13,7 @@
         :key="item.to"
         :to="item.to"
         class="nav-item"
+        :title="collapsed ? item.label : undefined"
         active-class="active"
       >
         <svg
@@ -26,6 +27,17 @@
         <span class="nav-text">{{ item.label }}</span>
         <span v-if="item.badge && !collapsed" class="nav-badge">{{ item.badge }}</span>
       </router-link>
+    </div>
+
+    <div v-if="!collapsed" class="sidebar-section">
+      <div class="sidebar-focus-card">
+        <div class="sidebar-focus-kicker">当前工作区</div>
+        <div class="sidebar-focus-title">{{ currentNavLabel }}</div>
+        <div class="sidebar-focus-meta">
+          <span>最近访问 {{ recentViews.length }} 页</span>
+          <span>{{ isAdmin ? '管理员模式' : '普通模式' }}</span>
+        </div>
+      </div>
     </div>
 
     <div v-if="!collapsed && recentViews.length" class="sidebar-section">
@@ -49,6 +61,7 @@
         :key="item.to"
         :to="item.to"
         class="nav-item"
+        :title="collapsed ? item.label : undefined"
         active-class="active"
       >
         <svg
@@ -77,6 +90,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 interface RecentView {
@@ -94,6 +108,7 @@ const emit = defineEmits<{
 }>()
 
 const authStore = useAuthStore()
+const route = useRoute()
 
 const displayChar = computed(() => {
   const name = authStore.username || '用户'
@@ -114,8 +129,8 @@ const roleLabels: Record<string, string> = {
 const displayRole = computed(() => {
   const roles = (authStore.roles || '').split(',').map((r: string) => r.trim()).filter(Boolean)
   if (roles.includes('ROLE_ADMIN')) return '管理员'
-  for (const r of roles) {
-    if (r !== 'ROLE_USER' && roleLabels[r]) return roleLabels[r]
+  for (const role of roles) {
+    if (role !== 'ROLE_USER' && roleLabels[role]) return roleLabels[role]
   }
   return roleLabels[roles[0]] || '用户'
 })
@@ -130,12 +145,17 @@ const mainNav = [
     to: '/chat',
     label: 'AI 助手',
     icon: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
-    badge: '热门'
+    badge: '常用'
   },
   {
     to: '/rag',
     label: '知识库',
     icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>'
+  },
+  {
+    to: '/learning',
+    label: '学习中心',
+    icon: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>'
   }
 ]
 
@@ -161,9 +181,46 @@ const adminNav = [
     icon: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>'
   }
 ]
+
+const currentNavLabel = computed(() => {
+  const matched = [...mainNav, ...adminNav].find((item) => route.path.startsWith(item.to))
+  return matched?.label || '控制台'
+})
 </script>
 
 <style scoped>
+.sidebar-focus-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(79, 142, 247, 0.18);
+  background:
+    radial-gradient(circle at top right, rgba(79, 142, 247, 0.14), transparent 34%),
+    rgba(255, 255, 255, 0.03);
+}
+
+.sidebar-focus-kicker {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.sidebar-focus-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.sidebar-focus-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  font-size: 12px;
+  color: var(--text3);
+}
+
 .sidebar.collapsed {
   width: 76px;
 }

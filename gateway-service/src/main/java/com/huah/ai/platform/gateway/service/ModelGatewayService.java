@@ -7,12 +7,16 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import jakarta.annotation.PostConstruct;
+import lombok.Builder;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.anthropic.AnthropicChatModel;
 import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.anthropic.api.AnthropicApi;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
@@ -35,6 +39,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Slf4j
 @Service
 public class ModelGatewayService {
+    private static final int DEGRADE_FAILURE_THRESHOLD = 3;
+    private static final long DEGRADE_COOLDOWN_MILLIS = TimeUnit.MINUTES.toMillis(5);
 
     private final ModelRegistryConfig registryConfig;
     private final JdbcTemplate jdbcTemplate;
@@ -42,6 +48,7 @@ public class ModelGatewayService {
     private final Map<String, ChatModel> modelCache = new ConcurrentHashMap<>();
     private final AtomicInteger roundRobinCounter = new AtomicInteger(0);
     private final Map<String, ModelStats> statsMap = new ConcurrentHashMap<>();
+    private final Map<String, ModelHealth> healthMap = new ConcurrentHashMap<>();
 
     public ModelGatewayService(ModelRegistryConfig registryConfig, JdbcTemplate jdbcTemplate, MeterRegistry meterRegistry) {
         this.registryConfig = registryConfig;
@@ -65,6 +72,7 @@ public class ModelGatewayService {
                 ChatModel model = buildChatModel(definition);
                 modelCache.put(definition.getId(), model);
                 statsMap.put(definition.getId(), new ModelStats(definition.getId()));
+                healthMap.put(definition.getId(), new ModelHealth(definition.getId()));
                 log.info("Registered model: id={}, provider={}, name={}",
                         definition.getId(), definition.getProvider(), definition.getName());
             } catch (Exception e) {
@@ -73,22 +81,37 @@ public class ModelGatewayService {
             }
         }
 
+        ensureStatsSchema();
         loadStatsFromDb();
         log.info("Model registry initialized, loaded {} models", modelCache.size());
+    }
+
+    private void ensureStatsSchema() {
+        try {
+            jdbcTemplate.execute("ALTER TABLE gateway_model_stats ADD COLUMN IF NOT EXISTS total_prompt_tokens BIGINT DEFAULT 0");
+            jdbcTemplate.execute("ALTER TABLE gateway_model_stats ADD COLUMN IF NOT EXISTS total_completion_tokens BIGINT DEFAULT 0");
+            jdbcTemplate.execute("ALTER TABLE gateway_model_stats ADD COLUMN IF NOT EXISTS total_estimated_cost DOUBLE PRECISION DEFAULT 0");
+        } catch (Exception e) {
+            recordDependencyFailure("database", "ensure-gateway-model-stats-schema");
+            log.warn("Failed to ensure gateway_model_stats schema: {}", e.getMessage());
+        }
     }
 
     private void loadStatsFromDb() {
         try {
             jdbcTemplate.query(
-                    "SELECT model_id, total_calls, success_calls, total_latency_ms FROM gateway_model_stats",
+                    "SELECT model_id, total_calls, success_calls, total_latency_ms, total_prompt_tokens, total_completion_tokens, total_estimated_cost FROM gateway_model_stats",
                     rs -> {
                         String modelId = rs.getString("model_id");
                         int totalCalls = rs.getInt("total_calls");
                         int successCalls = rs.getInt("success_calls");
                         long totalLatencyMs = rs.getLong("total_latency_ms");
+                        long totalPromptTokens = rs.getLong("total_prompt_tokens");
+                        long totalCompletionTokens = rs.getLong("total_completion_tokens");
+                        double totalEstimatedCost = rs.getDouble("total_estimated_cost");
 
                         ModelStats stats = statsMap.computeIfAbsent(modelId, ModelStats::new);
-                        stats.restore(totalCalls, successCalls, totalLatencyMs);
+                        stats.restore(totalCalls, successCalls, totalLatencyMs, totalPromptTokens, totalCompletionTokens, totalEstimatedCost);
                     });
         } catch (Exception e) {
             recordDependencyFailure("database", "load-model-stats");
@@ -101,16 +124,22 @@ public class ModelGatewayService {
             int total = stats.getTotalCalls().get();
             int success = stats.getSuccessCalls().get();
             long totalLatency = stats.getTotalLatencyMs();
+            long totalPromptTokens = stats.getTotalPromptTokens();
+            long totalCompletionTokens = stats.getTotalCompletionTokens();
+            double totalEstimatedCost = stats.getTotalEstimatedCost();
 
             jdbcTemplate.update("""
-                INSERT INTO gateway_model_stats (model_id, total_calls, success_calls, total_latency_ms, updated_at)
-                VALUES (?, ?, ?, ?, NOW())
+                INSERT INTO gateway_model_stats (model_id, total_calls, success_calls, total_latency_ms, total_prompt_tokens, total_completion_tokens, total_estimated_cost, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
                 ON CONFLICT (model_id) DO UPDATE SET
                     total_calls = EXCLUDED.total_calls,
                     success_calls = EXCLUDED.success_calls,
                     total_latency_ms = EXCLUDED.total_latency_ms,
+                    total_prompt_tokens = EXCLUDED.total_prompt_tokens,
+                    total_completion_tokens = EXCLUDED.total_completion_tokens,
+                    total_estimated_cost = EXCLUDED.total_estimated_cost,
                     updated_at = NOW()
-            """, modelId, total, success, totalLatency);
+                """, modelId, total, success, totalLatency, totalPromptTokens, totalCompletionTokens, totalEstimatedCost);
         } catch (Exception e) {
             recordDependencyFailure("database", "persist-model-stats");
             log.warn("Failed to persist model stats: modelId={}, error={}", modelId, e.getMessage());
@@ -126,6 +155,14 @@ public class ModelGatewayService {
         return ChatClient.create(model);
     }
 
+    public ChatClient getChatClient(RouteDecision decision) {
+        ChatModel model = modelCache.get(decision.getSelectedModelId());
+        if (model == null) {
+            throw new AiServiceException("No available model for id " + decision.getSelectedModelId());
+        }
+        return ChatClient.create(model);
+    }
+
     public ChatClient getChatClientById(String modelId) {
         ChatModel model = modelCache.get(modelId);
         if (model == null) {
@@ -135,13 +172,58 @@ public class ModelGatewayService {
     }
 
     String selectModel(String scene) {
+        return selectModelWithDecision(scene, null).getSelectedModelId();
+    }
+
+    public RouteDecision selectModelWithDecision(String scene, String requestedModelId) {
+        if (requestedModelId != null && !requestedModelId.isBlank()) {
+            if (!modelCache.containsKey(requestedModelId)) {
+                throw new AiServiceException("Model not found: " + requestedModelId);
+            }
+            return RouteDecision.builder()
+                    .scene(scene)
+                    .requestedModelId(requestedModelId)
+                    .selectedModelId(requestedModelId)
+                    .strategy("manual")
+                    .reason("命中显式模型指定，跳过自动路由")
+                    .candidateModelIds(List.of(requestedModelId))
+                    .healthyCandidateModelIds(isHealthyForRouting(requestedModelId) ? List.of(requestedModelId) : List.of())
+                    .degradedModelIds(isHealthyForRouting(requestedModelId) ? List.of() : List.of(requestedModelId))
+                    .fallbackTriggered(!isHealthyForRouting(requestedModelId))
+                    .build();
+        }
+
         Map<String, List<String>> sceneRoutes = registryConfig.getSceneRoutes();
         if (scene != null && sceneRoutes != null && sceneRoutes.containsKey(scene)) {
             List<String> candidates = sceneRoutes.get(scene).stream()
                     .filter(modelCache::containsKey)
                     .toList();
+            List<String> healthyCandidates = preferHealthyCandidates(candidates);
+            if (!healthyCandidates.isEmpty()) {
+                String selectedModelId = loadBalance(healthyCandidates);
+                return RouteDecision.builder()
+                        .scene(scene)
+                        .selectedModelId(selectedModelId)
+                        .strategy(normalizeStrategy())
+                        .reason("命中场景路由，并从健康候选模型中完成负载选择")
+                        .candidateModelIds(candidates)
+                        .healthyCandidateModelIds(healthyCandidates)
+                        .degradedModelIds(findDegradedCandidates(candidates))
+                        .fallbackTriggered(false)
+                        .build();
+            }
             if (!candidates.isEmpty()) {
-                return loadBalance(candidates);
+                String selectedModelId = loadBalance(candidates);
+                return RouteDecision.builder()
+                        .scene(scene)
+                        .selectedModelId(selectedModelId)
+                        .strategy(normalizeStrategy())
+                        .reason("命中场景路由，但健康候选为空，已回退到降级模型池")
+                        .candidateModelIds(candidates)
+                        .healthyCandidateModelIds(List.of())
+                        .degradedModelIds(findDegradedCandidates(candidates))
+                        .fallbackTriggered(true)
+                        .build();
             }
         }
 
@@ -157,7 +239,33 @@ public class ModelGatewayService {
         if (allModels.isEmpty()) {
             throw new AiServiceException("No available models");
         }
-        return loadBalance(allModels);
+
+        List<String> healthyModels = preferHealthyCandidates(allModels);
+        List<String> routedCandidates = healthyModels.isEmpty() ? allModels : healthyModels;
+        boolean fallbackTriggered = healthyModels.isEmpty();
+        String selectedModelId = loadBalance(routedCandidates);
+        return RouteDecision.builder()
+                .scene(scene)
+                .selectedModelId(selectedModelId)
+                .strategy(normalizeStrategy())
+                .reason(fallbackTriggered
+                        ? "未命中特定场景健康路由，已从全量模型中回退选择"
+                        : "未命中特定场景路由，已从全局健康模型中选择")
+                .candidateModelIds(allModels)
+                .healthyCandidateModelIds(healthyModels)
+                .degradedModelIds(findDegradedCandidates(allModels))
+                .fallbackTriggered(fallbackTriggered)
+                .build();
+    }
+
+    private List<String> preferHealthyCandidates(List<String> candidates) {
+        return candidates.stream()
+                .filter(this::isHealthyForRouting)
+                .toList();
+    }
+
+    private boolean isHealthyForRouting(String modelId) {
+        return !healthMap.computeIfAbsent(modelId, ModelHealth::new).isTemporarilyDegraded();
     }
 
     private String loadBalance(List<String> candidates) {
@@ -167,6 +275,17 @@ public class ModelGatewayService {
             case "least-latency" -> leastLatencySelect(candidates);
             default -> roundRobinSelect(candidates);
         };
+    }
+
+    private String normalizeStrategy() {
+        String strategy = registryConfig.getLoadBalanceStrategy();
+        return (strategy == null || strategy.isBlank()) ? "round-robin" : strategy;
+    }
+
+    private List<String> findDegradedCandidates(List<String> candidates) {
+        return candidates.stream()
+                .filter(candidate -> !isHealthyForRouting(candidate))
+                .toList();
     }
 
     private String roundRobinSelect(List<String> candidates) {
@@ -203,8 +322,7 @@ public class ModelGatewayService {
 
     private String leastLatencySelect(List<String> candidates) {
         return candidates.stream()
-                .min(Comparator.comparingDouble(id ->
-                        statsMap.getOrDefault(id, new ModelStats(id)).getAvgLatencyMs()))
+                .min(Comparator.comparingDouble(id -> statsMap.getOrDefault(id, new ModelStats(id)).getAvgLatencyMs()))
                 .orElse(candidates.get(0));
     }
 
@@ -265,9 +383,15 @@ public class ModelGatewayService {
     }
 
     public void recordCall(String modelId, long latencyMs, boolean success) {
+        recordCall(modelId, latencyMs, success, null, null);
+    }
+
+    public void recordCall(String modelId, long latencyMs, boolean success, Integer promptTokens, Integer completionTokens) {
         String safeModelId = modelId == null || modelId.isBlank() ? "auto" : modelId;
         ModelStats stats = statsMap.computeIfAbsent(safeModelId, ModelStats::new);
-        stats.record(latencyMs, success);
+        ModelHealth health = healthMap.computeIfAbsent(safeModelId, ModelHealth::new);
+        stats.record(latencyMs, success, promptTokens, completionTokens, estimateCost(safeModelId, promptTokens, completionTokens));
+        health.record(success);
         persistStats(safeModelId, stats);
 
         Timer.builder("gateway.model.call.latency")
@@ -290,6 +414,74 @@ public class ModelGatewayService {
         return Collections.unmodifiableMap(statsMap);
     }
 
+    public Map<String, ModelHealth> getAllHealth() {
+        return Collections.unmodifiableMap(healthMap);
+    }
+
+    public ModelDefinition getModelDefinition(String modelId) {
+        if (registryConfig.getRegistry() == null || modelId == null) {
+            return null;
+        }
+        return registryConfig.getRegistry().stream()
+                .filter(item -> modelId.equals(item.getId()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    public Map<String, Object> extractUsage(ChatResponse response) {
+        Integer promptTokens = null;
+        Integer completionTokens = null;
+        if (response != null && response.getMetadata() != null && response.getMetadata().getUsage() != null) {
+            promptTokens = response.getMetadata().getUsage().getPromptTokens();
+            completionTokens = response.getMetadata().getUsage().getCompletionTokens();
+        }
+        return Map.of(
+                "promptTokens", promptTokens == null ? 0 : promptTokens,
+                "completionTokens", completionTokens == null ? 0 : completionTokens
+        );
+    }
+
+    public Map<String, Object> probeAllModels() {
+        Map<String, Object> result = new ConcurrentHashMap<>();
+        modelCache.forEach((modelId, model) -> result.put(modelId, probeModelHealth(modelId)));
+        return result;
+    }
+
+    public Map<String, Object> probeModelHealth(String modelId) {
+        ChatModel model = modelCache.get(modelId);
+        if (model == null) {
+            throw new AiServiceException("Model not found: " + modelId);
+        }
+
+        long start = System.currentTimeMillis();
+        String prompt = registryConfig.getHealthProbe() != null && registryConfig.getHealthProbe().getPrompt() != null
+                ? registryConfig.getHealthProbe().getPrompt()
+                : "ping";
+        ModelHealth health = healthMap.computeIfAbsent(modelId, ModelHealth::new);
+        try {
+            model.call(new Prompt(prompt));
+            long latency = System.currentTimeMillis() - start;
+            health.recordProbe(true, latency, "主动探测成功");
+            return Map.of(
+                    "modelId", modelId,
+                    "status", health.getStatus(),
+                    "probeLatencyMs", latency,
+                    "reason", health.getLastReason()
+            );
+        } catch (Exception e) {
+            long latency = System.currentTimeMillis() - start;
+            health.recordProbe(false, latency, "主动探测失败: " + e.getMessage());
+            recordDependencyFailure("model-health-probe", modelId);
+            log.warn("Model health probe failed: modelId={}, error={}", modelId, e.getMessage());
+            return Map.of(
+                    "modelId", modelId,
+                    "status", health.getStatus(),
+                    "probeLatencyMs", latency,
+                    "reason", health.getLastReason()
+            );
+        }
+    }
+
     private void recordDependencyFailure(String dependency, String operation) {
         Counter.builder("gateway.dependency.failures")
                 .description("Gateway dependency failure count")
@@ -299,37 +491,148 @@ public class ModelGatewayService {
                 .increment();
     }
 
-    @lombok.Data
+    private double estimateCost(String modelId, Integer promptTokens, Integer completionTokens) {
+        ModelRegistryConfig.ModelDefinition definition = registryConfig.getRegistry() == null
+                ? null
+                : registryConfig.getRegistry().stream()
+                .filter(item -> modelId.equals(item.getId()))
+                .findFirst()
+                .orElse(null);
+        if (definition == null) {
+            return 0d;
+        }
+        double promptCost = ((promptTokens == null ? 0 : promptTokens) / 1000.0d) * definition.getPromptCostPer1kTokens();
+        double completionCost = ((completionTokens == null ? 0 : completionTokens) / 1000.0d) * definition.getCompletionCostPer1kTokens();
+        return promptCost + completionCost;
+    }
+
+    @Data
     public static class ModelStats {
         private final String modelId;
         private final AtomicInteger totalCalls = new AtomicInteger(0);
         private final AtomicInteger successCalls = new AtomicInteger(0);
         private volatile long totalLatencyMs = 0;
+        private volatile long totalPromptTokens = 0;
+        private volatile long totalCompletionTokens = 0;
+        private volatile double totalEstimatedCost = 0;
         private volatile double avgLatencyMs = 0;
 
         public ModelStats(String modelId) {
             this.modelId = modelId;
         }
 
-        public synchronized void record(long latencyMs, boolean success) {
-            int n = totalCalls.incrementAndGet();
+        public synchronized void record(long latencyMs, boolean success, Integer promptTokens, Integer completionTokens, double estimatedCost) {
+            int total = totalCalls.incrementAndGet();
             if (success) {
                 successCalls.incrementAndGet();
             }
             totalLatencyMs += latencyMs;
-            avgLatencyMs = (double) totalLatencyMs / n;
+            totalPromptTokens += promptTokens == null ? 0 : promptTokens;
+            totalCompletionTokens += completionTokens == null ? 0 : completionTokens;
+            totalEstimatedCost += estimatedCost;
+            avgLatencyMs = (double) totalLatencyMs / total;
         }
 
-        public void restore(int total, int success, long totalLatency) {
+        public synchronized void restore(int total, int success, long totalLatency, long promptTokens, long completionTokens, double estimatedCost) {
             totalCalls.set(total);
             successCalls.set(success);
             totalLatencyMs = totalLatency;
+            totalPromptTokens = promptTokens;
+            totalCompletionTokens = completionTokens;
+            totalEstimatedCost = estimatedCost;
             avgLatencyMs = total > 0 ? (double) totalLatency / total : 0;
         }
 
         public double getSuccessRate() {
             int total = totalCalls.get();
             return total == 0 ? 1.0 : (double) successCalls.get() / total;
+        }
+    }
+
+    @Data
+    public static class ModelHealth {
+        private final String modelId;
+        private final AtomicInteger consecutiveFailures = new AtomicInteger(0);
+        private volatile long degradedUntil = 0;
+        private volatile String lastReason = "";
+        private volatile long lastCheckedAt = 0;
+        private volatile long lastProbeLatencyMs = -1;
+
+        public ModelHealth(String modelId) {
+            this.modelId = modelId;
+        }
+
+        public synchronized void record(boolean success) {
+            lastCheckedAt = System.currentTimeMillis();
+            if (success) {
+                consecutiveFailures.set(0);
+                degradedUntil = 0;
+                lastReason = "";
+                return;
+            }
+
+            int failures = consecutiveFailures.incrementAndGet();
+            lastReason = "连续失败 " + failures + " 次";
+            if (failures >= DEGRADE_FAILURE_THRESHOLD) {
+                degradedUntil = System.currentTimeMillis() + DEGRADE_COOLDOWN_MILLIS;
+                lastReason = "连续失败过多，已临时降级";
+            }
+        }
+
+        public synchronized void recordProbe(boolean success, long latencyMs, String reason) {
+            lastCheckedAt = System.currentTimeMillis();
+            lastProbeLatencyMs = latencyMs;
+            if (success) {
+                consecutiveFailures.set(0);
+                degradedUntil = 0;
+                lastReason = reason;
+                return;
+            }
+
+            int failures = consecutiveFailures.incrementAndGet();
+            lastReason = reason;
+            if (failures >= DEGRADE_FAILURE_THRESHOLD) {
+                degradedUntil = System.currentTimeMillis() + DEGRADE_COOLDOWN_MILLIS;
+                if (lastReason == null || lastReason.isBlank()) {
+                    lastReason = "连续失败过多，已临时降级";
+                }
+            }
+        }
+
+        public boolean isTemporarilyDegraded() {
+            return degradedUntil > System.currentTimeMillis();
+        }
+
+        public String getStatus() {
+            return isTemporarilyDegraded() ? "degraded" : "healthy";
+        }
+    }
+
+    @Builder
+    @Data
+    public static class RouteDecision {
+        private String scene;
+        private String requestedModelId;
+        private String selectedModelId;
+        private String strategy;
+        private String reason;
+        private List<String> candidateModelIds;
+        private List<String> healthyCandidateModelIds;
+        private List<String> degradedModelIds;
+        private boolean fallbackTriggered;
+
+        public Map<String, Object> toMap() {
+            return Map.of(
+                    "scene", scene == null ? "" : scene,
+                    "requestedModelId", requestedModelId == null ? "" : requestedModelId,
+                    "selectedModelId", selectedModelId == null ? "" : selectedModelId,
+                    "strategy", strategy == null ? "" : strategy,
+                    "reason", reason == null ? "" : reason,
+                    "candidateModelIds", candidateModelIds == null ? List.of() : candidateModelIds,
+                    "healthyCandidateModelIds", healthyCandidateModelIds == null ? List.of() : healthyCandidateModelIds,
+                    "degradedModelIds", degradedModelIds == null ? List.of() : degradedModelIds,
+                    "fallbackTriggered", fallbackTriggered
+            );
         }
     }
 }
