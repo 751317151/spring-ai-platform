@@ -2,6 +2,7 @@ package com.huah.ai.platform.agent.multi;
 
 import com.huah.ai.platform.agent.dto.MultiAgentTraceResponse;
 import com.huah.ai.platform.agent.memory.ConversationMemoryService;
+import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -13,7 +14,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -24,6 +27,7 @@ class MultiAgentTraceServiceTest {
     private MultiAgentExecutionTraceMapper traceMapper;
     private MultiAgentExecutionStepMapper stepMapper;
     private ConversationMemoryService memoryService;
+    private SnowflakeIdGenerator snowflakeIdGenerator;
     private MultiAgentTraceService multiAgentTraceService;
 
     @BeforeEach
@@ -32,7 +36,16 @@ class MultiAgentTraceServiceTest {
         traceMapper = mock(MultiAgentExecutionTraceMapper.class);
         stepMapper = mock(MultiAgentExecutionStepMapper.class);
         memoryService = mock(ConversationMemoryService.class);
-        multiAgentTraceService = new MultiAgentTraceService(orchestrator, traceMapper, stepMapper, memoryService);
+        snowflakeIdGenerator = mock(SnowflakeIdGenerator.class);
+        lenient().when(snowflakeIdGenerator.nextLongId()).thenReturn(1001L, 1002L, 1003L, 1004L, 1005L, 1006L, 1007L,
+                1008L, 1009L, 1010L, 1011L, 1012L, 1013L, 1014L, 1015L, 1016L, 1017L, 1018L, 1019L, 1020L);
+        multiAgentTraceService = new MultiAgentTraceService(
+                orchestrator,
+                traceMapper,
+                stepMapper,
+                memoryService,
+                snowflakeIdGenerator
+        );
     }
 
     @Test
@@ -108,7 +121,7 @@ class MultiAgentTraceServiceTest {
                 .thenAnswer(invocation -> {
                     String replayTraceId = invocation.getArgument(0, String.class);
                     return MultiAgentExecutionTrace.builder()
-                            .id("replayed-id")
+                            .id(2001L)
                             .traceId(replayTraceId)
                             .userId("u-1")
                             .sessionId("archived-session")
@@ -138,9 +151,38 @@ class MultiAgentTraceServiceTest {
         verify(traceMapper).insert(org.mockito.ArgumentMatchers.any(MultiAgentExecutionTrace.class));
     }
 
+    @Test
+    void shouldUseShortInternalConversationIdsForToolStages() {
+        when(orchestrator.planTask(eq("task"), anyString()))
+                .thenReturn(new MultiAgentOrchestrator.StepResult("plan", 4, 2, 10L));
+        when(orchestrator.executeWithTools(eq("u-1"), eq("task"), eq("plan"), anyString()))
+                .thenReturn(new MultiAgentOrchestrator.StepResult("execute", 6, 3, 20L));
+        when(orchestrator.critique(eq("task"), eq("execute"), anyString()))
+                .thenReturn(new MultiAgentOrchestrator.StepResult("final", 5, 4, 15L));
+
+        multiAgentTraceService.execute("u-1", "admin-multi-1774711917107", "task", new MultiAgentExecutionListener() { });
+
+        ArgumentCaptor<String> plannerSessionCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> executorSessionCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> criticSessionCaptor = ArgumentCaptor.forClass(String.class);
+        verify(orchestrator).planTask(eq("task"), plannerSessionCaptor.capture());
+        verify(orchestrator).executeWithTools(eq("u-1"), eq("task"), eq("plan"), executorSessionCaptor.capture());
+        verify(orchestrator).critique(eq("task"), eq("execute"), criticSessionCaptor.capture());
+
+        String plannerSessionId = plannerSessionCaptor.getValue();
+        String executorSessionId = executorSessionCaptor.getValue();
+        String criticSessionId = criticSessionCaptor.getValue();
+
+        assertTrue(plannerSessionId.length() <= 36);
+        assertTrue(executorSessionId.length() <= 36);
+        assertTrue(criticSessionId.length() <= 36);
+        assertTrue(executorSessionId.endsWith("-executor"));
+        assertTrue(criticSessionId.endsWith("-critic"));
+    }
+
     private MultiAgentExecutionTrace buildSourceTrace() {
         return MultiAgentExecutionTrace.builder()
-                .id("source-id")
+                .id(2002L)
                 .traceId("trace-source")
                 .userId("u-1")
                 .sessionId("session-1")
@@ -172,7 +214,7 @@ class MultiAgentTraceServiceTest {
                                               boolean success,
                                               boolean recoverable) {
         return MultiAgentExecutionStep.builder()
-                .id(stage + "-id")
+                .id((long) order)
                 .traceId(traceId)
                 .stepOrder(order)
                 .stage(stage)
