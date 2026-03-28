@@ -16,8 +16,8 @@ import java.util.Set;
 @NoArgsConstructor
 @AllArgsConstructor
 public class BotPermission {
-    @TableId(type = IdType.ASSIGN_UUID)
-    private String id;
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
 
     /** Bot 类型: rd | sales | hr | finance | supply-chain | qc */
     private String botType;

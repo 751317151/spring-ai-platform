@@ -450,7 +450,7 @@ public class AgentLogArchiveService {
     private AgentLogArchiveSample toAuditSample(AiAuditLog log) {
         return AgentLogArchiveSample.builder()
                 .type("audit")
-                .id(log.getId())
+                .id(log.getId() == null ? null : String.valueOf(log.getId()))
                 .traceId(log.getTraceId())
                 .sessionId(log.getSessionId())
                 .summary(firstNonBlank(log.getErrorMessage(), log.getUserMessage(), log.getAiResponse()))
@@ -461,7 +461,7 @@ public class AgentLogArchiveService {
     private AgentLogArchiveSample toToolAuditSample(AiToolAuditLog log) {
         return AgentLogArchiveSample.builder()
                 .type("tool-audit")
-                .id(log.getId())
+                .id(log.getId() == null ? null : String.valueOf(log.getId()))
                 .traceId(log.getTraceId())
                 .sessionId(log.getSessionId())
                 .summary(firstNonBlank(log.getErrorMessage(), log.getInputSummary(), log.getToolName()))
@@ -472,7 +472,7 @@ public class AgentLogArchiveService {
     private AgentLogArchiveSample toTraceSample(MultiAgentExecutionTrace trace) {
         return AgentLogArchiveSample.builder()
                 .type("trace")
-                .id(trace.getId())
+                .id(trace.getId() == null ? null : String.valueOf(trace.getId()))
                 .traceId(trace.getTraceId())
                 .sessionId(trace.getSessionId())
                 .summary(firstNonBlank(trace.getErrorMessage(), trace.getRequestSummary(), trace.getFinalSummary()))

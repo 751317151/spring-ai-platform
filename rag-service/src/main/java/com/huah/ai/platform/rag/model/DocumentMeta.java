@@ -24,12 +24,12 @@ public class DocumentMeta {
     public static final String STATUS_INDEXED = "INDEXED";
     public static final String STATUS_FAILED = "FAILED";
 
-    @TableId(type = IdType.ASSIGN_UUID)
-    private String id;
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
 
     private String filename;
 
-    private String knowledgeBaseId;
+    private Long knowledgeBaseId;
 
     private Long fileSize;
 

@@ -4,9 +4,9 @@ import lombok.Data;
 
 @Data
 public class EvidenceFeedbackRequest {
-    private String responseId;
+    private Long responseId;
     private String chunkId;
-    private String knowledgeBaseId;
+    private Long knowledgeBaseId;
     private String feedback;
     private String comment;
 }

@@ -21,7 +21,7 @@ describe('user store', () => {
   })
 
   it('loads users and permissions successfully', async () => {
-    vi.mocked(authApi.getUsers).mockResolvedValue([{ id: 'u1', username: '张三' } as never])
+    vi.mocked(authApi.getUsers).mockResolvedValue([{ userId: 'u1', username: '张三' } as never])
     vi.mocked(authApi.getPermissions).mockResolvedValue([{ id: 'p1', botType: 'rd' } as never])
 
     const store = useUserStore()
@@ -48,10 +48,10 @@ describe('user store', () => {
 
   it('reloads users after createUser succeeds', async () => {
     vi.mocked(authApi.createUser).mockResolvedValue({} as never)
-    vi.mocked(authApi.getUsers).mockResolvedValue([{ id: 'u2', username: '李四' } as never])
+    vi.mocked(authApi.getUsers).mockResolvedValue([{ userId: 'u2', username: '李四' } as never])
 
     const store = useUserStore()
-    await expect(store.createUser({ username: '李四', password: '123456' })).resolves.toBe(true)
+    await expect(store.createUser({ userId: 'u2', username: '李四', password: '123456' })).resolves.toBe(true)
 
     expect(authApi.createUser).toHaveBeenCalled()
     expect(authApi.getUsers).toHaveBeenCalled()

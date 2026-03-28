@@ -42,7 +42,7 @@ public class RagService {
     /**
      * 普通 RAG 问答
      */
-    public String query(String question, String knowledgeBaseId, int topK) {
+    public String query(String question, Long knowledgeBaseId, int topK) {
         Advisor ragAdvisor = buildRagAdvisor(knowledgeBaseId, topK);
 
         return chatClient.prompt()
@@ -55,7 +55,7 @@ public class RagService {
     /**
      * 流式 RAG 问答
      */
-    public Flux<String> queryStream(String question, String knowledgeBaseId, int topK) {
+    public Flux<String> queryStream(String question, Long knowledgeBaseId, int topK) {
         Advisor ragAdvisor = buildRagAdvisor(knowledgeBaseId, topK);
 
         return chatClient.prompt()
@@ -68,7 +68,7 @@ public class RagService {
     /**
      * 带对话历史的 RAG
      */
-    public String queryWithHistory(String question, String knowledgeBaseId,
+    public String queryWithHistory(String question, Long knowledgeBaseId,
                                    List<Map<String, String>> history, int topK) {
         Advisor ragAdvisor = buildRagAdvisor(knowledgeBaseId, topK);
 
@@ -94,35 +94,35 @@ public class RagService {
     /**
      * 纯向量检索（不生成，仅返回相似文档）
      */
-    public List<Document> search(String query, String knowledgeBaseId, int topK) {
+    public List<Document> search(String query, Long knowledgeBaseId, int topK) {
         SearchRequest request = buildSearchRequest(query, knowledgeBaseId, topK);
         return vectorStore.similaritySearch(request);
     }
 
-    private SearchRequest buildSearchRequest(String query, String knowledgeBaseId, int topK) {
+    private SearchRequest buildSearchRequest(String query, Long knowledgeBaseId, int topK) {
         var builder = SearchRequest.builder()
                 .query(query)
                 .topK(topK)
                 .similarityThreshold(0.2);
 
         // 按知识库ID过滤
-        if (knowledgeBaseId != null && !knowledgeBaseId.isBlank()) {
+        if (knowledgeBaseId != null) {
             FilterExpressionBuilder fb = new FilterExpressionBuilder();
-            builder.filterExpression(fb.eq("kb_id", knowledgeBaseId).build());
+            builder.filterExpression(fb.eq("kb_id", String.valueOf(knowledgeBaseId)).build());
         }
 
         return builder.build();
     }
 
-    private Advisor buildRagAdvisor(String knowledgeBaseId, int topK) {
+    private Advisor buildRagAdvisor(Long knowledgeBaseId, int topK) {
         var retrieverBuilder = VectorStoreDocumentRetriever.builder()
                 .vectorStore(vectorStore)
                 .similarityThreshold(0.2)
                 .topK(topK);
 
-        if (knowledgeBaseId != null && !knowledgeBaseId.isBlank()) {
+        if (knowledgeBaseId != null) {
             FilterExpressionBuilder fb = new FilterExpressionBuilder();
-            retrieverBuilder.filterExpression(fb.eq("kb_id", knowledgeBaseId).build());
+            retrieverBuilder.filterExpression(fb.eq("kb_id", String.valueOf(knowledgeBaseId)).build());
         }
 
         return RetrievalAugmentationAdvisor.builder()

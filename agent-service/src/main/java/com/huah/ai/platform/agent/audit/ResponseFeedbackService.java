@@ -1,12 +1,12 @@
 package com.huah.ai.platform.agent.audit;
 
 import com.huah.ai.platform.common.exception.BizException;
+import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.Locale;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -14,9 +14,10 @@ public class ResponseFeedbackService {
 
     private final AiAuditLogMapper auditLogMapper;
     private final AiResponseFeedbackMapper feedbackMapper;
+    private final SnowflakeIdGenerator snowflakeIdGenerator;
 
-    public void submitAgentFeedback(String userId, String responseId, String feedback, String comment) {
-        if (responseId == null || responseId.isBlank()) {
+    public void submitAgentFeedback(String userId, Long responseId, String feedback, String comment) {
+        if (responseId == null) {
             throw new BizException("responseId不能为空");
         }
 
@@ -33,7 +34,7 @@ public class ResponseFeedbackService {
         LocalDateTime now = LocalDateTime.now();
         if (existing == null) {
             feedbackMapper.insert(AiResponseFeedback.builder()
-                    .id(UUID.randomUUID().toString())
+                    .id(snowflakeIdGenerator.nextLongId())
                     .responseId(responseId)
                     .sourceType("agent")
                     .feedback(normalizedFeedback)

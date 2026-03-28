@@ -3,6 +3,7 @@ package com.huah.ai.platform.agent.audit;
 import com.huah.ai.platform.agent.metrics.AiMetricsCollector;
 import com.huah.ai.platform.agent.service.AgentChatResult;
 import com.huah.ai.platform.common.trace.TraceIdContext;
+import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -12,8 +13,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
-
 /**
  * AI 调用审计 AOP 拦截器
  *
@@ -29,6 +28,7 @@ public class AgentAuditAspect {
 
     private final AiAuditLogMapper auditLogMapper;
     private final AiMetricsCollector metricsCollector;
+    private final SnowflakeIdGenerator snowflakeIdGenerator;
 
     @Around("execution(* com.huah.ai.platform.agent.service.*.chat(String, String, String))")
     public Object auditChat(ProceedingJoinPoint pjp) throws Throwable {
@@ -67,7 +67,7 @@ public class AgentAuditAspect {
             try {
                 String responseText = chatResult != null ? chatResult.getContent() : null;
                 auditLogMapper.insert(AiAuditLog.builder()
-                        .id(UUID.randomUUID().toString())
+                        .id(snowflakeIdGenerator.nextLongId())
                         .userId(userId)
                         .sessionId(sessionId)
                         .agentType(agentType)

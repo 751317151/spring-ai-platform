@@ -15,8 +15,8 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AiUser {
-    @TableId(type = IdType.ASSIGN_UUID)
-    private String id;
+    @TableId(value = "userid", type = IdType.INPUT)
+    private String userId;
 
     private String username;
     private String passwordHash;

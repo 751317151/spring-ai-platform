@@ -17,11 +17,11 @@ import java.time.LocalDateTime;
 @TableName("ai_response_feedback")
 public class AiResponseFeedback {
 
-    @TableId(type = IdType.ASSIGN_UUID)
-    private String id;
-    private String responseId;
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
+    private Long responseId;
     private String sourceType;
-    private String knowledgeBaseId;
+    private Long knowledgeBaseId;
     private String feedback;
     private String comment;
     private LocalDateTime createdAt;

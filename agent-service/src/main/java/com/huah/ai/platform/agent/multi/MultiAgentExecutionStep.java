@@ -17,8 +17,8 @@ import java.time.LocalDateTime;
 @TableName("ai_multi_agent_trace_steps")
 public class MultiAgentExecutionStep {
 
-    @TableId(type = IdType.ASSIGN_UUID)
-    private String id;
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
     private String traceId;
     private Integer stepOrder;
     private String stage;

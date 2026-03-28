@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
 public class FollowUpTemplateRecord {
 
     @TableId(type = IdType.INPUT)
-    private String id;
+    private Long id;
     private String userId;
     private String name;
     private String content;

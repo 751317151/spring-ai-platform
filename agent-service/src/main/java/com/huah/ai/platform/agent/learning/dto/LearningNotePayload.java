@@ -6,11 +6,11 @@ import java.util.List;
 
 @Data
 public class LearningNotePayload {
-    private String id;
+    private Long id;
     private String title;
     private String content;
     private String sourceType;
-    private String relatedFavoriteId;
+    private Long relatedFavoriteId;
     private String relatedSessionId;
     private String relatedAgentType;
     private String relatedSessionSummary;

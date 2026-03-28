@@ -17,8 +17,8 @@ import java.time.LocalDateTime;
 @TableName("ai_tool_audit_logs")
 public class AiToolAuditLog {
 
-    @TableId(type = IdType.ASSIGN_UUID)
-    private String id;
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
     private String userId;
     private String sessionId;
     private String agentType;

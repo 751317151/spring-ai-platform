@@ -16,12 +16,12 @@ import lombok.NoArgsConstructor;
 public class LearningNoteRecord {
 
     @TableId(type = IdType.INPUT)
-    private String id;
+    private Long id;
     private String userId;
     private String title;
     private String content;
     private String sourceType;
-    private String relatedFavoriteId;
+    private Long relatedFavoriteId;
     private String relatedSessionId;
     private String relatedAgentType;
     private String relatedSessionSummary;

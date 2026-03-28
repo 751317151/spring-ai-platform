@@ -4,6 +4,7 @@ import lombok.Data;
 
 @Data
 public class UserUpsertRequest {
+    private String userId;
     private String username;
     private String password;
     private String department;

@@ -14,8 +14,8 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AiRole {
-    @TableId(type = IdType.ASSIGN_UUID)
-    private String id;
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
 
     private String roleName; // ROLE_ADMIN, ROLE_RD, ROLE_SALES, ROLE_HR...
 

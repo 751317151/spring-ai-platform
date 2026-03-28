@@ -10,12 +10,12 @@ import java.util.List;
 @Mapper
 public interface DocumentMetaMapper extends BaseMapper<DocumentMeta> {
 
-    List<DocumentMeta> selectByKnowledgeBaseId(@Param("kbId") String knowledgeBaseId);
+    List<DocumentMeta> selectByKnowledgeBaseId(@Param("kbId") Long knowledgeBaseId);
 
-    long countByKnowledgeBaseId(@Param("kbId") String knowledgeBaseId);
+    long countByKnowledgeBaseId(@Param("kbId") Long knowledgeBaseId);
 
     List<DocumentMeta> selectRetryCandidates(@Param("limit") int limit);
 
-    DocumentMeta selectLatestByKnowledgeBaseIdAndFilename(@Param("kbId") String knowledgeBaseId,
+    DocumentMeta selectLatestByKnowledgeBaseIdAndFilename(@Param("kbId") Long knowledgeBaseId,
                                                           @Param("filename") String filename);
 }

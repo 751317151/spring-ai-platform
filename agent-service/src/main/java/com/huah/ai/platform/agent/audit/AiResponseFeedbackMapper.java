@@ -7,5 +7,5 @@ import org.apache.ibatis.annotations.Param;
 @Mapper
 public interface AiResponseFeedbackMapper extends BaseMapper<AiResponseFeedback> {
 
-    AiResponseFeedback selectByResponseId(@Param("responseId") String responseId);
+    AiResponseFeedback selectByResponseId(@Param("responseId") Long responseId);
 }

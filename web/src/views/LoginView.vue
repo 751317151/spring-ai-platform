@@ -19,8 +19,8 @@
       </div>
 
       <div class="form-group">
-        <label class="form-label">用户名</label>
-        <input class="form-input" type="text" v-model="username" placeholder="admin" @keyup.enter="handleLogin">
+        <label class="form-label">用户ID</label>
+        <input class="form-input" type="text" v-model="userId" placeholder="admin" @keyup.enter="handleLogin">
       </div>
       <div class="form-group">
         <label class="form-label">密码</label>
@@ -48,7 +48,7 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 
-const username = ref('admin')
+const userId = ref('admin')
 const password = ref('admin123')
 const isLoading = ref(false)
 const errorMsg = ref('')
@@ -58,7 +58,7 @@ async function handleLogin() {
   isLoading.value = true
   errorMsg.value = ''
   try {
-    await authStore.login(username.value, password.value)
+    await authStore.login(userId.value, password.value)
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard'
     router.replace(redirect)
   } catch (error: unknown) {

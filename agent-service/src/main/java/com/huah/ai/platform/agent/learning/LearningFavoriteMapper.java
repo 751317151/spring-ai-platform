@@ -11,5 +11,5 @@ public interface LearningFavoriteMapper extends BaseMapper<LearningFavoriteRecor
 
     List<LearningFavoriteRecord> selectByUserId(@Param("userId") String userId);
 
-    int deleteByUserIdAndId(@Param("userId") String userId, @Param("id") String id);
+    int deleteByUserIdAndId(@Param("userId") String userId, @Param("id") Long id);
 }

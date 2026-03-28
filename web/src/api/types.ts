@@ -8,7 +8,7 @@ export interface Result<T> {
 }
 
 export interface LoginRequest {
-  username: string
+  userId: string
   password: string
 }
 
@@ -25,6 +25,7 @@ export interface LoginResponse {
 }
 
 export interface UserUpsertRequest {
+  userId?: string
   username?: string
   password?: string
   employeeId?: string
@@ -34,7 +35,7 @@ export interface UserUpsertRequest {
 }
 
 export interface AiUser {
-  id: string
+  userId: string
   username: string
   employeeId?: string
   department?: string

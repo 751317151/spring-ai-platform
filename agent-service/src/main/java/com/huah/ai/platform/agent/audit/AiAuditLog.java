@@ -17,8 +17,8 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class AiAuditLog {
 
-    @TableId(type = IdType.ASSIGN_UUID)
-    private String id;
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
     private String userId;
     private String agentType;
     private String modelId;

@@ -114,7 +114,7 @@ public class AgentConversationController {
             long latency = System.currentTimeMillis() - startTime;
             long persistenceStartTime = System.currentTimeMillis();
             AgentExecutionMetrics executionMetrics = result.getExecutionMetrics();
-            String responseId = agentAuditLogService.saveAuditLog(
+            Long responseId = agentAuditLogService.saveAuditLog(
                     userId,
                     sessionId,
                     agentType,
@@ -289,7 +289,7 @@ public class AgentConversationController {
                                     userId,
                                     totalPromptTokens.get() + totalCompletionTokens.get(),
                                     AgentApiConstants.PRE_DEDUCT_TOKENS);
-                            String responseId = agentAuditLogService.saveAuditLog(
+                            Long responseId = agentAuditLogService.saveAuditLog(
                                     userId,
                                     sessionId,
                                     agentType,
@@ -467,7 +467,7 @@ public class AgentConversationController {
                 multiResult.getCompletionTokens());
         log.info("[Stream] multi-agent completed userId={}, latency={}ms, chunks={}, tokens={}/{}",
                 userId, latency, chunkCount.get(), multiResult.getPromptTokens(), multiResult.getCompletionTokens());
-        String responseId = agentAuditLogService.saveAuditLog(
+        Long responseId = agentAuditLogService.saveAuditLog(
                 userId,
                 sessionId,
                 AgentApiConstants.AGENT_TYPE_MULTI,
@@ -512,12 +512,12 @@ public class AgentConversationController {
         }
     }
 
-    private void sendDone(SseEmitter emitter, String responseId, String traceId) {
+    private void sendDone(SseEmitter emitter, Long responseId, String traceId) {
         try {
             emitter.send(SseEmitter.event().data(Map.of(
                     "chunk", "",
                     "done", true,
-                    "responseId", responseId == null ? "" : responseId,
+                    "responseId", responseId == null ? "" : String.valueOf(responseId),
                     "traceId", traceId == null ? "" : traceId
             )));
             emitter.complete();

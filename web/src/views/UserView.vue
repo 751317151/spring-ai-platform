@@ -148,7 +148,7 @@
       </div>
 
       <div class="filters">
-        <input v-model="userKeyword" class="form-input filter-input" placeholder="搜索用户名、工号、部门或角色">
+        <input v-model="userKeyword" class="form-input filter-input" placeholder="搜索用户ID、用户名、工号、部门或角色">
         <select v-model="userStatus" class="form-input filter-select">
           <option value="all">全部状态</option>
           <option value="enabled">仅看启用</option>
@@ -225,7 +225,7 @@
             <div class="card summary-card">
               <div class="summary-label">最近登录</div>
               <div class="summary-value">{{ inspectedUser.lastLoginAt ? formatTime(inspectedUser.lastLoginAt) : '暂无记录' }}</div>
-              <div class="summary-subtitle">{{ inspectedUser.username }} / {{ inspectedUser.id }}</div>
+              <div class="summary-subtitle">{{ inspectedUser.username }} / {{ inspectedUser.userId }}</div>
             </div>
             <div class="card summary-card">
               <div class="summary-label">今日 Token</div>
@@ -300,7 +300,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { getTokenUsage, getAuditLogs } from '@/api/monitor'
+import { getAuditLogs, getTokenUsage } from '@/api/monitor'
 import type { AuditLog, TokenUsage } from '@/api/types'
 import EmptyState from '@/components/common/EmptyState.vue'
 import SkeletonBlock from '@/components/common/SkeletonBlock.vue'
@@ -337,7 +337,7 @@ const userRecentLogs = ref<AuditLog[]>([])
 const recentActionLabel = ref('')
 
 const hasUserFilters = computed(() => Boolean(userKeyword.value || userStatus.value !== 'all' || userRole.value !== 'all'))
-const hasPermissionFilters = computed(() => Boolean(permissionKeyword.value || permissionStatus.value !== 'all'))
+const hasPermissionFilters = computed(() => Boolean(permissionKeyword.value || permissionStatus.value !== 'all' || permissionRiskFilter.value !== 'all'))
 const enabledUserCount = computed(() => userStore.users.filter((user) => user.enabled !== false).length)
 const disabledUserCount = computed(() => userStore.users.filter((user) => user.enabled === false).length)
 const adminUserCount = computed(() =>
@@ -408,7 +408,7 @@ const riskyPermissionRatio = computed(() => {
   if (!userStore.permissions.length) return '0%'
   return `${Math.round((riskPermissionIds.value.length / userStore.permissions.length) * 100)}%`
 })
-const inspectedUser = computed(() => userStore.users.find((item) => item.id === inspectingUserId.value) || null)
+const inspectedUser = computed(() => userStore.users.find((item) => item.userId === inspectingUserId.value) || null)
 const inspectedTopAgents = computed(() => {
   const counts = new Map<string, number>()
   userRecentLogs.value.forEach((item) => {
@@ -437,7 +437,7 @@ const filteredUsers = computed(() => {
         .includes(userRole.value)
     const matchesKeyword =
       !keyword ||
-      [user.username, user.employeeId, user.department, user.roles]
+      [user.userId, user.username, user.employeeId, user.department, user.roles]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(keyword))
     return matchesStatus && matchesRole && matchesKeyword
@@ -464,7 +464,7 @@ const filteredPermissions = computed(() => {
 })
 
 watch(filteredUsers, (users) => {
-  const allowed = new Set(users.map((user) => user.id))
+  const allowed = new Set(users.map((user) => user.userId))
   selectedUserIds.value = selectedUserIds.value.filter((id) => allowed.has(id))
 })
 
@@ -525,12 +525,12 @@ async function copyInspectedUserSummary() {
   if (!inspectedUser.value) return
   const lines = [
     '用户使用摘要',
-    `用户：${inspectedUser.value.username} / ${inspectedUser.value.id}`,
+    `用户：${inspectedUser.value.username} / ${inspectedUser.value.userId}`,
     `部门：${inspectedUser.value.department || '未分配'}`,
     `角色：${inspectedUser.value.roles || '未配置'}`,
     `最近登录：${inspectedUser.value.lastLoginAt ? formatTime(inspectedUser.value.lastLoginAt) : '暂无记录'}`,
     `今日 Token：${userTokenUsage.value?.tokensUsed ?? 0}`,
-    `近期待审计记录：${userRecentLogs.value.length}`
+    `近期审计记录：${userRecentLogs.value.length}`
   ]
   try {
     await navigator.clipboard.writeText(lines.join('\n'))
@@ -570,7 +570,7 @@ async function inspectUser(userId: string) {
     ])
     userTokenUsage.value = tokenUsage
     userRecentLogs.value = logs
-    const username = userStore.users.find((item) => item.id === userId)?.username || userId
+    const username = userStore.users.find((item) => item.userId === userId)?.username || userId
     setRecentAction(`已加载 ${username} 的使用概览。`)
   } catch (error) {
     userUsageError.value = error instanceof Error ? error.message : '用户使用概览加载失败'
@@ -637,7 +637,7 @@ async function handleDeleteUser(id: string, name: string) {
 
 async function handleBatchDeleteUsers() {
   const names = filteredUsers.value
-    .filter((user) => selectedUserIds.value.includes(user.id))
+    .filter((user) => selectedUserIds.value.includes(user.userId))
     .map((user) => user.username)
     .slice(0, 5)
   const preview = names.length ? `，包括：${names.join('、')}` : ''

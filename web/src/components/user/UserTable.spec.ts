@@ -19,7 +19,7 @@ describe('UserTable', () => {
       props: {
         users: [
           {
-            id: 'u-1',
+            userId: 'u-1',
             username: 'alice',
             employeeId: 'E001',
             department: '研发部',
@@ -45,6 +45,7 @@ describe('UserTable', () => {
     expect(wrapper.emitted('inspect')?.[0]).toEqual(['u-1'])
     expect(wrapper.emitted('delete')?.[0]).toEqual(['u-1', 'alice'])
   })
+
   it('emits reset-filters from empty state action', async () => {
     const wrapper = mount(UserTable, {
       props: {

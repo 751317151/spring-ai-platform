@@ -303,10 +303,10 @@ public class AgentWorkbenchService {
                 .riskLevel(summary.getRuntimePolicySummary() != null ? nullToEmpty(summary.getRuntimePolicySummary().getRiskLevel()) : RISK_LEVEL_LOW)
                 .highlights(summary.getRuntimePolicySummary() != null && summary.getRuntimePolicySummary().getHighlights() != null
                         ? summary.getRuntimePolicySummary().getHighlights()
-                        : List.of())
+                        : List.<String>of())
                 .topErrorTypes(extractTopErrorTypes(summary))
-                .recentChanges(summary.getRecentChanges() != null ? summary.getRecentChanges() : List.of())
-                .recentFailures(summary.getRecentFailures() != null ? summary.getRecentFailures() : List.of())
+                .recentChanges(summary.getRecentChanges() != null ? summary.getRecentChanges() : List.<AgentWorkbenchChangeItem>of())
+                .recentFailures(summary.getRecentFailures() != null ? summary.getRecentFailures() : List.<AgentWorkbenchFailureItem>of())
                 .build();
     }
 

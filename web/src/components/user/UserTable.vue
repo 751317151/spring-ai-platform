@@ -32,12 +32,17 @@
           />
         </td>
       </tr>
-      <tr v-for="u in users" :id="`user-row-${u.id}`" :key="u.id" :class="{ highlighted: highlightedUserId === u.id }">
+      <tr
+        v-for="u in users"
+        :id="`user-row-${u.userId}`"
+        :key="u.userId"
+        :class="{ highlighted: highlightedUserId === u.userId }"
+      >
         <td class="check-col">
           <input
             type="checkbox"
-            :checked="selectedIds.includes(u.id)"
-            @change="toggleOne(u.id, ($event.target as HTMLInputElement).checked)"
+            :checked="selectedIds.includes(u.userId)"
+            @change="toggleOne(u.userId, ($event.target as HTMLInputElement).checked)"
           >
         </td>
         <td>
@@ -45,7 +50,7 @@
             <div class="avatar avatar-sm">{{ (u.username || '?').charAt(0).toUpperCase() }}</div>
             <div class="user-main">
               <span class="username">{{ u.username }}</span>
-              <small class="subtle-text">{{ u.id }}</small>
+              <small class="subtle-text">{{ u.userId }}</small>
             </div>
           </div>
         </td>
@@ -71,9 +76,9 @@
         <td class="last-login">{{ formatTime(u.lastLoginAt) }}</td>
         <td>
           <div class="action-list">
-            <button class="table-action-btn" @click="emit('edit', u.id)">编辑</button>
-            <button class="table-action-btn" @click="emit('inspect', u.id)">概览</button>
-            <button class="table-action-btn danger" @click="emit('delete', u.id, u.username)">删除</button>
+            <button class="table-action-btn" @click="emit('edit', u.userId)">编辑</button>
+            <button class="table-action-btn" @click="emit('inspect', u.userId)">概览</button>
+            <button class="table-action-btn danger" @click="emit('delete', u.userId, u.username)">删除</button>
           </div>
         </td>
       </tr>
@@ -104,11 +109,11 @@ const emit = defineEmits<{
 
 const roleColors = ROLE_COLORS
 
-const allSelected = computed(() => props.users.length > 0 && props.users.every((user) => props.selectedIds.includes(user.id)))
+const allSelected = computed(() => props.users.length > 0 && props.users.every((user) => props.selectedIds.includes(user.userId)))
 const indeterminate = computed(() => props.selectedIds.length > 0 && !allSelected.value)
 
 function toggleAll(checked: boolean) {
-  emit('update:selectedIds', checked ? props.users.map((user) => user.id) : [])
+  emit('update:selectedIds', checked ? props.users.map((user) => user.userId) : [])
 }
 
 function toggleOne(id: string, checked: boolean) {

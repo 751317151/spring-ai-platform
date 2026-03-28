@@ -7,8 +7,8 @@ import java.util.List;
 
 @Data
 public class LearningFavoritePayload {
-    private String id;
-    private String responseId;
+    private Long id;
+    private Long responseId;
     private String role;
     private String content;
     private String agentType;

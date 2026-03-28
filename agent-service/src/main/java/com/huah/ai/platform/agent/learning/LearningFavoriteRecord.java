@@ -16,9 +16,9 @@ import lombok.NoArgsConstructor;
 public class LearningFavoriteRecord {
 
     @TableId(type = IdType.INPUT)
-    private String id;
+    private Long id;
     private String userId;
-    private String responseId;
+    private Long responseId;
     private String role;
     private String content;
     private String agentType;

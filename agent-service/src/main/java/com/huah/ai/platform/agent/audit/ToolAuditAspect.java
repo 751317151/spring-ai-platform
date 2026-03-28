@@ -3,6 +3,7 @@ package com.huah.ai.platform.agent.audit;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.huah.ai.platform.agent.security.ToolAccessDeniedException;
 import com.huah.ai.platform.agent.security.ToolSecurityService;
+import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -17,8 +18,6 @@ import java.lang.reflect.Parameter;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.UUID;
-
 @Slf4j
 @Aspect
 @Component
@@ -30,6 +29,7 @@ public class ToolAuditAspect {
     private final AiToolAuditLogMapper toolAuditLogMapper;
     private final ObjectMapper objectMapper;
     private final ToolSecurityService toolSecurityService;
+    private final SnowflakeIdGenerator snowflakeIdGenerator;
 
     @Around("@annotation(tool)")
     public Object auditTool(ProceedingJoinPoint pjp, Tool tool) throws Throwable {
@@ -72,8 +72,8 @@ public class ToolAuditAspect {
 
         try {
             toolAuditLogMapper.insert(AiToolAuditLog.builder()
-                    .id(UUID.randomUUID().toString())
-                    .userId(context != null ? context.getUserId() : "unknown")
+                    .id(snowflakeIdGenerator.nextLongId())
+                    .userId(context != null ? context.getUserId() : null)
                     .sessionId(context != null ? context.getSessionId() : "unknown")
                     .agentType(context != null ? context.getAgentType() : "unknown")
                     .toolName(toolName)

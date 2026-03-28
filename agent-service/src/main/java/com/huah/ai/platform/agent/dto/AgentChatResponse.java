@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AgentChatResponse {
-    private String responseId;
+    private Long responseId;
     private String content;
     private String traceId;
 }

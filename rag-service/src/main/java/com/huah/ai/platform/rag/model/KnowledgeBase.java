@@ -18,7 +18,7 @@ import java.time.LocalDateTime;
 public class KnowledgeBase {
 
     @TableId(type = IdType.ASSIGN_ID)
-    private String id;
+    private Long id;
 
     private String name;
     private String description;

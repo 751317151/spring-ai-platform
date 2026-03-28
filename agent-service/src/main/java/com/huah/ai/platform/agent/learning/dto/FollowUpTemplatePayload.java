@@ -4,7 +4,7 @@ import lombok.Data;
 
 @Data
 public class FollowUpTemplatePayload {
-    private String id;
+    private Long id;
     private String name;
     private String content;
     private Integer sourceCount;

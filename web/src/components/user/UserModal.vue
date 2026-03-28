@@ -10,8 +10,13 @@
 
       <div class="modal-body">
         <div class="modal-field">
+          <label class="modal-label">用户ID</label>
+          <input class="form-input" v-model="form.userId" placeholder="请输入用户ID" :disabled="Boolean(userId)">
+        </div>
+
+        <div class="modal-field">
           <label class="modal-label">用户名</label>
-          <input class="form-input" v-model="form.username" placeholder="请输入用户名" :disabled="Boolean(userId)">
+          <input class="form-input" v-model="form.username" placeholder="请输入用户名">
         </div>
 
         <div class="modal-field">
@@ -52,14 +57,15 @@
 
 <script setup lang="ts">
 import { onMounted, reactive } from 'vue'
-import { useUserStore } from '@/stores/user'
 import { getUser } from '@/api/auth'
+import { useUserStore } from '@/stores/user'
 
 const props = defineProps<{ userId: string | null }>()
 const emit = defineEmits<{ close: []; saved: [userId: string] }>()
 const userStore = useUserStore()
 
 const form = reactive({
+  userId: '',
   username: '',
   password: '',
   employeeId: '',
@@ -71,6 +77,7 @@ onMounted(async () => {
   if (props.userId) {
     try {
       const user = await getUser(props.userId)
+      form.userId = user.userId || ''
       form.username = user.username || ''
       form.employeeId = user.employeeId || ''
       form.department = user.department || ''
@@ -84,6 +91,7 @@ onMounted(async () => {
 async function handleSave() {
   if (props.userId) {
     const data: Record<string, unknown> = {
+      username: form.username,
       department: form.department,
       employeeId: form.employeeId,
       roles: form.roles
@@ -93,6 +101,7 @@ async function handleSave() {
     if (saved) emit('saved', props.userId)
   } else {
     const saved = await userStore.createUser({
+      userId: form.userId,
       username: form.username,
       password: form.password,
       employeeId: form.employeeId,
@@ -100,8 +109,8 @@ async function handleSave() {
       roles: form.roles
     })
     if (saved) {
-      const createdUser = userStore.users.find((item) => item.username === form.username)
-      emit('saved', createdUser?.id || form.username)
+      const createdUser = userStore.users.find((item) => item.userId === form.userId)
+      emit('saved', createdUser?.userId || form.userId)
     }
   }
 }

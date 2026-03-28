@@ -22,10 +22,10 @@ public class FeedbackSchemaInitializer {
              Statement statement = connection.createStatement()) {
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS ai_response_feedback (
-                        id VARCHAR(36) PRIMARY KEY,
-                        response_id VARCHAR(36) NOT NULL UNIQUE,
+                        id BIGINT PRIMARY KEY,
+                        response_id BIGINT NOT NULL UNIQUE,
                         source_type VARCHAR(32) NOT NULL,
-                        knowledge_base_id VARCHAR(64),
+                        knowledge_base_id BIGINT,
                         feedback VARCHAR(16) NOT NULL,
                         comment VARCHAR(255),
                         created_at TIMESTAMP DEFAULT NOW(),
@@ -39,7 +39,7 @@ public class FeedbackSchemaInitializer {
             statement.execute("CREATE INDEX IF NOT EXISTS idx_audit_trace_id ON ai_audit_logs (trace_id)");
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS ai_tool_audit_logs (
-                        id VARCHAR(36) PRIMARY KEY,
+                        id BIGINT PRIMARY KEY,
                         user_id VARCHAR(64),
                         session_id VARCHAR(128),
                         agent_type VARCHAR(64),
@@ -62,7 +62,7 @@ public class FeedbackSchemaInitializer {
             statement.execute("ALTER TABLE ai_tool_audit_logs ADD COLUMN IF NOT EXISTS denied_resource VARCHAR(255)");
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS ai_multi_agent_traces (
-                        id VARCHAR(36) PRIMARY KEY,
+                        id BIGINT PRIMARY KEY,
                         trace_id VARCHAR(64) NOT NULL UNIQUE,
                         user_id VARCHAR(64) NOT NULL,
                         session_id VARCHAR(128) NOT NULL,
@@ -91,7 +91,7 @@ public class FeedbackSchemaInitializer {
             statement.execute("ALTER TABLE ai_multi_agent_traces ADD COLUMN IF NOT EXISTS recovery_action VARCHAR(32)");
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS ai_multi_agent_trace_steps (
-                        id VARCHAR(36) PRIMARY KEY,
+                        id BIGINT PRIMARY KEY,
                         trace_id VARCHAR(64) NOT NULL,
                         step_order INTEGER NOT NULL,
                         stage VARCHAR(32) NOT NULL,
@@ -119,9 +119,9 @@ public class FeedbackSchemaInitializer {
             statement.execute("ALTER TABLE ai_multi_agent_trace_steps ADD COLUMN IF NOT EXISTS source_step_order INTEGER");
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS learning_favorites (
-                        id VARCHAR(64) PRIMARY KEY,
+                        id BIGINT PRIMARY KEY,
                         user_id VARCHAR(64) NOT NULL,
-                        response_id VARCHAR(64),
+                        response_id BIGINT,
                         role VARCHAR(32) NOT NULL,
                         content TEXT NOT NULL,
                         agent_type VARCHAR(64),
@@ -138,12 +138,12 @@ public class FeedbackSchemaInitializer {
             statement.execute("CREATE INDEX IF NOT EXISTS idx_learning_favorites_user_time ON learning_favorites (user_id, last_collected_at DESC, created_at DESC)");
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS learning_notes (
-                        id VARCHAR(64) PRIMARY KEY,
+                        id BIGINT PRIMARY KEY,
                         user_id VARCHAR(64) NOT NULL,
                         title VARCHAR(255) NOT NULL,
                         content TEXT NOT NULL,
                         source_type VARCHAR(32),
-                        related_favorite_id VARCHAR(64),
+                        related_favorite_id BIGINT,
                         related_session_id VARCHAR(128),
                         related_agent_type VARCHAR(64),
                         related_session_summary VARCHAR(255),
@@ -156,8 +156,8 @@ public class FeedbackSchemaInitializer {
             statement.execute("CREATE INDEX IF NOT EXISTS idx_learning_notes_user_time ON learning_notes (user_id, updated_at DESC)");
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS learning_followup_templates (
-                        id VARCHAR(64) PRIMARY KEY,
-                        user_id VARCHAR(64) NOT NULL,
+                        id BIGINT PRIMARY KEY,
+                        user_id BIGINT NOT NULL,
                         name VARCHAR(255) NOT NULL,
                         content TEXT NOT NULL,
                         source_count INTEGER DEFAULT 0,

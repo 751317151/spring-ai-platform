@@ -28,7 +28,7 @@ public class DocumentMetaService {
     private final JdbcTemplate jdbcTemplate;
     private final RagMetricsService metricsService;
 
-    public KnowledgeBase getKnowledgeBase(String id) {
+    public KnowledgeBase getKnowledgeBase(Long id) {
         KnowledgeBase kb = kbMapper.selectById(id);
         if (kb == null) {
             throw new BizException("Knowledge base not found: " + id);
@@ -36,7 +36,7 @@ public class DocumentMetaService {
         return kb;
     }
 
-    public KnowledgeBase getKnowledgeBase(String id, AccessContext context) {
+    public KnowledgeBase getKnowledgeBase(Long id, AccessContext context) {
         KnowledgeBase kb = getKnowledgeBase(id);
         ensureKnowledgeBaseAccessible(kb, context);
         return kb;
@@ -53,7 +53,7 @@ public class DocumentMetaService {
         return kb;
     }
 
-    public KnowledgeBase updateKnowledgeBase(String id, KnowledgeBase update) {
+    public KnowledgeBase updateKnowledgeBase(Long id, KnowledgeBase update) {
         KnowledgeBase kb = getKnowledgeBase(id);
         if (update.getName() != null) {
             kb.setName(update.getName());
@@ -86,7 +86,7 @@ public class DocumentMetaService {
         return kb;
     }
 
-    public void deleteKnowledgeBase(String id) {
+    public void deleteKnowledgeBase(Long id) {
         KnowledgeBase kb = getKnowledgeBase(id);
         List<DocumentMeta> docs = docMapper.selectByKnowledgeBaseId(id);
         if (!docs.isEmpty()) {
@@ -95,7 +95,7 @@ public class DocumentMetaService {
         kbMapper.deleteById(kb.getId());
     }
 
-    public DocumentMeta getDocument(String docId) {
+    public DocumentMeta getDocument(Long docId) {
         DocumentMeta doc = docMapper.selectById(docId);
         if (doc == null) {
             throw new BizException("Document not found: " + docId);
@@ -103,7 +103,7 @@ public class DocumentMetaService {
         return doc;
     }
 
-    public DocumentMeta findLatestByKnowledgeBaseAndFilename(String knowledgeBaseId, String filename) {
+    public DocumentMeta findLatestByKnowledgeBaseAndFilename(Long knowledgeBaseId, String filename) {
         return docMapper.selectLatestByKnowledgeBaseIdAndFilename(knowledgeBaseId, filename);
     }
 
@@ -115,7 +115,7 @@ public class DocumentMetaService {
         return meta;
     }
 
-    public DocumentMeta resetFailedDocumentForRetry(String docId) {
+    public DocumentMeta resetFailedDocumentForRetry(Long docId) {
         DocumentMeta meta = getDocument(docId);
         if (!DocumentMeta.STATUS_FAILED.equals(meta.getStatus())) {
             throw new BizException("Only failed documents can be retried: " + docId);
@@ -129,7 +129,7 @@ public class DocumentMetaService {
         return meta;
     }
 
-    public DocumentMeta prepareDocumentForReindex(String docId) {
+    public DocumentMeta prepareDocumentForReindex(Long docId) {
         DocumentMeta meta = getDocument(docId);
         ensureSourceFileExists(meta, "reindex");
 
@@ -152,7 +152,7 @@ public class DocumentMetaService {
         return meta;
     }
 
-    public DocumentMeta markDocumentIndexed(String docId, String storagePath, String contentType, int chunkCount) {
+    public DocumentMeta markDocumentIndexed(Long docId, String storagePath, String contentType, int chunkCount) {
         DocumentMeta meta = getDocument(docId);
         boolean newlyIndexed = !DocumentMeta.STATUS_INDEXED.equals(meta.getStatus());
 
@@ -175,7 +175,7 @@ public class DocumentMetaService {
         return meta;
     }
 
-    public DocumentMeta markDocumentFailed(String docId, String errorMessage) {
+    public DocumentMeta markDocumentFailed(Long docId, String errorMessage) {
         DocumentMeta meta = getDocument(docId);
         meta.setStatus(DocumentMeta.STATUS_FAILED);
         meta.setErrorMessage(errorMessage);
@@ -184,12 +184,12 @@ public class DocumentMetaService {
         return meta;
     }
 
-    public List<DocumentMeta> listDocuments(String kbId, AccessContext context) {
+    public List<DocumentMeta> listDocuments(Long kbId, AccessContext context) {
         getKnowledgeBase(kbId, context);
         return docMapper.selectByKnowledgeBaseId(kbId);
     }
 
-    public DocumentMeta getDocument(String docId, AccessContext context) {
+    public DocumentMeta getDocument(Long docId, AccessContext context) {
         DocumentMeta doc = getDocument(docId);
         getKnowledgeBase(doc.getKnowledgeBaseId(), context);
         return doc;
@@ -199,7 +199,7 @@ public class DocumentMetaService {
         return docMapper.selectRetryCandidates(limit);
     }
 
-    public List<DocumentChunkPreview> listDocumentChunks(String docId) {
+    public List<DocumentChunkPreview> listDocumentChunks(Long docId) {
         getDocument(docId);
         return jdbcTemplate.query("""
                         SELECT
@@ -219,11 +219,11 @@ public class DocumentMetaService {
                         .preview(rs.getString("chunk_preview"))
                         .charCount(rs.getInt("char_count"))
                         .build(),
-                docId
+                String.valueOf(docId)
         );
     }
 
-    public void deleteDocument(String docId) {
+    public void deleteDocument(Long docId) {
         DocumentMeta doc = getDocument(docId);
 
         if (doc.getStoragePath() != null) {
@@ -249,9 +249,9 @@ public class DocumentMetaService {
         }
     }
 
-    private void deleteDocumentVectors(String docId, String metricAction) {
+    private void deleteDocumentVectors(Long docId, String metricAction) {
         try {
-            jdbcTemplate.update("DELETE FROM vector_store WHERE metadata->>'doc_id' = ?", docId);
+            jdbcTemplate.update("DELETE FROM vector_store WHERE metadata->>'doc_id' = ?", String.valueOf(docId));
             log.info("Document vectors deleted: docId={}", docId);
         } catch (Exception e) {
             metricsService.recordDependencyFailure("database", metricAction);
@@ -260,7 +260,7 @@ public class DocumentMetaService {
         }
     }
 
-    public void ensureKnowledgeBaseAccessible(String knowledgeBaseId, AccessContext context) {
+    public void ensureKnowledgeBaseAccessible(Long knowledgeBaseId, AccessContext context) {
         getKnowledgeBase(knowledgeBaseId, context);
     }
 

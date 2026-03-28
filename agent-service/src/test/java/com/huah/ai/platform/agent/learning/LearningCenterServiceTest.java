@@ -5,6 +5,7 @@ import com.huah.ai.platform.agent.learning.dto.FollowUpTemplatePayload;
 import com.huah.ai.platform.agent.learning.dto.LearningFavoritePayload;
 import com.huah.ai.platform.agent.learning.dto.LearningNotePayload;
 import com.huah.ai.platform.agent.support.AgentTestFixtures;
+import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -38,7 +39,13 @@ class LearningCenterServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new LearningCenterService(favoriteMapper, noteMapper, templateMapper, AgentTestFixtures.objectMapper());
+        service = new LearningCenterService(
+                favoriteMapper,
+                noteMapper,
+                templateMapper,
+                AgentTestFixtures.objectMapper(),
+                new SnowflakeIdGenerator()
+        );
     }
 
     @Test

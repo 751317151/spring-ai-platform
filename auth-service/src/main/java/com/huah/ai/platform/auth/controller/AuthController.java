@@ -14,6 +14,11 @@ import com.huah.ai.platform.auth.model.BotPermission;
 import com.huah.ai.platform.common.dto.Result;
 import com.huah.ai.platform.common.util.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,12 +35,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @RestController
@@ -60,14 +59,14 @@ public class AuthController {
 
     @PostMapping("/login")
     public Result<TokenResponse> login(@RequestBody LoginRequest request) {
-        if (isBlank(request.getUsername()) || isBlank(request.getPassword())) {
-            return Result.fail(400, "用户名和密码不能为空");
+        if (isBlank(request.getUserId()) || isBlank(request.getPassword())) {
+            return Result.fail(400, "userId 和密码不能为空");
         }
 
-        AiUser user = userMapper.selectByUsernameAndEnabled(request.getUsername());
+        AiUser user = userMapper.selectByUserIdAndEnabled(request.getUserId());
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            log.warn("Login failed, username={}", request.getUsername());
-            return Result.fail(401, "用户名或密码错误");
+            log.warn("Login failed, userId={}", request.getUserId());
+            return Result.fail(401, "userId 或密码错误");
         }
 
         user.setLastLoginAt(LocalDateTime.now());
@@ -75,8 +74,8 @@ public class AuthController {
 
         String roles = defaultString(user.getRoles(), "ROLE_USER");
         String department = defaultString(user.getDepartment(), "");
-        TokenResponse payload = buildTokenPayload(user.getUsername(), department, roles, user.getId());
-        log.info("Login success: username={}, roles={}", user.getUsername(), roles);
+        TokenResponse payload = buildTokenPayload(user.getUserId(), user.getUsername(), department, roles);
+        log.info("Login success: userId={}, roles={}", user.getUserId(), roles);
         return Result.ok(payload);
     }
 
@@ -103,13 +102,13 @@ public class AuthController {
             return Result.fail(401, "Token 已失效");
         }
 
-        String username = jwtUtil.getSubject(refreshToken);
+        String userId = jwtUtil.getSubject(refreshToken);
+        String username = stringify(jwtUtil.getClaim(refreshToken, "username"));
         String department = stringify(jwtUtil.getClaim(refreshToken, "department"));
         String roles = stringify(jwtUtil.getClaim(refreshToken, "roles"));
-        String userId = stringify(jwtUtil.getClaim(refreshToken, "userId"));
 
         blacklistToken(refreshToken);
-        return Result.ok(buildTokenPayload(username, department, roles, userId));
+        return Result.ok(buildTokenPayload(userId, username, department, roles));
     }
 
     @GetMapping("/validate")
@@ -127,9 +126,8 @@ public class AuthController {
             return Result.fail(401, "Token 无效");
         }
 
-        Object userIdClaim = jwtUtil.getClaim(token, "userId");
         return Result.ok(TokenValidationResponse.builder()
-                .userId(userIdClaim != null ? userIdClaim.toString() : jwtUtil.getSubject(token))
+                .userId(stringify(jwtUtil.getClaim(token, "userId")))
                 .roles(stringify(jwtUtil.getClaim(token, "roles")))
                 .department(stringify(jwtUtil.getClaim(token, "department")))
                 .build());
@@ -156,7 +154,8 @@ public class AuthController {
     @PostMapping("/init-demo-users")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<String> initDemoUsers() {
-        String[] users = {"admin", "rd_user", "sales_user", "hr_user", "finance_user"};
+        String[] userIds = {"admin", "rd_user", "sales_user", "hr_user", "finance_user"};
+        String[] usernames = {"管理员", "研发用户", "销售用户", "HR用户", "财务用户"};
         String[] roles = {
                 "ROLE_ADMIN,ROLE_RD,ROLE_SALES,ROLE_HR,ROLE_USER",
                 "ROLE_RD,ROLE_USER",
@@ -166,11 +165,11 @@ public class AuthController {
         };
         String[] departments = {"系统管理", "研发中心", "销售部", "人力资源部", "财务部"};
 
-        for (int i = 0; i < users.length; i++) {
-            if (userMapper.selectByUsername(users[i]) == null) {
+        for (int i = 0; i < userIds.length; i++) {
+            if (userMapper.selectByUserId(userIds[i]) == null) {
                 userMapper.insert(AiUser.builder()
-                        .id(UUID.randomUUID().toString())
-                        .username(users[i])
+                        .userId(userIds[i])
+                        .username(usernames[i])
                         .passwordHash(passwordEncoder.encode("admin123"))
                         .roles(roles[i])
                         .department(departments[i])
@@ -203,16 +202,19 @@ public class AuthController {
     @PostMapping("/users")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<AiUser> createUser(@RequestBody UserUpsertRequest request) {
-        if (isBlank(request.getUsername()) || isBlank(request.getPassword())) {
-            return Result.fail(400, "用户名和密码不能为空");
+        if (isBlank(request.getUserId()) || isBlank(request.getPassword())) {
+            return Result.fail(400, "userId 和密码不能为空");
         }
-        if (userMapper.selectByUsername(request.getUsername()) != null) {
+        if (userMapper.selectByUserId(request.getUserId()) != null) {
+            return Result.fail(400, "userId 已存在");
+        }
+        if (!isBlank(request.getUsername()) && userMapper.selectByUsername(request.getUsername()) != null) {
             return Result.fail(400, "用户名已存在");
         }
 
         AiUser user = AiUser.builder()
-                .id(request.getUsername())
-                .username(request.getUsername())
+                .userId(request.getUserId())
+                .username(defaultString(request.getUsername(), request.getUserId()))
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .department(defaultString(request.getDepartment(), ""))
                 .employeeId(defaultString(request.getEmployeeId(), ""))
@@ -221,7 +223,7 @@ public class AuthController {
                 .build();
         userMapper.insert(user);
         sanitizeUser(user);
-        log.info("Create user: username={}", request.getUsername());
+        log.info("Create user: userId={}", request.getUserId());
         return Result.ok(user);
     }
 
@@ -233,6 +235,9 @@ public class AuthController {
             return Result.fail(404, "用户不存在");
         }
 
+        if (request.getUsername() != null) {
+            user.setUsername(request.getUsername());
+        }
         if (request.getDepartment() != null) {
             user.setDepartment(request.getDepartment());
         }
@@ -251,7 +256,7 @@ public class AuthController {
 
         userMapper.updateById(user);
         sanitizeUser(user);
-        log.info("Update user: id={}, username={}", id, user.getUsername());
+        log.info("Update user: userId={}", id);
         return Result.ok(user);
     }
 
@@ -263,7 +268,7 @@ public class AuthController {
             return Result.fail(404, "用户不存在");
         }
         userMapper.deleteById(id);
-        log.info("Delete user: id={}, username={}", id, user.getUsername());
+        log.info("Delete user: userId={}", id);
         return Result.ok();
     }
 
@@ -275,7 +280,7 @@ public class AuthController {
 
     @GetMapping("/permissions/{id}")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public Result<BotPermission> getPermission(@PathVariable(name = "id") String id) {
+    public Result<BotPermission> getPermission(@PathVariable(name = "id") Long id) {
         BotPermission permission = botPermissionMapper.selectById(id);
         if (permission == null) {
             return Result.fail(404, "权限配置不存在");
@@ -292,7 +297,7 @@ public class AuthController {
 
         BotPermission existing = botPermissionMapper.selectByBotTypeAndEnabled(request.getBotType());
         if (existing != null) {
-            return Result.fail(400, "Bot 类型 '" + request.getBotType() + "' 的权限配置已存在");
+            return Result.fail(400, "Bot 类型对应的权限配置已存在");
         }
 
         BotPermission permission = BotPermission.builder()
@@ -313,7 +318,7 @@ public class AuthController {
     @PutMapping("/permissions/{id}")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<BotPermission> updatePermission(
-            @PathVariable(name = "id") String id,
+            @PathVariable(name = "id") Long id,
             @RequestBody BotPermissionUpsertRequest request) {
         BotPermission permission = botPermissionMapper.selectById(id);
         if (permission == null) {
@@ -346,7 +351,7 @@ public class AuthController {
 
     @DeleteMapping("/permissions/{id}")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public Result<Void> deletePermission(@PathVariable(name = "id") String id) {
+    public Result<Void> deletePermission(@PathVariable(name = "id") Long id) {
         BotPermission permission = botPermissionMapper.selectById(id);
         if (permission == null) {
             return Result.fail(404, "权限配置不存在");
@@ -356,18 +361,15 @@ public class AuthController {
         return Result.ok();
     }
 
-    private TokenResponse buildTokenPayload(String username, String department, String roles, String userId) {
+    private TokenResponse buildTokenPayload(String userId, String username, String department, String roles) {
         Map<String, Object> claims = Map.of(
-                "username", username,
+                "userId", userId,
+                "username", defaultString(username, userId),
                 "department", defaultString(department, ""),
-                "roles", defaultString(roles, ""),
-                "userId", defaultString(userId, "")
-        );
+                "roles", defaultString(roles, ""));
 
-        String accessToken = jwtUtil.generateToken(
-                username, claims, accessExpirationMs, "access", UUID.randomUUID().toString());
-        String refreshToken = jwtUtil.generateToken(
-                username, claims, refreshExpirationMs, "refresh", UUID.randomUUID().toString());
+        String accessToken = jwtUtil.generateToken(userId, claims, accessExpirationMs, "access", UUID.randomUUID().toString());
+        String refreshToken = jwtUtil.generateToken(userId, claims, refreshExpirationMs, "refresh", UUID.randomUUID().toString());
 
         return TokenResponse.builder()
                 .token(accessToken)
@@ -376,7 +378,7 @@ public class AuthController {
                 .expiresIn(accessExpirationMs / 1000)
                 .refreshExpiresIn(refreshExpirationMs / 1000)
                 .userId(userId)
-                .username(username)
+                .username(defaultString(username, userId))
                 .roles(roles)
                 .department(department)
                 .build();

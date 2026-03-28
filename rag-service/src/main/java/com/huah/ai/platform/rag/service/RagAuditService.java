@@ -2,6 +2,7 @@ package com.huah.ai.platform.rag.service;
 
 import com.huah.ai.platform.common.exception.BizException;
 import com.huah.ai.platform.common.trace.TraceIdContext;
+import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import com.huah.ai.platform.rag.model.RagEvaluationOverview;
 import com.huah.ai.platform.rag.model.RagEvaluationSample;
 import lombok.RequiredArgsConstructor;
@@ -13,22 +14,22 @@ import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class RagAuditService {
 
     private final JdbcTemplate jdbcTemplate;
+    private final SnowflakeIdGenerator snowflakeIdGenerator;
 
-    public String saveQueryLog(String userId,
-                               String knowledgeBaseId,
+    public Long saveQueryLog(String userId,
+                               Long knowledgeBaseId,
                                String question,
                                String answer,
                                long latencyMs,
                                boolean success,
                                String errorMessage) {
-        String responseId = UUID.randomUUID().toString();
+        Long responseId = snowflakeIdGenerator.nextLongId();
         jdbcTemplate.update(
                 "INSERT INTO ai_audit_logs (id, user_id, agent_type, user_message, ai_response, latency_ms, success, error_message, session_id, trace_id, created_at) " +
                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -48,11 +49,11 @@ public class RagAuditService {
     }
 
     public void submitFeedback(String userId,
-                               String responseId,
-                               String knowledgeBaseId,
+                               Long responseId,
+                               Long knowledgeBaseId,
                                String feedback,
                                String comment) {
-        if (responseId == null || responseId.isBlank()) {
+        if (responseId == null) {
             throw new BizException("responseId不能为空");
         }
 
@@ -85,7 +86,7 @@ public class RagAuditService {
         jdbcTemplate.update(
                 "INSERT INTO ai_response_feedback (id, response_id, source_type, knowledge_base_id, feedback, comment, created_at, updated_at) " +
                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                UUID.randomUUID().toString(),
+                snowflakeIdGenerator.nextLongId(),
                 responseId,
                 "rag",
                 knowledgeBaseId,
@@ -97,12 +98,12 @@ public class RagAuditService {
     }
 
     public void submitEvidenceFeedback(String userId,
-                                       String responseId,
+                                       Long responseId,
                                        String chunkId,
-                                       String knowledgeBaseId,
+                                       Long knowledgeBaseId,
                                        String feedback,
                                        String comment) {
-        if (responseId == null || responseId.isBlank()) {
+        if (responseId == null) {
             throw new BizException("responseId不能为空");
         }
         if (chunkId == null || chunkId.isBlank()) {
@@ -138,7 +139,7 @@ public class RagAuditService {
         LocalDateTime now = LocalDateTime.now();
         jdbcTemplate.update(
                 "INSERT INTO ai_evidence_feedback (id, response_id, chunk_id, knowledge_base_id, feedback, comment, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                UUID.randomUUID().toString(),
+                snowflakeIdGenerator.nextLongId(),
                 responseId,
                 chunkId,
                 knowledgeBaseId,
@@ -149,14 +150,14 @@ public class RagAuditService {
         );
     }
 
-    public RagEvaluationOverview getEvaluationOverview(String knowledgeBaseId) {
+    public RagEvaluationOverview getEvaluationOverview(Long knowledgeBaseId) {
         try {
-            String querySql = knowledgeBaseId == null || knowledgeBaseId.isBlank()
+            String querySql = knowledgeBaseId == null
                     ? "SELECT COUNT(*) FROM ai_audit_logs WHERE agent_type = 'rag'"
                     : "SELECT COUNT(*) FROM ai_audit_logs WHERE agent_type = 'rag' AND session_id = ?";
-            long totalQueries = (knowledgeBaseId == null || knowledgeBaseId.isBlank())
+            long totalQueries = (knowledgeBaseId == null)
                     ? jdbcTemplate.queryForObject(querySql, Long.class)
-                    : jdbcTemplate.queryForObject(querySql, Long.class, knowledgeBaseId);
+                    : jdbcTemplate.queryForObject(querySql, Long.class, String.valueOf(knowledgeBaseId));
 
             String feedbackSql = """
                     SELECT
@@ -165,8 +166,8 @@ public class RagAuditService {
                         COUNT(*) FILTER (WHERE feedback = 'down') AS negative
                     FROM ai_response_feedback
                     WHERE source_type = 'rag'
-                    """ + ((knowledgeBaseId == null || knowledgeBaseId.isBlank()) ? "" : " AND knowledge_base_id = ?");
-            var feedbackStats = (knowledgeBaseId == null || knowledgeBaseId.isBlank())
+                    """ + (knowledgeBaseId == null ? "" : " AND knowledge_base_id = ?");
+            var feedbackStats = (knowledgeBaseId == null)
                     ? jdbcTemplate.queryForMap(feedbackSql)
                     : jdbcTemplate.queryForMap(feedbackSql, knowledgeBaseId);
 
@@ -176,8 +177,8 @@ public class RagAuditService {
                         COUNT(*) FILTER (WHERE feedback = 'up') AS positive,
                         COUNT(*) FILTER (WHERE feedback = 'down') AS negative
                     FROM ai_evidence_feedback
-                    """ + ((knowledgeBaseId == null || knowledgeBaseId.isBlank()) ? "" : " WHERE knowledge_base_id = ?");
-            var evidenceStats = (knowledgeBaseId == null || knowledgeBaseId.isBlank())
+                    """ + (knowledgeBaseId == null ? "" : " WHERE knowledge_base_id = ?");
+            var evidenceStats = (knowledgeBaseId == null)
                     ? jdbcTemplate.queryForMap(evidenceSql)
                     : jdbcTemplate.queryForMap(evidenceSql, knowledgeBaseId);
 
@@ -205,7 +206,7 @@ public class RagAuditService {
         }
     }
 
-    public List<RagEvaluationSample> getLowRatedSamples(String knowledgeBaseId, int limit) {
+    public List<RagEvaluationSample> getLowRatedSamples(Long knowledgeBaseId, int limit) {
         try {
             String sql = """
                     SELECT
@@ -228,16 +229,16 @@ public class RagAuditService {
                     ) e ON e.response_id = a.id
                     WHERE a.agent_type = 'rag'
                       AND (COALESCE(r.feedback, '') = 'down' OR COALESCE(e.negative_evidence_count, 0) > 0)
-                    """ + ((knowledgeBaseId == null || knowledgeBaseId.isBlank()) ? "" : " AND COALESCE(r.knowledge_base_id, e.knowledge_base_id, a.session_id) = ?") +
+                    """ + (knowledgeBaseId == null ? "" : " AND COALESCE(r.knowledge_base_id, e.knowledge_base_id, a.session_id) = ?") +
                     " ORDER BY a.created_at DESC LIMIT ?";
-            Object[] args = (knowledgeBaseId == null || knowledgeBaseId.isBlank())
+            Object[] args = (knowledgeBaseId == null)
                     ? new Object[]{limit}
                     : new Object[]{knowledgeBaseId, limit};
             return jdbcTemplate.query(sql,
                     (rs, rowNum) -> RagEvaluationSample.builder()
-                            .responseId(rs.getString("response_id"))
+                            .responseId(rs.getLong("response_id"))
                             .userId(rs.getString("user_id"))
-                            .knowledgeBaseId(rs.getString("knowledge_base_id"))
+                            .knowledgeBaseId(rs.getLong("knowledge_base_id"))
                             .question(rs.getString("user_message"))
                             .answer(rs.getString("ai_response"))
                             .feedback(rs.getString("feedback"))

@@ -11,5 +11,5 @@ public interface LearningNoteMapper extends BaseMapper<LearningNoteRecord> {
 
     List<LearningNoteRecord> selectByUserId(@Param("userId") String userId);
 
-    int deleteByUserIdAndId(@Param("userId") String userId, @Param("id") String id);
+    int deleteByUserIdAndId(@Param("userId") String userId, @Param("id") Long id);
 }

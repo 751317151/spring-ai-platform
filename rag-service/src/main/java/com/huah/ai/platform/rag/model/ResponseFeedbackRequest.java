@@ -4,7 +4,7 @@ import lombok.Data;
 
 @Data
 public class ResponseFeedbackRequest {
-    private String responseId;
+    private Long responseId;
     private String feedback;
     private String comment;
 }

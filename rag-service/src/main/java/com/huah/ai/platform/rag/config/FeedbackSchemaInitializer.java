@@ -18,10 +18,10 @@ public class FeedbackSchemaInitializer {
         try {
             jdbcTemplate.execute("""
                     CREATE TABLE IF NOT EXISTS ai_response_feedback (
-                        id VARCHAR(36) PRIMARY KEY,
-                        response_id VARCHAR(36) NOT NULL UNIQUE,
+                        id BIGINT PRIMARY KEY,
+                        response_id BIGINT NOT NULL UNIQUE,
                         source_type VARCHAR(32) NOT NULL,
-                        knowledge_base_id VARCHAR(64),
+                        knowledge_base_id BIGINT,
                         feedback VARCHAR(16) NOT NULL,
                         comment VARCHAR(255),
                         created_at TIMESTAMP DEFAULT NOW(),
@@ -30,10 +30,10 @@ public class FeedbackSchemaInitializer {
                     """);
             jdbcTemplate.execute("""
                     CREATE TABLE IF NOT EXISTS ai_evidence_feedback (
-                        id VARCHAR(36) PRIMARY KEY,
-                        response_id VARCHAR(36) NOT NULL,
+                        id BIGINT PRIMARY KEY,
+                        response_id BIGINT NOT NULL,
                         chunk_id VARCHAR(128) NOT NULL,
-                        knowledge_base_id VARCHAR(64),
+                        knowledge_base_id BIGINT,
                         feedback VARCHAR(16) NOT NULL,
                         comment VARCHAR(255),
                         created_at TIMESTAMP DEFAULT NOW(),
@@ -46,6 +46,7 @@ public class FeedbackSchemaInitializer {
             jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_evidence_feedback_created ON ai_evidence_feedback (created_at DESC)");
             jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_evidence_feedback_chunk ON ai_evidence_feedback (chunk_id)");
             jdbcTemplate.execute("ALTER TABLE ai_audit_logs ADD COLUMN IF NOT EXISTS trace_id VARCHAR(64)");
+            jdbcTemplate.execute("ALTER TABLE ai_audit_logs ADD COLUMN IF NOT EXISTS user_id VARCHAR(64)");
             jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_audit_trace_id ON ai_audit_logs (trace_id)");
             jdbcTemplate.execute("ALTER TABLE knowledge_bases ADD COLUMN IF NOT EXISTS visibility_scope VARCHAR(16) DEFAULT 'DEPARTMENT'");
             jdbcTemplate.execute("ALTER TABLE knowledge_bases ADD COLUMN IF NOT EXISTS chunk_strategy VARCHAR(16) DEFAULT 'TOKEN'");

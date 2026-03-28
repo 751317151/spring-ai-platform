@@ -1,6 +1,7 @@
 package com.huah.ai.platform.rag.service;
 
 import com.huah.ai.platform.common.exception.BizException;
+import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import com.huah.ai.platform.rag.metrics.RagMetricsService;
 import com.huah.ai.platform.rag.model.DocumentMeta;
 import com.huah.ai.platform.rag.model.KnowledgeBase;
@@ -27,7 +28,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -47,12 +47,13 @@ public class DocumentIngestionService {
     private final ExcelDocumentParser excelParser;
     private final StructuredDocumentParser structuredParser;
     private final RagMetricsService metricsService;
+    private final SnowflakeIdGenerator snowflakeIdGenerator;
 
-    public DocumentMeta ingestDocument(MultipartFile file, String knowledgeBaseId, String uploadedBy) {
+    public DocumentMeta ingestDocument(MultipartFile file, Long knowledgeBaseId, String uploadedBy) {
         return ingestDocument(file, knowledgeBaseId, uploadedBy, false);
     }
 
-    public DocumentMeta ingestDocument(MultipartFile file, String knowledgeBaseId, String uploadedBy, boolean replaceExisting) {
+    public DocumentMeta ingestDocument(MultipartFile file, Long knowledgeBaseId, String uploadedBy, boolean replaceExisting) {
         String filename = file.getOriginalFilename();
         if (filename == null || filename.isBlank()) {
             throw new BizException("Filename cannot be empty.");
@@ -66,7 +67,7 @@ public class DocumentIngestionService {
             metaService.deleteDocument(duplicate.getId());
         }
 
-        String docId = UUID.randomUUID().toString();
+        Long docId = snowflakeIdGenerator.nextLongId();
         String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
         String storageKey = knowledgeBaseId + "/" + docId + "/" + filename;
         String extension = getFileExtension(filename).toLowerCase();
@@ -106,7 +107,7 @@ public class DocumentIngestionService {
         }
     }
 
-    public DocumentMeta retryDocument(String docId) {
+    public DocumentMeta retryDocument(Long docId) {
         DocumentMeta meta = metaService.resetFailedDocumentForRetry(docId);
         KnowledgeBase kb = metaService.getKnowledgeBase(meta.getKnowledgeBaseId());
 
@@ -138,7 +139,7 @@ public class DocumentIngestionService {
         }
     }
 
-    public DocumentMeta reindexDocument(String docId) {
+    public DocumentMeta reindexDocument(Long docId) {
         DocumentMeta meta = metaService.prepareDocumentForReindex(docId);
         KnowledgeBase kb = metaService.getKnowledgeBase(meta.getKnowledgeBaseId());
 
@@ -171,9 +172,9 @@ public class DocumentIngestionService {
     }
 
     private DocumentMeta ingestContent(
-            String docId,
+            Long docId,
             String filename,
-            String knowledgeBaseId,
+            Long knowledgeBaseId,
             String uploadedBy,
             String contentType,
             String storageKey,
@@ -186,8 +187,8 @@ public class DocumentIngestionService {
         log.info("Document parsed: {}, segments={}", filename, documents.size());
 
         documents.forEach(doc -> doc.getMetadata().putAll(Map.of(
-                "doc_id", docId,
-                "kb_id", knowledgeBaseId,
+                "doc_id", String.valueOf(docId),
+                "kb_id", String.valueOf(knowledgeBaseId),
                 "filename", filename,
                 "uploaded_by", uploadedBy == null ? "anonymous" : uploadedBy,
                 "file_type", getFileExtension(filename)
@@ -213,7 +214,7 @@ public class DocumentIngestionService {
         return metaService.markDocumentIndexed(docId, storageKey, contentType, chunks.size());
     }
 
-    private void compensateFailedIngestion(String docId, String storageKey, String errorMessage, boolean keepSourceFile) {
+    private void compensateFailedIngestion(Long docId, String storageKey, String errorMessage, boolean keepSourceFile) {
         if (!keepSourceFile) {
             try {
                 fileStorageService.delete(storageKey);

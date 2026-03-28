@@ -8,6 +8,7 @@ import com.huah.ai.platform.agent.audit.AiToolAuditLog;
 import com.huah.ai.platform.agent.audit.AiToolAuditLogMapper;
 import com.huah.ai.platform.agent.audit.TracePhaseRecord;
 import com.huah.ai.platform.common.trace.TraceIdContext;
+import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -15,8 +16,6 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
-
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -39,14 +38,15 @@ public class AgentAuditLogService {
     private final AiAuditLogMapper auditLogMapper;
     private final AiToolAuditLogMapper toolAuditLogMapper;
     private final ObjectMapper objectMapper;
+    private final SnowflakeIdGenerator snowflakeIdGenerator;
 
-    public String saveAuditLog(String userId, String sessionId, String agentType,
+    public Long saveAuditLog(String userId, String sessionId, String agentType,
                                String userMessage, String aiResponse, long latencyMs,
                                boolean success, String errorMessage,
                                long authLatencyMs, long preparationLatencyMs,
                                long modelLatencyMs, long persistenceLatencyMs,
                                int promptTokens, int completionTokens) {
-        String logId = UUID.randomUUID().toString();
+        Long logId = snowflakeIdGenerator.nextLongId();
         try {
             String traceId = TraceIdContext.currentTraceId();
             auditLogMapper.insert(AiAuditLog.builder()

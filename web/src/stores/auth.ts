@@ -6,7 +6,7 @@ import type { LoginResponse } from '@/api/types'
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('auth_token'))
   const refreshToken = ref<string | null>(localStorage.getItem('auth_refreshToken'))
-  const userId = ref(localStorage.getItem('auth_userId') || 'EMP001')
+  const userId = ref(localStorage.getItem('auth_userId') || 'admin')
   const username = ref(localStorage.getItem('auth_username') || '')
   const roles = ref(localStorage.getItem('auth_roles') || '')
   const department = ref(localStorage.getItem('auth_department') || '')
@@ -35,7 +35,7 @@ export const useAuthStore = defineStore('auth', () => {
   function clearAuth() {
     token.value = null
     refreshToken.value = null
-    userId.value = 'EMP001'
+    userId.value = 'admin'
     username.value = ''
     roles.value = ''
     department.value = ''
@@ -47,9 +47,9 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('auth_department')
   }
 
-  async function login(user: string, password: string) {
+  async function login(loginUserId: string, password: string) {
     try {
-      const data = await authApi.login({ username: user, password })
+      const data = await authApi.login({ userId: loginUserId, password })
       setAuth(data)
       return true
     } catch {

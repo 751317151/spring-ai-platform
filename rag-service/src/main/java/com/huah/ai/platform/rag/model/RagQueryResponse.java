@@ -7,7 +7,7 @@ import java.util.List;
 @Data
 @Builder
 public class RagQueryResponse {
-    private String responseId;
+    private Long responseId;
     private String answer;
     private List<SourceDocument> sources;
     private long latencyMs;
@@ -15,7 +15,7 @@ public class RagQueryResponse {
     @Data
     @Builder
     public static class SourceDocument {
-        private String documentId;
+        private Long documentId;
         private String chunkId;
         private Integer chunkIndex;
         private String filename;

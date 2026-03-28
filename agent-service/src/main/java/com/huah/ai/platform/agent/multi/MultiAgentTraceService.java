@@ -4,6 +4,7 @@ import com.huah.ai.platform.agent.dto.MultiAgentTraceResponse;
 import com.huah.ai.platform.agent.dto.MultiAgentTraceStepResponse;
 import com.huah.ai.platform.agent.memory.ConversationMemoryService;
 import com.huah.ai.platform.common.trace.TraceIdContext;
+import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,8 @@ import java.util.UUID;
 public class MultiAgentTraceService {
 
     private static final int MAX_SUMMARY_LENGTH = 1000;
+    private static final String INTERNAL_SESSION_PREFIX = "m";
+    private static final String RECOVERY_SESSION_PREFIX = "r";
     private static final String ACTION_RETRY = "retry";
     private static final String ACTION_REPLAY = "replay";
     private static final String ACTION_SKIP = "skip";
@@ -30,6 +33,7 @@ public class MultiAgentTraceService {
     private final MultiAgentExecutionTraceMapper traceMapper;
     private final MultiAgentExecutionStepMapper stepMapper;
     private final ConversationMemoryService memoryService;
+    private final SnowflakeIdGenerator snowflakeIdGenerator;
 
     public MultiAgentExecutionResult execute(String userId,
                                              String sessionId,
@@ -115,7 +119,7 @@ public class MultiAgentTraceService {
                                                         String recoveryAction) {
         long startedAt = System.currentTimeMillis();
         String traceId = currentTraceId();
-        String internalId = sessionId + "-multi-" + System.currentTimeMillis();
+        String internalId = nextInternalSessionId(INTERNAL_SESSION_PREFIX);
         List<MultiAgentExecutionStep> steps = new ArrayList<>();
 
         MultiAgentOrchestrator.StepResult planResult = null;
@@ -191,7 +195,7 @@ public class MultiAgentTraceService {
                                                          MultiAgentExecutionListener listener) {
         long startedAt = System.currentTimeMillis();
         String recoveryTraceId = UUID.randomUUID().toString();
-        String internalId = sourceTrace.getSessionId() + "-recovery-" + System.currentTimeMillis();
+        String internalId = nextInternalSessionId(RECOVERY_SESSION_PREFIX);
         List<MultiAgentExecutionStep> recoverySteps = new ArrayList<>();
         Map<String, MultiAgentExecutionStep> sourceByStage = toStageMap(sourceSteps);
 
@@ -209,7 +213,7 @@ public class MultiAgentTraceService {
 
                 if (sourceStep.getStepOrder().equals(targetStep.getStepOrder()) && ACTION_SKIP.equals(action)) {
                     recoverySteps.add(MultiAgentExecutionStep.builder()
-                            .id(UUID.randomUUID().toString())
+                            .id(snowflakeIdGenerator.nextLongId())
                             .traceId(recoveryTraceId)
                             .stepOrder(sourceStep.getStepOrder())
                             .stage(sourceStep.getStage())
@@ -373,7 +377,7 @@ public class MultiAgentTraceService {
                                                       String recoveryAction) {
         LocalDateTime now = LocalDateTime.now();
         return MultiAgentExecutionTrace.builder()
-                .id(UUID.randomUUID().toString())
+                .id(snowflakeIdGenerator.nextLongId())
                 .traceId(traceId)
                 .userId(userId)
                 .sessionId(sessionId)
@@ -405,7 +409,7 @@ public class MultiAgentTraceService {
                                            String errorMessage,
                                            long latencyMs) {
         return MultiAgentExecutionStep.builder()
-                .id(UUID.randomUUID().toString())
+                .id(snowflakeIdGenerator.nextLongId())
                 .traceId(traceId)
                 .stepOrder(order)
                 .stage(stage)
@@ -434,7 +438,7 @@ public class MultiAgentTraceService {
                                                    boolean success,
                                                    String errorMessage) {
         return MultiAgentExecutionStep.builder()
-                .id(UUID.randomUUID().toString())
+                .id(snowflakeIdGenerator.nextLongId())
                 .traceId(traceId)
                 .stepOrder(sourceStepOrder)
                 .stage(stage)
@@ -457,7 +461,7 @@ public class MultiAgentTraceService {
 
     private MultiAgentExecutionStep copyStepForRecovery(String recoveryTraceId, MultiAgentExecutionStep sourceStep, String action) {
         return MultiAgentExecutionStep.builder()
-                .id(UUID.randomUUID().toString())
+                .id(snowflakeIdGenerator.nextLongId())
                 .traceId(recoveryTraceId)
                 .stepOrder(sourceStep.getStepOrder())
                 .stage(sourceStep.getStage())
@@ -483,7 +487,7 @@ public class MultiAgentTraceService {
                                                            String action,
                                                            MultiAgentExecutionStep failedStep) {
         return MultiAgentExecutionStep.builder()
-                .id(UUID.randomUUID().toString())
+                .id(snowflakeIdGenerator.nextLongId())
                 .traceId(recoveryTraceId)
                 .stepOrder(failedStep.getStepOrder())
                 .stage(failedStep.getStage())
@@ -606,6 +610,10 @@ public class MultiAgentTraceService {
 
     private String defaultString(String value) {
         return value == null ? "" : value;
+    }
+
+    private String nextInternalSessionId(String prefix) {
+        return prefix + snowflakeIdGenerator.nextLongId();
     }
 
     @FunctionalInterface

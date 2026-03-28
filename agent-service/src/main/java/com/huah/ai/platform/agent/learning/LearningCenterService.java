@@ -7,6 +7,7 @@ import com.huah.ai.platform.agent.dto.SessionConfigRequest;
 import com.huah.ai.platform.agent.learning.dto.FollowUpTemplatePayload;
 import com.huah.ai.platform.agent.learning.dto.LearningFavoritePayload;
 import com.huah.ai.platform.agent.learning.dto.LearningNotePayload;
+import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,7 @@ public class LearningCenterService {
     private final LearningNoteMapper noteMapper;
     private final FollowUpTemplateMapper templateMapper;
     private final ObjectMapper objectMapper;
+    private final SnowflakeIdGenerator snowflakeIdGenerator;
 
     public List<LearningFavoritePayload> listFavorites(String userId) {
         return favoriteMapper.selectByUserId(userId).stream()
@@ -57,7 +59,7 @@ public class LearningCenterService {
     }
 
     public void deleteFavorite(String userId, String id) {
-        favoriteMapper.deleteByUserIdAndId(userId, id);
+        favoriteMapper.deleteByUserIdAndId(userId, parseRequiredLong(id));
     }
 
     public List<LearningNotePayload> listNotes(String userId) {
@@ -88,7 +90,7 @@ public class LearningCenterService {
     }
 
     public void deleteNote(String userId, String id) {
-        noteMapper.deleteByUserIdAndId(userId, id);
+        noteMapper.deleteByUserIdAndId(userId, parseRequiredLong(id));
     }
 
     public List<FollowUpTemplatePayload> listTemplates(String userId) {
@@ -112,10 +114,11 @@ public class LearningCenterService {
     }
 
     public void deleteTemplate(String userId, String id) {
-        templateMapper.deleteByUserIdAndId(userId, id);
+        templateMapper.deleteByUserIdAndId(userId, parseRequiredLong(id));
     }
 
     private void upsertFavorite(LearningFavoriteRecord record) {
+        ensureId(record);
         LearningFavoriteRecord existing = favoriteMapper.selectOne(new QueryWrapper<LearningFavoriteRecord>()
                 .eq("user_id", record.getUserId())
                 .eq("id", record.getId())
@@ -129,6 +132,7 @@ public class LearningCenterService {
     }
 
     private void upsertNote(LearningNoteRecord record) {
+        ensureId(record);
         LearningNoteRecord existing = noteMapper.selectOne(new QueryWrapper<LearningNoteRecord>()
                 .eq("user_id", record.getUserId())
                 .eq("id", record.getId())
@@ -142,6 +146,7 @@ public class LearningCenterService {
     }
 
     private void upsertTemplate(FollowUpTemplateRecord record) {
+        ensureId(record);
         FollowUpTemplateRecord existing = templateMapper.selectOne(new QueryWrapper<FollowUpTemplateRecord>()
                 .eq("user_id", record.getUserId())
                 .eq("id", record.getId())
@@ -226,6 +231,24 @@ public class LearningCenterService {
         }
     }
 
+    private void ensureId(LearningFavoriteRecord record) {
+        if (record.getId() == null) {
+            record.setId(snowflakeIdGenerator.nextLongId());
+        }
+    }
+
+    private void ensureId(LearningNoteRecord record) {
+        if (record.getId() == null) {
+            record.setId(snowflakeIdGenerator.nextLongId());
+        }
+    }
+
+    private void ensureId(FollowUpTemplateRecord record) {
+        if (record.getId() == null) {
+            record.setId(snowflakeIdGenerator.nextLongId());
+        }
+    }
+
     private List<String> readList(String value) {
         if (value == null || value.isBlank()) {
             return Collections.emptyList();
@@ -249,5 +272,9 @@ public class LearningCenterService {
             log.warn("deserialize session config snapshot failed: {}", e.getMessage());
             return null;
         }
+    }
+
+    private Long parseRequiredLong(String value) {
+        return Long.parseLong(value);
     }
 }

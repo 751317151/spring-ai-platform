@@ -8,9 +8,9 @@ import java.time.LocalDateTime;
 @Value
 @Builder
 public class RagEvaluationSample {
-    String responseId;
+    Long responseId;
     String userId;
-    String knowledgeBaseId;
+    Long knowledgeBaseId;
     String question;
     String answer;
     String feedback;

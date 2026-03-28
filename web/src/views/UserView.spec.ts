@@ -61,8 +61,8 @@ describe('UserView', () => {
   it('filters users and handles batch delete', async () => {
     const store = useUserStore()
     store.users = [
-      { id: 'u-1', username: 'alice', employeeId: 'E001', department: '研发部', roles: 'ROLE_ADMIN', enabled: true, lastLoginAt: '2026-03-25T08:00:00Z' },
-      { id: 'u-2', username: 'bob', employeeId: 'E002', department: '销售部', roles: 'ROLE_USER', enabled: false, lastLoginAt: '2026-03-25T07:00:00Z' }
+      { userId: 'u-1', username: 'alice', employeeId: 'E001', department: '研发部', roles: 'ROLE_ADMIN', enabled: true, lastLoginAt: '2026-03-25T08:00:00Z' },
+      { userId: 'u-2', username: 'bob', employeeId: 'E002', department: '销售部', roles: 'ROLE_USER', enabled: false, lastLoginAt: '2026-03-25T07:00:00Z' }
     ] as never
     store.permissions = [
       { id: 'p-1', botType: 'assistant', allowedRoles: 'ROLE_ADMIN', allowedDepartments: '研发部', dataScope: 'ALL', allowedOperations: 'chat', dailyTokenLimit: 1000, enabled: true },
@@ -76,13 +76,13 @@ describe('UserView', () => {
     expect(wrapper.text()).toContain('用户与权限')
     expect(wrapper.text()).toContain('助手权限规则')
 
-    await wrapper.get('input[placeholder="搜索用户名、工号、部门或角色"]').setValue('alice')
+    await wrapper.get('input[placeholder="搜索用户ID、用户名、工号、部门或角色"]').setValue('alice')
     expect(wrapper.text()).toContain('alice')
     expect(wrapper.text()).not.toContain('bob')
 
-    await wrapper.get('input[placeholder="搜索用户名、工号、部门或角色"]').setValue('')
+    await wrapper.get('input[placeholder="搜索用户ID、用户名、工号、部门或角色"]').setValue('')
     const rowCheckbox = wrapper.get('tbody .check-col input')
-    await rowCheckbox!.setValue(true)
+    await rowCheckbox.setValue(true)
 
     expect(wrapper.text()).toContain('已选择 1 个用户')
 
@@ -104,13 +104,13 @@ describe('UserView', () => {
     const copyButton = wrapper.findAll('button').find((item) => item.text() === '复制概览')
     await copyButton?.trigger('click')
     expect(window.navigator.clipboard.writeText).toHaveBeenCalled()
-    expect(vi.mocked(window.navigator.clipboard.writeText).mock.calls[0]?.[0]).toContain('用户与权限概览')
+    expect(String(vi.mocked(window.navigator.clipboard.writeText).mock.calls[0]?.[0])).toContain('用户与权限概览')
   })
 
   it('supports inspected user summary and same-department filter', async () => {
     const store = useUserStore()
     store.users = [
-      { id: 'u-1', username: 'alice', employeeId: 'E001', department: '研发部', roles: 'ROLE_ADMIN', enabled: true, lastLoginAt: '2026-03-25T08:00:00Z' }
+      { userId: 'u-1', username: 'alice', employeeId: 'E001', department: '研发部', roles: 'ROLE_ADMIN', enabled: true, lastLoginAt: '2026-03-25T08:00:00Z' }
     ] as never
     store.permissions = [] as never
     store.loadAll = vi.fn().mockResolvedValue(undefined) as never
@@ -133,12 +133,13 @@ describe('UserView', () => {
 
     const departmentButton = wrapper.findAll('button').find((item) => item.text() === '筛选同部门用户')
     await departmentButton?.trigger('click')
-    expect((wrapper.get('input[placeholder="搜索用户名、工号、部门或角色"]').element as HTMLInputElement).value).toBe('研发部')
+    expect((wrapper.get('input[placeholder="搜索用户ID、用户名、工号、部门或角色"]').element as HTMLInputElement).value).toBe('研发部')
   })
+
   it('shows recent action banner after user follow-up actions', async () => {
     const store = useUserStore()
     store.users = [
-      { id: 'u-1', username: 'alice', employeeId: 'E001', department: '研发部', roles: 'ROLE_ADMIN', enabled: true, lastLoginAt: '2026-03-25T08:00:00Z' }
+      { userId: 'u-1', username: 'alice', employeeId: 'E001', department: '研发部', roles: 'ROLE_ADMIN', enabled: true, lastLoginAt: '2026-03-25T08:00:00Z' }
     ] as never
     store.permissions = [] as never
     store.loadAll = vi.fn().mockResolvedValue(undefined) as never
