@@ -1,6 +1,7 @@
 package com.huah.ai.platform.agent.security;
 
 import com.huah.ai.platform.agent.config.ToolsProperties;
+import com.huah.ai.platform.agent.support.AgentTestFixtures;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -16,7 +17,7 @@ class ToolSecurityServiceTest {
 
     @BeforeEach
     void setUp() {
-        ToolsProperties properties = new ToolsProperties();
+        ToolsProperties properties = AgentTestFixtures.toolsProperties();
         properties.getSecurity().setEnabled(true);
         properties.getSecurity().getAgentConnectorAllowlist().put("rd", List.of("knowledge"));
         properties.getSecurity().getAgentConnectorResourceAllowlist().put("rd", java.util.Map.of(
@@ -32,7 +33,7 @@ class ToolSecurityServiceTest {
         properties.getSecurity().getSchemaDataSourceBindings().put("analytics", "warehouse");
         properties.getSecurity().getSchemaDataSourceBindings().put("public", "warehouse");
         properties.getSecurity().getSchemaDataSourceBindings().put("private", "erp");
-        toolSecurityService = new ToolSecurityService(properties);
+        toolSecurityService = AgentTestFixtures.toolSecurityService(properties);
     }
 
     @Test

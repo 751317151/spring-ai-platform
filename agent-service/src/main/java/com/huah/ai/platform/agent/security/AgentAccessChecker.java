@@ -35,7 +35,7 @@ public class AgentAccessChecker {
 
     public String checkPermission(String agentType, String userRoles, String department) {
         if (userRoles == null || userRoles.isBlank()) {
-            return "The current user has no assigned roles";
+            return "\u5f53\u524d\u7528\u6237\u672a\u5206\u914d\u89d2\u8272";
         }
 
         Set<String> roles = Arrays.stream(userRoles.split(","))
@@ -51,13 +51,13 @@ public class AgentAccessChecker {
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(QUERY_PERMISSION, agentType);
             if (rows.isEmpty()) {
                 log.warn("Agent permission config missing, deny access: agentType={}", agentType);
-                return "No permission configuration was found for the requested agent";
+                return "\u672a\u627e\u5230\u8be5 Agent \u7684\u6743\u9650\u914d\u7f6e";
             }
 
             Map<String, Object> permission = rows.get(0);
             Boolean enabled = (Boolean) permission.get("enabled");
             if (enabled != null && !enabled) {
-                return "The requested agent is disabled";
+                return "\u8be5 Agent \u5df2\u88ab\u7981\u7528";
             }
 
             String allowedRolesStr = (String) permission.get("allowed_roles");
@@ -68,14 +68,15 @@ public class AgentAccessChecker {
                         .collect(Collectors.toSet());
                 boolean hasRole = roles.stream().anyMatch(allowedRoles::contains);
                 if (!hasRole) {
-                    return "The current user role is not allowed to use this agent. Allowed roles: " + allowedRolesStr;
+                    return "\u60a8\u7684\u89d2\u8272\u65e0\u6743\u4f7f\u7528\u8be5 Agent\uff0c\u9700\u8981\u89d2\u8272: "
+                            + allowedRolesStr;
                 }
             }
 
             String allowedDepartments = (String) permission.get("allowed_departments");
             if (allowedDepartments != null && !allowedDepartments.isBlank()) {
                 if (department == null || department.isBlank()) {
-                    return "The current user does not have department information and cannot access this agent";
+                    return "\u5f53\u524d\u7528\u6237\u7f3a\u5c11\u90e8\u95e8\u4fe1\u606f\uff0c\u65e0\u6cd5\u8bbf\u95ee\u8be5 Agent";
                 }
 
                 Set<String> departmentSet = Arrays.stream(allowedDepartments.split(","))
@@ -83,7 +84,8 @@ public class AgentAccessChecker {
                         .filter(value -> !value.isEmpty())
                         .collect(Collectors.toSet());
                 if (!departmentSet.contains(department.trim())) {
-                    return "The current user department is not allowed to use this agent. Allowed departments: " + allowedDepartments;
+                    return "\u60a8\u6240\u5728\u90e8\u95e8\u65e0\u6743\u4f7f\u7528\u8be5 Agent\uff0c\u9700\u8981\u90e8\u95e8: "
+                            + allowedDepartments;
                 }
             }
 
@@ -91,7 +93,7 @@ public class AgentAccessChecker {
         } catch (Exception e) {
             metricsCollector.recordDependencyFailure("database", "permission-query");
             log.warn("Agent permission validation failed, deny access: agentType={}, error={}", agentType, e.getMessage());
-            return "Permission validation failed, please try again later";
+            return "\u6743\u9650\u6821\u9a8c\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5";
         }
     }
 
@@ -126,12 +128,12 @@ public class AgentAccessChecker {
                 redisTemplate.opsForValue().decrement(key, tokens);
                 metricsCollector.recordTokenLimitExceeded(agentType);
                 log.warn("Token limit exceeded: userId={}, agentType={}, usage={}, limit={}", userId, agentType, current, limit);
-                return "The daily token quota has been exhausted. Limit: " + limit;
+                return "\u4eca\u65e5 Token \u914d\u989d\u5df2\u7528\u5b8c\uff0c\u9650\u989d: " + limit;
             }
         } catch (Exception e) {
             metricsCollector.recordDependencyFailure("redis", "token-quota-check");
             log.warn("Redis token quota validation failed: userId={}, agentType={}, error={}", userId, agentType, e.getMessage());
-            return "Token quota validation failed, please try again later";
+            return "Token \u914d\u989d\u6821\u9a8c\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5";
         }
 
         return null;

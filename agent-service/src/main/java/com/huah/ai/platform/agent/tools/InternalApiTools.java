@@ -22,17 +22,24 @@ import java.util.Map;
 @Component
 public class InternalApiTools {
 
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
+    private static final TypeReference<List<Object>> LIST_TYPE = new TypeReference<>() {
+    };
+
     private final RestClient.Builder restClientBuilder;
     private final ToolsProperties.InternalApiConfig config;
     private final ToolSecurityService toolSecurityService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     public InternalApiTools(RestClient.Builder restClientBuilder,
                             ToolsProperties props,
-                            ToolSecurityService toolSecurityService) {
+                            ToolSecurityService toolSecurityService,
+                            ObjectMapper objectMapper) {
         this.restClientBuilder = restClientBuilder;
         this.config = props.getInternalApi();
         this.toolSecurityService = toolSecurityService;
+        this.objectMapper = objectMapper;
     }
 
     @Tool(description = "List configured internal API connectors that are visible to the current agent.")
@@ -100,17 +107,12 @@ public class InternalApiTools {
             result.put("response", parseResponseBody(responseText));
             return result;
         } catch (ToolAccessDeniedException e) {
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("error", e.getMessage());
-            result.put("errorCode", e.getReasonCode());
-            result.put("resource", e.getResource());
-            result.put("detail", e.getDetail());
-            return result;
+            return ToolResponseSupport.accessDenied(e);
         } catch (IllegalArgumentException | IllegalStateException e) {
-            return Map.of("error", e.getMessage());
+            return ToolResponseSupport.error(e.getMessage(), "INVALID_ARGUMENT");
         } catch (Exception e) {
             log.error("[Tool] callConnector failed: connector={}, path={}, error={}", connectorCode, path, e.getMessage(), e);
-            return Map.of("error", "Internal API call failed: " + e.getMessage());
+            return ToolResponseSupport.error("Internal API call failed: " + e.getMessage(), "INTERNAL_API_CALL_FAILED");
         }
     }
 
@@ -173,7 +175,7 @@ public class InternalApiTools {
             return Map.of();
         }
         try {
-            Map<String, Object> parsed = objectMapper.readValue(queryParamsJson, new TypeReference<>() {});
+            Map<String, Object> parsed = objectMapper.readValue(queryParamsJson, MAP_TYPE);
             return parsed != null ? parsed : Map.of();
         } catch (Exception e) {
             throw new IllegalArgumentException("queryParamsJson must be valid JSON");
@@ -197,10 +199,10 @@ public class InternalApiTools {
         String trimmed = responseText.trim();
         try {
             if (trimmed.startsWith("{")) {
-                return objectMapper.readValue(trimmed, new TypeReference<Map<String, Object>>() {});
+                return objectMapper.readValue(trimmed, MAP_TYPE);
             }
             if (trimmed.startsWith("[")) {
-                return objectMapper.readValue(trimmed, new TypeReference<List<Object>>() {});
+                return objectMapper.readValue(trimmed, LIST_TYPE);
             }
         } catch (Exception e) {
             log.debug("connector response is not valid json: {}", e.getMessage());

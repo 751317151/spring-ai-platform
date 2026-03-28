@@ -1,7 +1,8 @@
 package com.huah.ai.platform.agent.audit;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.huah.ai.platform.agent.config.ToolsProperties;
+import com.huah.ai.platform.agent.security.ToolAccessDeniedException;
+import com.huah.ai.platform.agent.support.AgentTestFixtures;
 import com.huah.ai.platform.agent.security.ToolSecurityService;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.reflect.MethodSignature;
@@ -23,8 +24,9 @@ import static org.mockito.Mockito.when;
 class ToolAuditAspectTest {
 
     private final AiToolAuditLogMapper mapper = mock(AiToolAuditLogMapper.class);
-    private final ToolsProperties toolsProperties = new ToolsProperties();
-    private final ToolAuditAspect aspect = new ToolAuditAspect(mapper, new ObjectMapper(), new ToolSecurityService(toolsProperties));
+    private final ToolsProperties toolsProperties = AgentTestFixtures.toolsProperties();
+    private final ToolSecurityService toolSecurityService = AgentTestFixtures.toolSecurityService(toolsProperties);
+    private final ToolAuditAspect aspect = new ToolAuditAspect(mapper, AgentTestFixtures.objectMapper(), toolSecurityService);
 
     @AfterEach
     void tearDown() {
@@ -76,9 +78,10 @@ class ToolAuditAspectTest {
         toolsProperties.getSecurity().getAgentToolAllowlist().put("rd", java.util.List.of("otherTool"));
         ToolExecutionContext.set("u-1", "s-1", "rd");
 
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
+        ToolAccessDeniedException ex = assertThrows(ToolAccessDeniedException.class,
                 () -> aspect.auditTool(pjp, method.getAnnotation(Tool.class)));
-        assertTrue(ex.getMessage().contains("echo"));
+        assertEquals("TOOL_DENIED", ex.getReasonCode());
+        assertEquals("tool:echo", ex.getResource());
         verify(pjp, never()).proceed();
     }
 

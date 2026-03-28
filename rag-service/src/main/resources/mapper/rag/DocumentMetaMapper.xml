@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.huah.ai.platform.rag.mapper.DocumentMetaMapper">
+    <select id="selectByKnowledgeBaseId" resultType="com.huah.ai.platform.rag.model.DocumentMeta">
+        SELECT * FROM document_meta WHERE knowledge_base_id = #{kbId}
+    </select>
+    <select id="countByKnowledgeBaseId" resultType="long">
+        SELECT COUNT(*) FROM document_meta WHERE knowledge_base_id = #{kbId}
+    </select>
+    <select id="selectRetryCandidates" resultType="com.huah.ai.platform.rag.model.DocumentMeta">
+        SELECT * FROM document_meta
+        WHERE status = 'FAILED'
+          AND storage_path IS NOT NULL
+        ORDER BY created_at ASC
+        LIMIT #{limit}
+    </select>
+    <select id="selectLatestByKnowledgeBaseIdAndFilename" resultType="com.huah.ai.platform.rag.model.DocumentMeta">
+        SELECT * FROM document_meta
+        WHERE knowledge_base_id = #{kbId}
+          AND filename = #{filename}
+        ORDER BY created_at DESC
+        LIMIT 1
+    </select>
+</mapper>

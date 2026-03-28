@@ -22,6 +22,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class LearningCenterController {
 
+    private static final String MESSAGE_SAVED = "saved";
+    private static final String MESSAGE_DELETED = "deleted";
+
     private final LearningCenterService learningCenterService;
     private final AgentRequestContextResolver requestContextResolver;
 
@@ -33,13 +36,13 @@ public class LearningCenterController {
     @PostMapping("/favorites")
     public Result<String> saveFavorite(@RequestBody LearningFavoritePayload payload, HttpServletRequest request) {
         learningCenterService.saveFavorite(currentUserId(request), payload);
-        return Result.ok("saved");
+        return Result.ok(MESSAGE_SAVED);
     }
 
     @DeleteMapping("/favorites/{id}")
     public Result<String> deleteFavorite(@PathVariable("id") String id, HttpServletRequest request) {
         learningCenterService.deleteFavorite(currentUserId(request), id);
-        return Result.ok("deleted");
+        return Result.ok(MESSAGE_DELETED);
     }
 
     @GetMapping("/notes")
@@ -50,13 +53,13 @@ public class LearningCenterController {
     @PostMapping("/notes")
     public Result<String> saveNote(@RequestBody LearningNotePayload payload, HttpServletRequest request) {
         learningCenterService.saveNote(currentUserId(request), payload);
-        return Result.ok("saved");
+        return Result.ok(MESSAGE_SAVED);
     }
 
     @DeleteMapping("/notes/{id}")
     public Result<String> deleteNote(@PathVariable("id") String id, HttpServletRequest request) {
         learningCenterService.deleteNote(currentUserId(request), id);
-        return Result.ok("deleted");
+        return Result.ok(MESSAGE_DELETED);
     }
 
     @GetMapping("/templates")
@@ -67,13 +70,13 @@ public class LearningCenterController {
     @PostMapping("/templates")
     public Result<String> saveTemplate(@RequestBody FollowUpTemplatePayload payload, HttpServletRequest request) {
         learningCenterService.saveTemplate(currentUserId(request), payload);
-        return Result.ok("saved");
+        return Result.ok(MESSAGE_SAVED);
     }
 
     @DeleteMapping("/templates/{id}")
     public Result<String> deleteTemplate(@PathVariable("id") String id, HttpServletRequest request) {
         learningCenterService.deleteTemplate(currentUserId(request), id);
-        return Result.ok("deleted");
+        return Result.ok(MESSAGE_DELETED);
     }
 
     private String currentUserId(HttpServletRequest request) {

@@ -7,7 +7,7 @@ import com.huah.ai.platform.common.trace.TraceIdContext;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-@RestControllerAdvice(assignableTypes = AgentController.class)
+@RestControllerAdvice(basePackages = "com.huah.ai.platform.agent.controller")
 public class AgentExceptionHandler {
 
     @ExceptionHandler(ToolAccessDeniedException.class)

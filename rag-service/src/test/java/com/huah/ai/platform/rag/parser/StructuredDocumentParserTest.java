@@ -14,7 +14,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StructuredDocumentParserTest {
 
-    private final StructuredDocumentParser parser = new StructuredDocumentParser(new ObjectMapper());
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final StructuredDocumentParser parser = new StructuredDocumentParser(objectMapper);
 
     @Test
     void parseCsvBuildsStructuredSummary() {

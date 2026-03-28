@@ -1,7 +1,7 @@
 package com.huah.ai.platform.agent.tools;
 
 import com.huah.ai.platform.agent.config.ToolsProperties;
-import com.huah.ai.platform.agent.security.ToolSecurityService;
+import com.huah.ai.platform.agent.support.AgentTestFixtures;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
@@ -20,7 +20,7 @@ class InternalApiToolsTest {
 
     @BeforeEach
     void setUp() {
-        ToolsProperties properties = new ToolsProperties();
+        ToolsProperties properties = AgentTestFixtures.toolsProperties();
 
         ToolsProperties.ConnectorDefinition enabled = new ToolsProperties.ConnectorDefinition();
         enabled.setEnabled(true);
@@ -39,7 +39,8 @@ class InternalApiToolsTest {
         internalApiTools = new InternalApiTools(
                 mock(RestClient.Builder.class, RETURNS_DEEP_STUBS),
                 properties,
-                new ToolSecurityService(properties)
+                AgentTestFixtures.toolSecurityService(properties),
+                AgentTestFixtures.objectMapper()
         );
     }
 
@@ -53,12 +54,14 @@ class InternalApiToolsTest {
     @Test
     void shouldRejectDisabledConnector() {
         Map<String, Object> result = internalApiTools.callConnector("disabled-api", "/api/issues", "{}");
-        assertTrue(String.valueOf(result.get("error")).contains("未启用"));
+        assertTrue(String.valueOf(result.get("error")).contains("disabled"));
+        assertEquals("INVALID_ARGUMENT", result.get("errorCode"));
     }
 
     @Test
     void shouldRejectPathOutsideWhitelist() {
         Map<String, Object> result = internalApiTools.callConnector("issue-center", "/api/users", "{}");
-        assertTrue(String.valueOf(result.get("error")).contains("不在 connector 允许范围内"));
+        assertTrue(String.valueOf(result.get("error")).contains("outside the allowed resource boundary"));
+        assertEquals("CONNECTOR_RESOURCE_DENIED", result.get("errorCode"));
     }
 }

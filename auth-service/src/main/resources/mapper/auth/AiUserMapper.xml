@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.huah.ai.platform.auth.mapper.AiUserMapper">
+    <select id="selectByUsername" resultType="com.huah.ai.platform.auth.model.AiUser">
+        SELECT * FROM ai_users WHERE username = #{username}
+    </select>
+    <select id="selectByUsernameAndEnabled" resultType="com.huah.ai.platform.auth.model.AiUser">
+        SELECT * FROM ai_users
+        WHERE username = #{username}
+          AND enabled = true
+    </select>
+</mapper>

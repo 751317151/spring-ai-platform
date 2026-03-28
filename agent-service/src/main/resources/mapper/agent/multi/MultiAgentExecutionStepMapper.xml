@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.huah.ai.platform.agent.multi.MultiAgentExecutionStepMapper">
+    <select id="selectByTraceId" resultType="com.huah.ai.platform.agent.multi.MultiAgentExecutionStep">
+        SELECT * FROM ai_multi_agent_trace_steps
+        WHERE trace_id = #{traceId}
+        ORDER BY step_order ASC, created_at ASC
+    </select>
+    <select id="countByAgentTypeBefore" resultType="long">
+        SELECT COUNT(*)
+        FROM ai_multi_agent_trace_steps s
+        INNER JOIN ai_multi_agent_traces t ON t.trace_id = s.trace_id
+        WHERE t.agent_type = #{agentType}
+          AND s.created_at &lt; #{before}
+    </select>
+    <delete id="deleteByAgentTypeBefore">
+        DELETE FROM ai_multi_agent_trace_steps
+        WHERE trace_id IN (
+            SELECT trace_id FROM ai_multi_agent_traces
+            WHERE agent_type = #{agentType}
+              AND created_at &lt; #{before}
+        )
+    </delete>
+</mapper>

@@ -4,6 +4,8 @@ import com.huah.ai.platform.common.dto.Result;
 import com.huah.ai.platform.gateway.config.ModelRegistryConfig;
 import com.huah.ai.platform.gateway.model.ChatRequest;
 import com.huah.ai.platform.gateway.model.ChatResponse;
+import com.huah.ai.platform.gateway.model.GatewayModelsResponse;
+import com.huah.ai.platform.gateway.model.GatewayRouteDecisionResponse;
 import com.huah.ai.platform.gateway.service.ModelGatewayService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,6 +13,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -21,18 +25,20 @@ class GatewayControllerTest {
 
     private ModelGatewayService gatewayService;
     private ModelRegistryConfig registryConfig;
+    private ExecutorService executor;
     private GatewayController controller;
 
     @BeforeEach
     void setUp() {
         gatewayService = mock(ModelGatewayService.class);
         registryConfig = new ModelRegistryConfig();
-        controller = new GatewayController(gatewayService, registryConfig);
+        executor = Executors.newSingleThreadExecutor();
+        controller = new GatewayController(gatewayService, registryConfig, executor);
     }
 
     @AfterEach
     void tearDown() {
-        controller.shutdownExecutor();
+        executor.shutdownNow();
     }
 
     @Test
@@ -83,15 +89,13 @@ class GatewayControllerTest {
         when(gatewayService.getAllStats()).thenReturn(Map.of("model-a", stats));
         when(gatewayService.getAllHealth()).thenReturn(Map.of("model-a", health));
 
-        Result<Map<String, Object>> result = controller.listModels();
+        Result<GatewayModelsResponse> result = controller.listModels();
 
         assertEquals(200, result.getCode());
-        assertEquals(1, result.getData().get("count"));
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> models = (List<Map<String, Object>>) result.getData().get("models");
-        assertEquals("model-a", models.get(0).get("id"));
-        assertEquals("healthy", models.get(0).get("healthStatus"));
-        assertEquals(100.0d, models.get(0).get("successRate"));
+        assertEquals(1, result.getData().getCount());
+        assertEquals("model-a", result.getData().getModels().get(0).getId());
+        assertEquals("healthy", result.getData().getModels().get(0).getHealthStatus());
+        assertEquals(100.0d, result.getData().getModels().get(0).getSuccessRate());
     }
 
     @Test
@@ -121,13 +125,11 @@ class GatewayControllerTest {
         when(gatewayService.getAllStats()).thenReturn(Map.of());
         when(gatewayService.getAllHealth()).thenReturn(Map.of());
 
-        Result<Map<String, Object>> result = controller.previewRouteDecision("default", null);
+        Result<GatewayRouteDecisionResponse> result = controller.previewRouteDecision("default", null);
 
         assertEquals(200, result.getCode());
-        assertEquals("model-a", result.getData().get("selectedModelId"));
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> candidateModels = (List<Map<String, Object>>) result.getData().get("candidateModels");
-        assertEquals(1, candidateModels.size());
-        assertEquals(true, candidateModels.get(0).get("selected"));
+        assertEquals("model-a", result.getData().getSelectedModelId());
+        assertEquals(1, result.getData().getCandidateModels().size());
+        assertEquals(true, result.getData().getCandidateModels().get(0).isSelected());
     }
 }

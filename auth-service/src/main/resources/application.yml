@@ -29,3 +29,5 @@ management:
     export:
       prometheus:
         enabled: true
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml

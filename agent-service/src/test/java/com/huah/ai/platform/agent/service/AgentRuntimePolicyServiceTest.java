@@ -5,6 +5,7 @@ import com.huah.ai.platform.agent.dto.AgentRuntimePolicySummary;
 import com.huah.ai.platform.agent.dto.McpServerInfo;
 import com.huah.ai.platform.agent.security.ToolSecurityService;
 import com.huah.ai.platform.agent.security.AgentAccessChecker;
+import com.huah.ai.platform.agent.support.AgentTestFixtures;
 import com.huah.ai.platform.agent.tools.InternalApiTools;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,7 +23,7 @@ class AgentRuntimePolicyServiceTest {
 
     @BeforeEach
     void setUp() {
-        ToolsProperties properties = new ToolsProperties();
+        ToolsProperties properties = AgentTestFixtures.toolsProperties();
         properties.getSecurity().setEnabled(true);
         properties.getSecurity().getAgentToolAllowlist().put("rd", List.of("*"));
         properties.getSecurity().getAgentConnectorAllowlist().put("rd", List.of("knowledge"));
@@ -49,7 +50,7 @@ class AgentRuntimePolicyServiceTest {
         connectorDefinition.setAllowedPathPrefixes(List.of("/fallback/"));
         properties.getInternalApi().getConnectors().put("knowledge", connectorDefinition);
 
-        ToolSecurityService toolSecurityService = new ToolSecurityService(properties);
+        ToolSecurityService toolSecurityService = AgentTestFixtures.toolSecurityService(properties);
         InternalApiTools internalApiTools = mock(InternalApiTools.class);
         when(internalApiTools.listEnabledConnectorCodes()).thenReturn(List.of("knowledge"));
 

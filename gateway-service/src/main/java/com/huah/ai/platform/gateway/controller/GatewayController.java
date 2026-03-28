@@ -4,10 +4,18 @@ import com.huah.ai.platform.common.dto.Result;
 import com.huah.ai.platform.gateway.config.ModelRegistryConfig;
 import com.huah.ai.platform.gateway.model.ChatRequest;
 import com.huah.ai.platform.gateway.model.ChatResponse;
+import com.huah.ai.platform.gateway.model.GatewayCandidateModelView;
+import com.huah.ai.platform.gateway.model.GatewayModelProbeResponse;
+import com.huah.ai.platform.gateway.model.GatewayModelsResponse;
+import com.huah.ai.platform.gateway.model.GatewayModelView;
+import com.huah.ai.platform.gateway.model.GatewayProbeSummaryResponse;
+import com.huah.ai.platform.gateway.model.GatewayRouteDecisionResponse;
+import com.huah.ai.platform.gateway.model.GatewayStreamEvent;
+import com.huah.ai.platform.gateway.model.GatewayUsage;
+import com.huah.ai.platform.gateway.model.RouteDecisionPayload;
 import com.huah.ai.platform.gateway.service.ModelGatewayService;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
-import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -15,6 +23,7 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,14 +38,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @RestController
@@ -55,7 +59,6 @@ public class GatewayController {
     private static final String ROLE_USER = "user";
     private static final String ROLE_ASSISTANT = "assistant";
     private static final long STREAM_TIMEOUT_MS = 60_000L;
-    private static final long EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS = 5L;
     private static final int HTTP_BAD_REQUEST = 400;
     private static final int HTTP_SERVICE_UNAVAILABLE = 503;
     private static final String MESSAGE_SERVICE_UNAVAILABLE = "AI service is temporarily unavailable because circuit breaker protection was triggered. Please retry later.";
@@ -79,20 +82,8 @@ public class GatewayController {
 
     private final ModelGatewayService gatewayService;
     private final ModelRegistryConfig registryConfig;
-    private final ExecutorService executor = Executors.newCachedThreadPool(new GatewayThreadFactory());
-
-    @PreDestroy
-    void shutdownExecutor() {
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
-            }
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            executor.shutdownNow();
-        }
-    }
+    @Qualifier("gatewaySseExecutor")
+    private final ExecutorService executor;
 
     @PostMapping("/completions")
     @CircuitBreaker(name = "aiGateway", fallbackMethod = "chatFallback")
@@ -119,9 +110,9 @@ public class GatewayController {
                     : "";
 
             long latency = System.currentTimeMillis() - start;
-            Map<String, Object> usage = gatewayService.extractUsage(aiChatResponse);
-            int promptTokens = ((Number) usage.get("promptTokens")).intValue();
-            int completionTokens = ((Number) usage.get("completionTokens")).intValue();
+            GatewayUsage usage = gatewayService.extractUsage(aiChatResponse);
+            int promptTokens = usage.getPromptTokens();
+            int completionTokens = usage.getCompletionTokens();
             gatewayService.recordCall(usedModelId, latency, true, promptTokens, completionTokens);
 
             return Result.ok(buildChatResponse(routeDecision, content, latency, promptTokens, completionTokens));
@@ -185,8 +176,8 @@ public class GatewayController {
     }
 
     @GetMapping("/models")
-    public Result<Map<String, Object>> listModels() {
-        List<Map<String, Object>> models = new ArrayList<>();
+    public Result<GatewayModelsResponse> listModels() {
+        List<GatewayModelView> models = new ArrayList<>();
         List<ModelRegistryConfig.ModelDefinition> registry = registryConfig.getRegistry();
 
         if (registry != null) {
@@ -197,26 +188,26 @@ public class GatewayController {
             }
         }
 
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("models", models);
-        result.put("count", models.size());
-        result.put("sceneRoutes", registryConfig.getSceneRoutes() != null ? registryConfig.getSceneRoutes() : Map.of());
-        result.put("loadBalanceStrategy", registryConfig.getLoadBalanceStrategy());
-        return Result.ok(result);
+        return Result.ok(GatewayModelsResponse.builder()
+                .models(models)
+                .count(models.size())
+                .sceneRoutes(registryConfig.getSceneRoutes() != null ? registryConfig.getSceneRoutes() : Map.of())
+                .loadBalanceStrategy(registryConfig.getLoadBalanceStrategy())
+                .build());
     }
 
     @PostMapping("/models/health/probe")
-    public Result<Map<String, Object>> probeAllModels() {
+    public Result<GatewayProbeSummaryResponse> probeAllModels() {
         return Result.ok(gatewayService.probeAllModels());
     }
 
     @PostMapping("/models/{modelId}/health/probe")
-    public Result<Map<String, Object>> probeModel(@PathVariable("modelId") String modelId) {
+    public Result<GatewayModelProbeResponse> probeModel(@PathVariable("modelId") String modelId) {
         return Result.ok(gatewayService.probeModelHealth(modelId));
     }
 
     @GetMapping("/route-decision")
-    public Result<Map<String, Object>> previewRouteDecision(
+    public Result<GatewayRouteDecisionResponse> previewRouteDecision(
             @RequestParam(name = "scene", defaultValue = DEFAULT_SCENE) String scene,
             @RequestParam(name = "requestedModelId", required = false) String requestedModelId) {
         ModelGatewayService.RouteDecision decision = gatewayService.selectModelWithDecision(scene, requestedModelId);
@@ -277,7 +268,7 @@ public class GatewayController {
                 .promptTokens(promptTokens)
                 .completionTokens(completionTokens)
                 .estimatedCost(calculateEstimatedCost(routeDecision, promptTokens, completionTokens))
-                .routeDecision(routeDecision.toMap())
+                .routeDecision(RouteDecisionPayload.from(routeDecision))
                 .build();
     }
 
@@ -291,43 +282,43 @@ public class GatewayController {
         return roundCost(promptCost + completionCost);
     }
 
-    private Map<String, Object> buildRouteDecisionPreview(ModelGatewayService.RouteDecision decision) {
-        List<Map<String, Object>> candidateModels = new ArrayList<>();
+    private GatewayRouteDecisionResponse buildRouteDecisionPreview(ModelGatewayService.RouteDecision decision) {
+        List<GatewayCandidateModelView> candidateModels = new ArrayList<>();
         Map<String, ModelGatewayService.ModelStats> statsMap = gatewayService.getAllStats();
         Map<String, ModelGatewayService.ModelHealth> healthMap = gatewayService.getAllHealth();
         for (String candidateId : defaultList(decision.getCandidateModelIds())) {
             ModelRegistryConfig.ModelDefinition definition = gatewayService.getModelDefinition(candidateId);
             var stats = statsMap.get(candidateId);
             var health = healthMap.get(candidateId);
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("id", candidateId);
-            item.put("name", definition != null ? definition.getName() : candidateId);
-            item.put("provider", definition != null ? definition.getProvider() : PROVIDER_UNKNOWN);
-            item.put("enabled", definition == null || definition.isEnabled());
-            item.put("healthy", defaultList(decision.getHealthyCandidateModelIds()).contains(candidateId));
-            item.put("selected", candidateId.equals(decision.getSelectedModelId()));
-            item.put("degraded", defaultList(decision.getDegradedModelIds()).contains(candidateId));
-            item.put("weight", definition != null ? definition.getWeight() : 0);
-            item.put("avgLatencyMs", stats != null ? Math.round(stats.getAvgLatencyMs()) : 0);
-            item.put("successRate", stats != null ? roundPercentage(stats.getSuccessRate()) : DEFAULT_SUCCESS_RATE);
-            item.put("promptCostPer1kTokens", definition != null ? definition.getPromptCostPer1kTokens() : 0d);
-            item.put("completionCostPer1kTokens", definition != null ? definition.getCompletionCostPer1kTokens() : 0d);
-            item.put("reason", buildCandidateReason(candidateId, decision, health != null ? health.getLastReason() : ""));
-            candidateModels.add(item);
+            candidateModels.add(GatewayCandidateModelView.builder()
+                    .id(candidateId)
+                    .name(definition != null ? definition.getName() : candidateId)
+                    .provider(definition != null ? definition.getProvider() : PROVIDER_UNKNOWN)
+                    .enabled(definition == null || definition.isEnabled())
+                    .healthy(defaultList(decision.getHealthyCandidateModelIds()).contains(candidateId))
+                    .selected(candidateId.equals(decision.getSelectedModelId()))
+                    .degraded(defaultList(decision.getDegradedModelIds()).contains(candidateId))
+                    .weight(definition != null ? definition.getWeight() : 0)
+                    .avgLatencyMs(stats != null ? Math.round(stats.getAvgLatencyMs()) : 0L)
+                    .successRate(stats != null ? roundPercentage(stats.getSuccessRate()) : DEFAULT_SUCCESS_RATE)
+                    .promptCostPer1kTokens(definition != null ? definition.getPromptCostPer1kTokens() : 0d)
+                    .completionCostPer1kTokens(definition != null ? definition.getCompletionCostPer1kTokens() : 0d)
+                    .reason(buildCandidateReason(candidateId, decision, health != null ? health.getLastReason() : ""))
+                    .build());
         }
 
         ModelRegistryConfig.ModelDefinition selectedDefinition = gatewayService.getModelDefinition(decision.getSelectedModelId());
 
-        return Map.of(
-                "scene", decision.getScene() == null ? "" : decision.getScene(),
-                "requestedModelId", decision.getRequestedModelId() == null ? "" : decision.getRequestedModelId(),
-                "selectedModelId", decision.getSelectedModelId() == null ? "" : decision.getSelectedModelId(),
-                "strategy", decision.getStrategy() == null ? "" : decision.getStrategy(),
-                "reason", decision.getReason() == null ? "" : decision.getReason(),
-                "fallbackTriggered", decision.isFallbackTriggered(),
-                "estimatedCostNote", buildEstimatedCostNote(selectedDefinition),
-                "candidateModels", candidateModels
-        );
+        return GatewayRouteDecisionResponse.builder()
+                .scene(decision.getScene() == null ? "" : decision.getScene())
+                .requestedModelId(decision.getRequestedModelId() == null ? "" : decision.getRequestedModelId())
+                .selectedModelId(decision.getSelectedModelId() == null ? "" : decision.getSelectedModelId())
+                .strategy(decision.getStrategy() == null ? "" : decision.getStrategy())
+                .reason(decision.getReason() == null ? "" : decision.getReason())
+                .fallbackTriggered(decision.isFallbackTriggered())
+                .estimatedCostNote(buildEstimatedCostNote(selectedDefinition))
+                .candidateModels(candidateModels)
+                .build();
     }
 
     private String buildCandidateReason(String candidateId, ModelGatewayService.RouteDecision decision, String healthReason) {
@@ -343,47 +334,45 @@ public class GatewayController {
         return MESSAGE_NOT_SELECTED;
     }
 
-    private Map<String, Object> buildStreamEvent(String chunk,
-                                                 boolean done,
-                                                 String modelId,
-                                                 ModelGatewayService.RouteDecision routeDecision) {
-        Map<String, Object> event = new LinkedHashMap<>();
-        event.put("chunk", chunk);
-        event.put("done", done);
-        event.put("model", modelId);
-        if (routeDecision != null) {
-            event.put("routeDecision", routeDecision.toMap());
-        }
-        return event;
+    private GatewayStreamEvent buildStreamEvent(String chunk,
+                                                boolean done,
+                                                String modelId,
+                                                ModelGatewayService.RouteDecision routeDecision) {
+        return GatewayStreamEvent.builder()
+                .chunk(chunk)
+                .done(done)
+                .model(modelId)
+                .routeDecision(routeDecision != null ? RouteDecisionPayload.from(routeDecision) : null)
+                .build();
     }
 
-    private Map<String, Object> buildModelView(ModelRegistryConfig.ModelDefinition definition,
-                                               ModelGatewayService.ModelStats stats,
-                                               ModelGatewayService.ModelHealth health) {
-        Map<String, Object> model = new LinkedHashMap<>();
-        model.put("id", definition.getId());
-        model.put("name", definition.getName());
-        model.put("provider", definition.getProvider());
-        model.put("enabled", definition.isEnabled());
-        model.put("weight", definition.getWeight());
-        model.put("capabilities", definition.getCapabilities());
-        model.put("rpmLimit", definition.getRpmLimit());
-        model.put("promptCostPer1kTokens", definition.getPromptCostPer1kTokens());
-        model.put("completionCostPer1kTokens", definition.getCompletionCostPer1kTokens());
-        model.put("healthStatus", health != null ? health.getStatus() : DEFAULT_HEALTH_STATUS);
-        model.put("degradedUntil", health != null && health.getDegradedUntil() > 0 ? health.getDegradedUntil() : null);
-        model.put("healthReason", health != null ? health.getLastReason() : "");
-        model.put("consecutiveFailures", health != null ? health.getConsecutiveFailures().get() : 0);
-        model.put("lastCheckedAt", health != null && health.getLastCheckedAt() > 0 ? health.getLastCheckedAt() : null);
-        model.put("lastProbeLatencyMs", health != null ? health.getLastProbeLatencyMs() : null);
-        model.put("totalCalls", stats != null ? stats.getTotalCalls().get() : 0);
-        model.put("successCalls", stats != null ? stats.getSuccessCalls().get() : 0);
-        model.put("avgLatencyMs", stats != null ? Math.round(stats.getAvgLatencyMs()) : 0);
-        model.put("successRate", stats != null ? roundPercentage(stats.getSuccessRate()) : DEFAULT_SUCCESS_RATE);
-        model.put("totalPromptTokens", stats != null ? stats.getTotalPromptTokens() : 0);
-        model.put("totalCompletionTokens", stats != null ? stats.getTotalCompletionTokens() : 0);
-        model.put("totalEstimatedCost", stats != null ? roundCost(stats.getTotalEstimatedCost()) : 0d);
-        return model;
+    private GatewayModelView buildModelView(ModelRegistryConfig.ModelDefinition definition,
+                                            ModelGatewayService.ModelStats stats,
+                                            ModelGatewayService.ModelHealth health) {
+        return GatewayModelView.builder()
+                .id(definition.getId())
+                .name(definition.getName())
+                .provider(definition.getProvider())
+                .enabled(definition.isEnabled())
+                .weight(definition.getWeight())
+                .capabilities(definition.getCapabilities())
+                .rpmLimit(definition.getRpmLimit())
+                .promptCostPer1kTokens(definition.getPromptCostPer1kTokens())
+                .completionCostPer1kTokens(definition.getCompletionCostPer1kTokens())
+                .healthStatus(health != null ? health.getStatus() : DEFAULT_HEALTH_STATUS)
+                .degradedUntil(health != null && health.getDegradedUntil() > 0 ? health.getDegradedUntil() : null)
+                .healthReason(health != null ? health.getLastReason() : "")
+                .consecutiveFailures(health != null ? health.getConsecutiveFailures().get() : 0)
+                .lastCheckedAt(health != null && health.getLastCheckedAt() > 0 ? health.getLastCheckedAt() : null)
+                .lastProbeLatencyMs(health != null ? health.getLastProbeLatencyMs() : null)
+                .totalCalls(stats != null ? stats.getTotalCalls().get() : 0)
+                .successCalls(stats != null ? stats.getSuccessCalls().get() : 0)
+                .avgLatencyMs(stats != null ? (double) Math.round(stats.getAvgLatencyMs()) : 0d)
+                .successRate(stats != null ? roundPercentage(stats.getSuccessRate()) : DEFAULT_SUCCESS_RATE)
+                .totalPromptTokens(stats != null ? stats.getTotalPromptTokens() : 0L)
+                .totalCompletionTokens(stats != null ? stats.getTotalCompletionTokens() : 0L)
+                .totalEstimatedCost(stats != null ? roundCost(stats.getTotalEstimatedCost()) : 0d)
+                .build();
     }
 
     private double roundPercentage(double value) {
@@ -410,16 +399,5 @@ public class GatewayController {
 
     private List<String> defaultList(List<String> values) {
         return values == null ? List.of() : values;
-    }
-
-    private static final class GatewayThreadFactory implements ThreadFactory {
-        private final AtomicInteger sequence = new AtomicInteger(1);
-
-        @Override
-        public Thread newThread(Runnable runnable) {
-            Thread thread = new Thread(runnable, "gateway-sse-" + sequence.getAndIncrement());
-            thread.setDaemon(true);
-            return thread;
-        }
     }
 }

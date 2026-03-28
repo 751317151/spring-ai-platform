@@ -1,6 +1,7 @@
 package com.huah.ai.platform.gateway.service;
 
 import com.huah.ai.platform.gateway.config.ModelRegistryConfig;
+import com.huah.ai.platform.gateway.model.GatewayModelProbeResponse;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.model.ChatModel;
@@ -121,9 +122,9 @@ class ModelGatewayServiceTest {
         Map<String, ChatModel> modelCache = (Map<String, ChatModel>) ReflectionTestUtils.getField(service, "modelCache");
         modelCache.put("model-a", chatModel);
 
-        Map<String, Object> result = service.probeModelHealth("model-a");
+        GatewayModelProbeResponse result = service.probeModelHealth("model-a");
 
-        assertEquals("healthy", result.get("status"));
+        assertEquals("healthy", result.getStatus());
         assertEquals(0, service.getAllStats().getOrDefault("model-a", new ModelGatewayService.ModelStats("model-a")).getTotalCalls().get());
         assertTrue(service.getAllHealth().get("model-a").getLastCheckedAt() > 0);
     }

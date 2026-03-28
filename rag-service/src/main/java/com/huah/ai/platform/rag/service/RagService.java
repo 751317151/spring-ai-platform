@@ -11,7 +11,6 @@ import org.springframework.ai.rag.retrieval.search.VectorStoreDocumentRetriever;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -28,9 +27,7 @@ public class RagService {
 
     private final VectorStore vectorStore;
     private final ChatClient.Builder chatClientBuilder;
-
-    @Autowired
-    private ChatClient chatClient;
+    private final ChatClient chatClient;
 
     private static final String RAG_SYSTEM_PROMPT = """
             你是企业知识库智能助手。请严格基于用户消息中提供的上下文资料回答问题。

@@ -3,6 +3,9 @@ package com.huah.ai.platform.gateway.service;
 import com.huah.ai.platform.common.exception.AiServiceException;
 import com.huah.ai.platform.gateway.config.ModelRegistryConfig;
 import com.huah.ai.platform.gateway.config.ModelRegistryConfig.ModelDefinition;
+import com.huah.ai.platform.gateway.model.GatewayModelProbeResponse;
+import com.huah.ai.platform.gateway.model.GatewayProbeSummaryResponse;
+import com.huah.ai.platform.gateway.model.GatewayUsage;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -443,26 +446,31 @@ public class ModelGatewayService {
                 .orElse(null);
     }
 
-    public Map<String, Object> extractUsage(ChatResponse response) {
-        Integer promptTokens = null;
-        Integer completionTokens = null;
+    public GatewayUsage extractUsage(ChatResponse response) {
+        int promptTokens = 0;
+        int completionTokens = 0;
         if (response != null && response.getMetadata() != null && response.getMetadata().getUsage() != null) {
             promptTokens = response.getMetadata().getUsage().getPromptTokens();
             completionTokens = response.getMetadata().getUsage().getCompletionTokens();
         }
-        return Map.of(
-                "promptTokens", promptTokens == null ? 0 : promptTokens,
-                "completionTokens", completionTokens == null ? 0 : completionTokens
-        );
+        return GatewayUsage.builder()
+                .promptTokens(promptTokens)
+                .completionTokens(completionTokens)
+                .build();
     }
 
-    public Map<String, Object> probeAllModels() {
-        Map<String, Object> result = new ConcurrentHashMap<>();
-        modelCache.forEach((modelId, model) -> result.put(modelId, probeModelHealth(modelId)));
-        return result;
+    public GatewayProbeSummaryResponse probeAllModels() {
+        List<GatewayModelProbeResponse> probes = modelCache.keySet().stream()
+                .sorted()
+                .map(this::probeModelHealth)
+                .toList();
+        return GatewayProbeSummaryResponse.builder()
+                .probes(probes)
+                .count(probes.size())
+                .build();
     }
 
-    public Map<String, Object> probeModelHealth(String modelId) {
+    public GatewayModelProbeResponse probeModelHealth(String modelId) {
         ChatModel model = modelCache.get(modelId);
         if (model == null) {
             throw new AiServiceException("Model not found: " + modelId);
@@ -477,23 +485,23 @@ public class ModelGatewayService {
             model.call(new Prompt(prompt));
             long latency = System.currentTimeMillis() - start;
             health.recordProbe(true, latency, REASON_PROBE_SUCCESS);
-            return Map.of(
-                    "modelId", modelId,
-                    "status", health.getStatus(),
-                    "probeLatencyMs", latency,
-                    "reason", health.getLastReason()
-            );
+            return GatewayModelProbeResponse.builder()
+                    .modelId(modelId)
+                    .status(health.getStatus())
+                    .probeLatencyMs(latency)
+                    .reason(health.getLastReason())
+                    .build();
         } catch (Exception e) {
             long latency = System.currentTimeMillis() - start;
             health.recordProbe(false, latency, REASON_PROBE_FAILED_PREFIX + e.getMessage());
             recordDependencyFailure("model-health-probe", modelId);
             log.warn("Model health probe failed: modelId={}, error={}", modelId, e.getMessage());
-            return Map.of(
-                    "modelId", modelId,
-                    "status", health.getStatus(),
-                    "probeLatencyMs", latency,
-                    "reason", health.getLastReason()
-            );
+            return GatewayModelProbeResponse.builder()
+                    .modelId(modelId)
+                    .status(health.getStatus())
+                    .probeLatencyMs(latency)
+                    .reason(health.getLastReason())
+                    .build();
         }
     }
 
@@ -630,19 +638,5 @@ public class ModelGatewayService {
         private List<String> healthyCandidateModelIds;
         private List<String> degradedModelIds;
         private boolean fallbackTriggered;
-
-        public Map<String, Object> toMap() {
-            return Map.of(
-                    "scene", scene == null ? "" : scene,
-                    "requestedModelId", requestedModelId == null ? "" : requestedModelId,
-                    "selectedModelId", selectedModelId == null ? "" : selectedModelId,
-                    "strategy", strategy == null ? "" : strategy,
-                    "reason", reason == null ? "" : reason,
-                    "candidateModelIds", candidateModelIds == null ? List.of() : candidateModelIds,
-                    "healthyCandidateModelIds", healthyCandidateModelIds == null ? List.of() : healthyCandidateModelIds,
-                    "degradedModelIds", degradedModelIds == null ? List.of() : degradedModelIds,
-                    "fallbackTriggered", fallbackTriggered
-            );
-        }
     }
 }

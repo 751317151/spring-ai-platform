@@ -1,8 +1,8 @@
 package com.huah.ai.platform.agent.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.huah.ai.platform.agent.dto.McpServerListResponse;
 import com.huah.ai.platform.agent.config.ToolsProperties;
+import com.huah.ai.platform.agent.support.AgentTestFixtures;
 import com.huah.ai.platform.agent.security.ToolSecurityService;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ByteArrayResource;
@@ -34,7 +34,10 @@ class McpServerCatalogServiceTest {
                 }
                 """;
 
-        McpServerCatalogService service = new McpServerCatalogService(new ObjectMapper(), new ToolSecurityService(new com.huah.ai.platform.agent.config.ToolsProperties()));
+        ToolsProperties properties = AgentTestFixtures.toolsProperties();
+        McpServerCatalogService service = new McpServerCatalogService(
+                AgentTestFixtures.objectMapper(),
+                AgentTestFixtures.toolSecurityService(properties));
         ReflectionTestUtils.setField(service, "clientEnabled", true);
         ReflectionTestUtils.setField(service, "mcpServersResource",
                 new ByteArrayResource(json.getBytes(StandardCharsets.UTF_8)));
@@ -51,7 +54,10 @@ class McpServerCatalogServiceTest {
 
     @Test
     void shouldReturnEmptyWhenMcpServersNodeMissing() {
-        McpServerCatalogService service = new McpServerCatalogService(new ObjectMapper(), new ToolSecurityService(new com.huah.ai.platform.agent.config.ToolsProperties()));
+        ToolsProperties properties = AgentTestFixtures.toolsProperties();
+        McpServerCatalogService service = new McpServerCatalogService(
+                AgentTestFixtures.objectMapper(),
+                AgentTestFixtures.toolSecurityService(properties));
         ReflectionTestUtils.setField(service, "clientEnabled", false);
         ReflectionTestUtils.setField(service, "mcpServersResource",
                 new ByteArrayResource("{\"other\":{}}".getBytes(StandardCharsets.UTF_8)));
@@ -76,11 +82,13 @@ class McpServerCatalogServiceTest {
                 }
                 """;
 
-        ToolsProperties properties = new ToolsProperties();
+        ToolsProperties properties = AgentTestFixtures.toolsProperties();
         properties.getSecurity().setEnabled(true);
         properties.getSecurity().getAgentMcpServerAllowlist().put("rd", java.util.List.of("ops-mcp"));
 
-        McpServerCatalogService service = new McpServerCatalogService(new ObjectMapper(), new ToolSecurityService(properties));
+        McpServerCatalogService service = new McpServerCatalogService(
+                AgentTestFixtures.objectMapper(),
+                AgentTestFixtures.toolSecurityService(properties));
         ReflectionTestUtils.setField(service, "clientEnabled", true);
         ReflectionTestUtils.setField(service, "mcpServersResource",
                 new ByteArrayResource(json.getBytes(StandardCharsets.UTF_8)));

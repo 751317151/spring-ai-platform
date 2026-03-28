@@ -56,7 +56,7 @@ public class DataAnalysisTools {
             String schema = resolveSchema();
             ToolAccessDecision decision = toolSecurityService.decideDataScopeAccess(currentAgentType(), schema, List.of());
             if (!decision.isAllowed()) {
-                return Map.of("error", decision.getReasonMessage());
+                return ToolResponseSupport.error(decision.getReasonMessage(), "DATA_SCOPE_DENIED");
             }
             List<Map<String, Object>> tables = jdbcTemplate.execute((ConnectionCallback<List<Map<String, Object>>>) connection -> {
                 DatabaseMetaData metaData = connection.getMetaData();
@@ -91,7 +91,7 @@ public class DataAnalysisTools {
             );
         } catch (Exception e) {
             log.error("[Tool] listAccessibleTables failed: {}", e.getMessage(), e);
-            return Map.of("error", "List tables failed: " + e.getMessage());
+            return ToolResponseSupport.error("List tables failed: " + e.getMessage(), "LIST_TABLES_FAILED");
         }
     }
 
@@ -102,13 +102,13 @@ public class DataAnalysisTools {
         try {
             String normalizedTable = normalizeSimpleIdentifier(tableName, "table");
             if (!isTableAllowed(normalizedTable)) {
-                return Map.of("error", "Table is outside the allowed scope: " + normalizedTable);
+                return ToolResponseSupport.error("Table is outside the allowed scope: " + normalizedTable, "TABLE_SCOPE_DENIED");
             }
 
             String schema = resolveSchema();
             ToolAccessDecision decision = toolSecurityService.decideDataScopeAccess(currentAgentType(), schema, List.of(normalizedTable));
             if (!decision.isAllowed()) {
-                return Map.of("error", decision.getReasonMessage());
+                return ToolResponseSupport.error(decision.getReasonMessage(), "DATA_SCOPE_DENIED");
             }
 
             List<Map<String, Object>> columns = jdbcTemplate.query("""
@@ -134,10 +134,10 @@ public class DataAnalysisTools {
                     "count", columns.size()
             );
         } catch (IllegalArgumentException e) {
-            return Map.of("error", e.getMessage());
+            return ToolResponseSupport.error(e.getMessage(), "INVALID_ARGUMENT");
         } catch (Exception e) {
             log.error("[Tool] describeTable failed: table={}, error={}", tableName, e.getMessage(), e);
-            return Map.of("error", "Describe table failed: " + e.getMessage());
+            return ToolResponseSupport.error("Describe table failed: " + e.getMessage(), "DESCRIBE_TABLE_FAILED");
         }
     }
 
@@ -170,10 +170,10 @@ public class DataAnalysisTools {
                     "steps", plan.size()
             );
         } catch (IllegalArgumentException e) {
-            return Map.of("error", e.getMessage());
+            return ToolResponseSupport.error(e.getMessage(), "INVALID_ARGUMENT");
         } catch (Exception e) {
             log.error("[Tool] explainQuery failed: sql={}, error={}", sql, e.getMessage(), e);
-            return Map.of("error", "Explain query failed: " + e.getMessage());
+            return ToolResponseSupport.error("Explain query failed: " + e.getMessage(), "EXPLAIN_QUERY_FAILED");
         }
     }
 
@@ -231,10 +231,10 @@ public class DataAnalysisTools {
             result.put("executionTime", elapsed + "ms");
             return result;
         } catch (IllegalArgumentException e) {
-            return Map.of("error", e.getMessage());
+            return ToolResponseSupport.error(e.getMessage(), "INVALID_ARGUMENT");
         } catch (Exception e) {
             log.error("[Tool] executeQuery failed: sql={}, error={}", sql, e.getMessage(), e);
-            return Map.of("error", "SQL execution failed: " + e.getMessage());
+            return ToolResponseSupport.error("SQL execution failed: " + e.getMessage(), "SQL_EXECUTION_FAILED");
         }
     }
 
@@ -261,11 +261,11 @@ public class DataAnalysisTools {
         try {
             String tableName = normalizeSimpleIdentifier(datasetName, "table");
             if (!isTableAllowed(tableName)) {
-                return Map.of("error", "Table is outside the allowed scope: " + tableName);
+                return ToolResponseSupport.error("Table is outside the allowed scope: " + tableName, "TABLE_SCOPE_DENIED");
             }
             ToolAccessDecision decision = toolSecurityService.decideDataScopeAccess(currentAgentType(), resolveSchema(), List.of(tableName));
             if (!decision.isAllowed()) {
-                return Map.of("error", decision.getReasonMessage());
+                return ToolResponseSupport.error(decision.getReasonMessage(), "DATA_SCOPE_DENIED");
             }
 
             String[] columns = metrics.split(",");
@@ -289,10 +289,10 @@ public class DataAnalysisTools {
             result.put("statistics", stats);
             return result;
         } catch (IllegalArgumentException e) {
-            return Map.of("error", e.getMessage());
+            return ToolResponseSupport.error(e.getMessage(), "INVALID_ARGUMENT");
         } catch (Exception e) {
             log.error("[Tool] analyzeDataset failed: dataset={}, error={}", datasetName, e.getMessage(), e);
-            return Map.of("error", "Analyze dataset failed: " + e.getMessage());
+            return ToolResponseSupport.error("Analyze dataset failed: " + e.getMessage(), "ANALYZE_DATASET_FAILED");
         }
     }
 

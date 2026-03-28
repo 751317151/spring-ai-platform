@@ -5,7 +5,7 @@ import lombok.Getter;
 import org.springframework.ai.chat.model.ChatResponse;
 
 /**
- * Agent 聊天结果，携带响应文本和精确 token 用量
+ * Agent chat result with response text and exact token usage.
  */
 @Getter
 @AllArgsConstructor
@@ -20,7 +20,7 @@ public class AgentChatResult {
     }
 
     /**
-     * 从 Spring AI ChatResponse 中提取精确 token 用量
+     * Extract exact token usage from a Spring AI chat response.
      */
     public static AgentChatResult fromChatResponse(ChatResponse chatResponse) {
         String text = "";

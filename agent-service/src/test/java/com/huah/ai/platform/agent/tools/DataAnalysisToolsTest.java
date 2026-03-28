@@ -2,6 +2,7 @@ package com.huah.ai.platform.agent.tools;
 
 import com.huah.ai.platform.agent.audit.ToolExecutionContext;
 import com.huah.ai.platform.agent.config.ToolsProperties;
+import com.huah.ai.platform.agent.support.AgentTestFixtures;
 import com.huah.ai.platform.agent.security.ToolSecurityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,7 +28,7 @@ class DataAnalysisToolsTest {
     @BeforeEach
     void setUp() {
         jdbcTemplate = mock(JdbcTemplate.class);
-        ToolsProperties properties = new ToolsProperties();
+        ToolsProperties properties = AgentTestFixtures.toolsProperties();
         properties.getDataAnalysis().setDefaultSchema("public");
         properties.getDataAnalysis().setAllowedTables(List.of("knowledge_bases", "document_meta"));
         properties.getDataAnalysis().setBlockedTables(List.of("ai_users"));
@@ -36,7 +37,8 @@ class DataAnalysisToolsTest {
         properties.getSecurity().getAgentDataSourceAllowlist().put("rd", List.of("knowledge"));
         properties.getSecurity().getSchemaDataSourceBindings().put("public", "knowledge");
         properties.getSecurity().getSchemaDataSourceBindings().put("analytics", "warehouse");
-        dataAnalysisTools = new DataAnalysisTools(jdbcTemplate, properties, new ToolSecurityService(properties));
+        dataAnalysisTools = new DataAnalysisTools(
+                jdbcTemplate, properties, AgentTestFixtures.toolSecurityService(properties));
         ToolExecutionContext.set("u-1", "s-1", "rd");
     }
 
