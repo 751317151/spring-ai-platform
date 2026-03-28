@@ -94,6 +94,15 @@
 
     <div v-if="ragStore.queryResult && !ragStore.isQuerying && !ragStore.querySources.length" class="query-no-evidence">
       <EmptyState icon="RAG" title="本次回答未返回证据" description="回答已生成，但没有返回来源分段。可以先根据下方建议调整提问方式后再试。" variant="compact" align="left" />
+      <div class="query-no-evidence-guide">
+        <div class="query-no-evidence-guide-title">建议先这样调整问题</div>
+        <div class="query-no-evidence-guide-list">
+          <div v-for="item in noEvidenceGuideItems" :key="item.title" class="query-no-evidence-guide-item">
+            <strong>{{ item.title }}</strong>
+            <span>{{ item.description }}</span>
+          </div>
+        </div>
+      </div>
       <div class="query-no-evidence-actions">
         <button class="query-action-btn" @click="applySuggestion('expand-topk')">提高 TopK 到 10</button>
         <button class="query-action-btn" @click="applySuggestion('add-keywords')">补充关键词重试</button>
@@ -116,6 +125,10 @@
           <div class="evidence-insight-row">
             <div class="evidence-insight-card"><div class="evidence-insight-label">来源摘要</div><div class="evidence-insight-value">{{ summarizeSource(src) }}</div></div>
             <div class="evidence-insight-card"><div class="evidence-insight-label">命中原因</div><div class="evidence-insight-value">{{ matchReason(src.score) }}</div></div>
+          </div>
+          <div v-if="matchedTerms(src).length" class="evidence-hit-terms">
+            <span class="evidence-hit-label">命中关键词</span>
+            <span v-for="term in matchedTerms(src)" :key="term" class="evidence-hit-chip">{{ term }}</span>
           </div>
           <div class="evidence-preview" v-html="highlightEvidence(src.preview || summarize(src.content))"></div>
           <div v-if="src.chunkId && ragStore.queryResponseId" class="evidence-feedback">
@@ -165,6 +178,20 @@ const evidenceScoreRange = computed(() => {
   const scores = ragStore.querySources.map((item) => item.score).filter((item) => !Number.isNaN(item))
   return scores.length ? `${formatScore(Math.max(...scores))} - ${formatScore(Math.min(...scores))}` : '-'
 })
+const noEvidenceGuideItems = computed(() => [
+  {
+    title: '补充业务名词',
+    description: '把系统名、字段名、文档标题或流程节点直接写进问题里。'
+  },
+  {
+    title: '缩小问题范围',
+    description: '先只问一个规则、一个报错或一个步骤，避免一次覆盖整条链路。'
+  },
+  {
+    title: '扩大召回范围',
+    description: '如果知识库里确定有资料，可以先把 TopK 提高到 10 再重试。'
+  }
+])
 const stageTitle = computed(() => ragStore.queryStage === 'answering' ? '正在生成回答' : '正在检索证据')
 const stageDescription = computed(() => ragStore.queryStage === 'answering' ? '已经找到相关分段，正在整理回答内容。' : '系统正在当前知识库中查找最相关的证据分段。')
 const recommendedQuestions = computed(() => {
@@ -189,6 +216,7 @@ function escapeHtml(value: string) { return value.replace(/&/g, '&amp;').replace
 function escapeRegExp(value: string) { return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
 function getHighlightTerms() { return question.value.split(/[\s,，。；;、]+/).map((item) => item.trim()).filter((item) => item.length >= 2).slice(0, 6) }
 function highlightEvidence(value: string) { let output = escapeHtml(value); for (const term of getHighlightTerms()) output = output.replace(new RegExp(`(${escapeRegExp(term)})`, 'gi'), '<mark class="evidence-highlight">$1</mark>'); return output }
+function matchedTerms(src: { preview?: string; content: string }) { const source = `${src.preview || ''}\n${src.content || ''}`.toLowerCase(); return getHighlightTerms().filter((term) => source.includes(term.toLowerCase())) }
 function getWorkspaceStateKey(kbId: string) { return `${WORKSPACE_KEY_PREFIX}${kbId}` }
 function persistWorkspaceState() { if (ragStore.currentKb) window.sessionStorage.setItem(getWorkspaceStateKey(ragStore.currentKb), JSON.stringify({ question: question.value, topK: topK.value, streamMode: streamMode.value } satisfies QueryWorkspaceState)) }
 function loadWorkspaceState(kbId: string) {
@@ -232,7 +260,7 @@ onMounted(() => { try { recentQuestions.value = JSON.parse(window.sessionStorage
 .query-context-card { margin-bottom: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 18px; background: linear-gradient(135deg, rgba(16,185,129,0.06), rgba(255,255,255,0.02)); }
 .query-context-title, .answer-insight-label, .evidence-insight-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); }
 .query-context-subtitle, .query-result-title, .evidence-title { color: var(--text); font-size: 14px; font-weight: 600; }
-.query-context-meta, .query-result-meta, .query-result-actions, .query-chip-list, .query-toolbar, .query-no-evidence-actions, .feedback-bar, .evidence-summary, .evidence-actions, .evidence-feedback { display: flex; gap: 8px; flex-wrap: wrap; }
+.query-context-meta, .query-result-meta, .query-result-actions, .query-chip-list, .query-toolbar, .query-no-evidence-actions, .feedback-bar, .evidence-summary, .evidence-actions, .evidence-feedback, .evidence-hit-terms { display: flex; gap: 8px; flex-wrap: wrap; }
 .query-context-chip, .query-meta-chip, .query-helper-chip, .query-action-btn, .feedback-btn, .evidence-mini-btn { border: 1px solid var(--border); background: rgba(255,255,255,0.03); color: var(--text2); border-radius: 999px; }
 .query-context-chip, .query-meta-chip { padding: 5px 10px; font-size: 12px; }
 .query-input-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
@@ -259,10 +287,18 @@ onMounted(() => { try { recentQuestions.value = JSON.parse(window.sessionStorage
 .query-answer-content, .evidence-preview { color: var(--text2); line-height: 1.8; white-space: pre-wrap; word-break: break-word; }
 .feedback-btn.active { border-color: var(--brand); color: var(--brand); background: rgba(59,130,246,0.08); }
 .query-no-evidence { margin-top: 16px; border: 1px dashed var(--border); border-radius: 16px; padding: 14px; background: rgba(255,255,255,0.02); }
+.query-no-evidence-guide { margin: 12px 0; display: grid; gap: 10px; }
+.query-no-evidence-guide-title { color: var(--text); font-size: 13px; font-weight: 600; }
+.query-no-evidence-guide-list { display: grid; gap: 8px; }
+.query-no-evidence-guide-item { display: grid; gap: 4px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: rgba(255,255,255,0.03); }
+.query-no-evidence-guide-item strong { color: var(--text); font-size: 12px; }
+.query-no-evidence-guide-item span { color: var(--text3); font-size: 12px; line-height: 1.6; }
 .evidence-panel { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px; }
 .evidence-list { display: grid; gap: 10px; }
 .evidence-file { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--text); font-size: 12px; }
 .evidence-index, .evidence-chunk { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; background: rgba(59,130,246,0.12); color: #2563eb; font-size: 11px; }
+.evidence-hit-label { color: var(--text3); font-size: 12px; }
+.evidence-hit-chip { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(59,130,246,0.16); background: rgba(59,130,246,0.08); color: #1d4ed8; font-size: 11px; }
 :deep(.evidence-highlight) { background: rgba(250,204,21,0.35); color: inherit; padding: 0 2px; border-radius: 4px; }
 .evidence-details { margin-top: 10px; }
 .evidence-details summary { cursor: pointer; color: var(--brand); font-size: 12px; }

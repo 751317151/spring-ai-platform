@@ -3,9 +3,9 @@ package com.huah.ai.platform.gateway.service;
 import com.huah.ai.platform.gateway.config.ModelRegistryConfig;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -77,7 +77,7 @@ class ModelGatewayServiceTest {
 
         assertEquals("model-a", decision.getSelectedModelId());
         assertTrue(decision.isFallbackTriggered());
-        assertTrue(decision.getReason().contains("回退"));
+        assertTrue(decision.getReason().toLowerCase().contains("fallback"));
         assertEquals(List.of("model-a"), decision.getDegradedModelIds());
     }
 
@@ -101,7 +101,7 @@ class ModelGatewayServiceTest {
 
         assertEquals("model-a", decision.getSelectedModelId());
         assertEquals("manual", decision.getStrategy());
-        assertTrue(decision.getReason().contains("显式模型指定"));
+        assertTrue(decision.getReason().contains("Matched explicit model selection"));
     }
 
     @Test

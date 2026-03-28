@@ -12,4 +12,5 @@ import lombok.NoArgsConstructor;
 public class AgentChatResponse {
     private String responseId;
     private String content;
+    private String traceId;
 }

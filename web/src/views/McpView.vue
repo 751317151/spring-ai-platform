@@ -4,19 +4,24 @@
       <div class="page-hero-main">
         <div class="eyebrow">基础设施</div>
         <div class="page-title">MCP 管理</div>
-        <div class="page-subtitle">查看 `agent-service` 加载的 MCP 服务，检查启动命令与参数，并确认运行时启用状态。</div>
+        <div class="page-subtitle">
+          检查 `agent-service` 实际加载到的 MCP 服务配置，并按助手查看哪些服务可见、已授权、存在异常。
+        </div>
         <div class="hero-tags">
-          <span class="tag">MCP 客户端 {{ clientEnabled ? '开启' : '关闭' }}</span>
+          <span class="tag">客户端 {{ clientEnabled ? '已启用' : '已停用' }}</span>
+          <span class="tag">{{ selectedAgentLabel }}</span>
           <span class="tag">{{ data?.count ?? 0 }} 个服务</span>
-          <span class="tag">{{ enabledServerCount }} 个服务端已启用</span>
-          <span class="tag">{{ lastUpdatedLabel }}</span>
-          <span class="tag">{{ data?.source || 'classpath:mcp-servers.json' }}</span>
+          <span class="tag">已授权 {{ data?.authorizedCount ?? data?.count ?? 0 }}</span>
+          <span class="tag">{{ readyServerCount }} 个就绪</span>
+          <span class="tag">{{ issueCount }} 个待处理</span>
         </div>
       </div>
       <div class="page-hero-actions">
-        <button class="btn btn-ghost btn-sm" :disabled="loading || !data" @click="copyOverview">
-          复制概览
-        </button>
+        <select v-model="selectedAgent" class="form-select agent-filter-select" @change="loadData">
+          <option value="all">全部助手</option>
+          <option v-for="item in agentOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" :disabled="loading || !data" @click="copyOverview">复制概览</button>
         <button class="btn btn-primary btn-sm" :disabled="loading" @click="loadData">
           {{ loading ? '刷新中...' : '刷新配置' }}
         </button>
@@ -29,27 +34,30 @@
         <div :class="['summary-value', clientEnabled ? 'status-on' : 'status-off']">
           {{ clientEnabled ? '已启用' : '已停用' }}
         </div>
+        <div class="summary-subtitle">关闭客户端时，所有 MCP 工具都不会进入聊天链路。</div>
       </div>
       <div class="card summary-card elevated-summary-card">
-        <div class="summary-label">服务数量</div>
-        <div class="summary-value">{{ data?.count ?? 0 }}</div>
+        <div class="summary-label">助手视角</div>
+        <div class="summary-value">{{ selectedAgentLabel }}</div>
+        <div class="summary-subtitle">可以切换不同助手，检查它们各自能看到哪些 MCP 服务。</div>
       </div>
       <div class="card summary-card elevated-summary-card">
-        <div class="summary-label">配置来源</div>
-        <div class="summary-value source-text">{{ data?.source || 'classpath:mcp-servers.json' }}</div>
+        <div class="summary-label">已授权服务</div>
+        <div class="summary-value status-on">{{ data?.authorizedCount ?? data?.count ?? 0 }}</div>
+        <div class="summary-subtitle">由后端权限规则决定当前助手可访问的 MCP 服务。</div>
       </div>
       <div class="card summary-card elevated-summary-card">
-        <div class="summary-label">需处理项</div>
+        <div class="summary-label">异常服务</div>
         <div :class="['summary-value', issueCount ? 'status-off' : 'status-on']">{{ issueCount }}</div>
-        <div class="summary-subtitle">服务端停用或客户端未启用的项目</div>
+        <div class="summary-subtitle">优先处理命令缺失、入口文件不存在或客户端停用等问题。</div>
       </div>
     </div>
 
     <div class="card">
       <div class="card-header">
         <div>
-          <div class="card-title">服务列表</div>
-          <div class="card-subtitle">检查启动命令、参数，以及服务端和客户端两侧的启用状态。</div>
+          <div class="card-title">服务诊断列表</div>
+          <div class="card-subtitle">按“就绪 / 异常 / 禁用”切换，点击操作按钮复制命令或排障摘要。</div>
         </div>
         <div class="filter-tabs filter-pill-group">
           <button
@@ -65,7 +73,7 @@
       </div>
 
       <div v-if="data?.servers?.length" class="mcp-summary-note">
-        可以将此表作为运行时核查面板。如果聊天中缺少某个工具，先确认这里的 MCP 客户端已启用，同时对应服务也处于启用状态。
+        如果聊天页里缺少某个 MCP 工具，先看这里是不是“未授权”或“异常”，再排查脚本、命令路径和 Spring MCP 客户端配置。
       </div>
 
       <div v-if="data?.servers?.length" class="filter-summary">
@@ -74,14 +82,14 @@
       </div>
 
       <div v-if="issueCount" class="issue-banner">
-        检测到 {{ issueCount }} 个待处理服务。优先处理“服务端停用”或“客户端未启用”的项目，否则聊天页可能缺少工具。
+        检测到 {{ issueCount }} 个待处理服务，优先处理入口文件不存在、命令缺失或客户端停用的问题。
         <div class="issue-banner-actions">
           <button class="table-action-btn" type="button" @click="serverFilter = 'issues'">只看异常</button>
           <button class="table-action-btn" type="button" @click="copyIssueSummary">复制异常清单</button>
         </div>
       </div>
 
-      <SkeletonBlock v-if="loading" :count="3" :height="64" />
+      <SkeletonBlock v-if="loading" :count="3" :height="88" />
 
       <EmptyState
         v-else-if="!!error"
@@ -97,8 +105,8 @@
         v-else-if="!data?.servers?.length"
         icon="M"
         badge="等待服务"
-        title="暂无 MCP 服务"
-        description="请检查 `agent-service` 是否存在有效的 `mcp-servers.json` 文件，以及 MCP 客户端是否已启用。"
+        title="当前没有可见 MCP 服务"
+        description="请检查后端 MCP 配置文件、当前助手授权规则和客户端启用状态。"
         action-text="刷新配置"
         @action="loadData"
       />
@@ -106,71 +114,74 @@
       <table v-else class="compact-table">
         <thead>
           <tr>
-            <th>编码</th>
+            <th>服务</th>
+            <th>状态</th>
             <th>命令</th>
-            <th>参数</th>
-            <th>服务端状态</th>
-            <th>客户端状态</th>
+            <th>入口文件</th>
+            <th>操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="!filteredServers.length">
-            <td colspan="5" class="empty-cell">
-              当前筛选下没有匹配的 MCP 服务。
-            </td>
+            <td colspan="5" class="empty-cell">当前筛选条件下没有匹配的 MCP 服务。</td>
           </tr>
           <tr v-for="server in filteredServers" :key="server.code">
             <td>
               <div class="server-code">{{ server.code }}</div>
               <div class="subtle-text">{{ server.source }}</div>
-              <div v-if="getIssueReason(server)" class="issue-reason">{{ getIssueReason(server) }}</div>
+              <div class="status-stack service-flags">
+                <span :class="['status-chip', server.authorized === false ? 'status-off' : 'status-on']">
+                  {{ server.authorized === false ? '未授权' : '已授权' }}
+                </span>
+                <span :class="['status-chip', server.enabled ? 'status-on' : 'status-off']">
+                  {{ server.enabled ? '服务启用' : '服务禁用' }}
+                </span>
+              </div>
+              <div v-if="server.issueReason" class="issue-reason">{{ formatIssueReason(server.issueReason) }}</div>
             </td>
             <td>
-              <div class="command-cell">
-                <code>{{ server.command || '-' }}</code>
-                <button
-                  v-if="server.command"
-                  class="table-action-btn"
-                  type="button"
-                  @click="copyServerCommand(server, 'command')"
-                >
+              <div class="status-stack">
+                <span :class="['status-chip', statusClass(server)]">{{ statusText(server) }}</span>
+                <span :class="['status-chip', server.clientEnabled ? 'status-on' : 'status-off']">
+                  {{ server.clientEnabled ? '客户端启用' : '客户端停用' }}
+                </span>
+                <span :class="['status-chip', server.commandAvailable ? 'status-on' : 'status-off']">
+                  {{ server.commandAvailable ? '命令可执行' : '命令缺失' }}
+                </span>
+              </div>
+            </td>
+            <td>
+              <div class="command-block">
+                <code>{{ server.commandLinePreview || buildCommandText(server) || '-' }}</code>
+                <div class="subtle-text">主命令：{{ server.command || '-' }}</div>
+                <div v-if="server.runtimeHint" class="subtle-text">{{ server.runtimeHint }}</div>
+              </div>
+            </td>
+            <td>
+              <div class="entry-block">
+                <code>{{ server.entryFile || '无入口文件参数' }}</code>
+                <div v-if="server.entryFile" :class="['entry-status', server.entryFileExists ? 'status-on' : 'status-off']">
+                  {{ server.entryFileExists ? '文件存在' : '文件不存在' }}
+                </div>
+              </div>
+            </td>
+            <td>
+              <div class="action-list">
+                <button class="table-action-btn" type="button" @click="copyText(server.commandLinePreview || buildCommandText(server), '完整命令')">
                   复制命令
                 </button>
+                <button class="table-action-btn" type="button" @click="copyServerSummary(server)">
+                  复制摘要
+                </button>
                 <button
-                  v-if="buildCommandText(server)"
                   class="table-action-btn"
                   type="button"
-                  @click="copyServerCommand(server, 'full')"
+                  :disabled="!server.entryFile"
+                  @click="copyText(server.entryFile || '', '入口文件路径')"
                 >
-                  复制完整行
+                  复制路径
                 </button>
               </div>
-            </td>
-            <td>
-              <div v-if="server.args?.length" class="args-list">
-                <code v-for="arg in server.args" :key="arg" class="arg-chip">{{ arg }}</code>
-              </div>
-              <div class="arg-actions">
-                <span v-if="!server.args?.length" class="subtle-text">无参数</span>
-                <button
-                  v-else
-                  class="table-action-btn"
-                  type="button"
-                  @click="copyServerCommand(server, 'args')"
-                >
-                  复制参数
-                </button>
-              </div>
-            </td>
-            <td>
-              <span :class="['status-chip', server.enabled ? 'status-on' : 'status-off']">
-                {{ server.enabled ? '启用' : '停用' }}
-              </span>
-            </td>
-            <td>
-              <span :class="['status-chip', server.clientEnabled ? 'status-on' : 'status-off']">
-                {{ server.clientEnabled ? '启用' : '停用' }}
-              </span>
             </td>
           </tr>
         </tbody>
@@ -181,124 +192,159 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { getMcpServers } from '@/api/agent'
+import { getMcpServers, getMcpServersByAgent } from '@/api/agent'
 import type { McpServerInfo, McpServerListResponse } from '@/api/types'
 import EmptyState from '@/components/common/EmptyState.vue'
 import SkeletonBlock from '@/components/common/SkeletonBlock.vue'
 import { useToast } from '@/composables/useToast'
+import { AGENT_CONFIG } from '@/utils/constants'
 
-type ServerFilter = 'all' | 'issues' | 'enabled'
+type ServerFilter = 'all' | 'issues' | 'ready' | 'disabled'
 
 const loading = ref(false)
 const error = ref('')
 const data = ref<McpServerListResponse | null>(null)
 const serverFilter = ref<ServerFilter>('all')
-const lastLoadedAt = ref<number | null>(null)
+const selectedAgent = ref('all')
 const { showToast } = useToast()
 
 const filterOptions = [
   { label: '全部服务', value: 'all' },
-  { label: '仅看异常', value: 'issues' },
-  { label: '仅看已启用', value: 'enabled' }
+  { label: '只看异常', value: 'issues' },
+  { label: '只看就绪', value: 'ready' },
+  { label: '只看禁用', value: 'disabled' }
 ] as const
 
+const agentOptions = Object.entries(AGENT_CONFIG).map(([value, config]) => ({
+  value,
+  label: config.name
+}))
+
 const clientEnabled = computed(() => Boolean(data.value?.clientEnabled))
-const enabledServerCount = computed(() => (data.value?.servers || []).filter((item) => item.enabled).length)
-const issueCount = computed(() => (data.value?.servers || []).filter((item) => !item.enabled || !item.clientEnabled).length)
+const selectedAgentLabel = computed(() => selectedAgent.value === 'all' ? '全部助手' : (AGENT_CONFIG[selectedAgent.value]?.name || selectedAgent.value))
+const readyServerCount = computed(() => (data.value?.servers || []).filter((item) => item.diagnosticStatus === 'ready').length)
+const issueCount = computed(() => data.value?.issueCount ?? (data.value?.servers || []).filter((item) => item.diagnosticStatus !== 'ready').length)
 const activeFilterLabel = computed(() => filterOptions.find((item) => item.value === serverFilter.value)?.label || '全部服务')
-const lastUpdatedLabel = computed(() => {
-  if (!lastLoadedAt.value) return '尚未刷新'
-  return `更新于 ${new Date(lastLoadedAt.value).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
-})
 const filteredServers = computed(() => {
   const servers = data.value?.servers || []
-  const filtered =
+  const base =
     serverFilter.value === 'issues'
-      ? servers.filter((item) => !item.enabled || !item.clientEnabled)
-      : serverFilter.value === 'enabled'
-        ? servers.filter((item) => item.enabled && item.clientEnabled)
-        : servers
+      ? servers.filter((item) => item.diagnosticStatus === 'issue')
+      : serverFilter.value === 'ready'
+        ? servers.filter((item) => item.diagnosticStatus === 'ready')
+        : serverFilter.value === 'disabled'
+          ? servers.filter((item) => item.diagnosticStatus === 'disabled')
+          : servers
 
-  return [...filtered].sort((a, b) => {
-    const aIssue = Number(Boolean(getIssueReason(a)))
-    const bIssue = Number(Boolean(getIssueReason(b)))
-    if (aIssue !== bIssue) return bIssue - aIssue
-    return a.code.localeCompare(b.code)
+  return [...base].sort((left, right) => {
+    const priority = (value: McpServerInfo) => value.diagnosticStatus === 'issue' ? 0 : value.diagnosticStatus === 'disabled' ? 1 : 2
+    const priorityDiff = priority(left) - priority(right)
+    if (priorityDiff !== 0) {
+      return priorityDiff
+    }
+    return left.code.localeCompare(right.code)
   })
 })
-const issueServers = computed(() => (data.value?.servers || []).filter((item) => Boolean(getIssueReason(item))))
 
-function getIssueReason(server: McpServerInfo) {
-  if (!server.enabled && !server.clientEnabled) return '服务端与客户端都未启用'
-  if (!server.enabled) return '服务端未启用'
-  if (!server.clientEnabled) return '客户端未启用'
-  return ''
+const issueServers = computed(() => (data.value?.servers || []).filter((item) => item.diagnosticStatus !== 'ready'))
+
+function statusText(server: McpServerInfo) {
+  if (server.diagnosticStatus === 'ready') {
+    return '就绪'
+  }
+  if (server.diagnosticStatus === 'disabled') {
+    return '已禁用'
+  }
+  return '异常'
+}
+
+function statusClass(server: McpServerInfo) {
+  return server.diagnosticStatus === 'ready' ? 'status-on' : 'status-off'
+}
+
+function formatIssueReason(reason?: string) {
+  const map: Record<string, string> = {
+    'client disabled': 'MCP 客户端未启用',
+    'server disabled': '该服务在配置中被禁用',
+    'client disabled, server disabled': '客户端和服务端都处于禁用状态',
+    'missing command': '缺少启动命令',
+    'command not found': '启动命令在当前环境不可执行',
+    'entry file not found': '入口文件不存在'
+  }
+  return reason ? (map[reason] || reason) : ''
 }
 
 function buildCommandText(server: McpServerInfo) {
-  const parts = [server.command, ...(server.args || [])].filter(Boolean)
-  return parts.join(' ').trim()
+  return [server.command, ...(server.args || [])]
+    .filter(Boolean)
+    .map((item) => item.includes(' ') ? `"${item}"` : item)
+    .join(' ')
 }
 
-function buildArgsText(server: McpServerInfo) {
-  return (server.args || []).join(' ').trim()
-}
-
-async function copyServerCommand(server: McpServerInfo, mode: 'command' | 'args' | 'full') {
-  const text =
-    mode === 'command'
-      ? (server.command || '').trim()
-      : mode === 'args'
-        ? buildArgsText(server)
-        : buildCommandText(server)
-  if (!text) return
+async function copyText(text: string, label: string) {
+  if (!text) {
+    return
+  }
   try {
     await navigator.clipboard.writeText(text)
-    const label = mode === 'command' ? '命令' : mode === 'args' ? '参数' : '完整启动行'
-    showToast(`已复制 ${server.code} 的${label}`)
+    showToast(`已复制${label}`)
   } catch {
-    showToast('复制失败，请手动复制命令')
+    showToast(`复制${label}失败`)
   }
 }
 
 async function copyIssueSummary() {
-  const lines = issueServers.value.map((server) => `${server.code}: ${getIssueReason(server)} | ${buildCommandText(server) || '-'}`)
+  const lines = issueServers.value.map((server) => {
+    const parts = [
+      server.code,
+      statusText(server),
+      server.authorized === false ? '未授权' : '已授权',
+      formatIssueReason(server.issueReason),
+      server.commandLinePreview || buildCommandText(server) || '-'
+    ].filter(Boolean)
+    return parts.join(' | ')
+  })
   if (!lines.length) {
     showToast('当前没有异常服务')
     return
   }
-  try {
-    await navigator.clipboard.writeText(lines.join('\n'))
-    showToast(`已复制 ${lines.length} 条异常服务清单`)
-  } catch {
-    showToast('复制异常清单失败')
-  }
+  await copyText(lines.join('\n'), '异常清单')
+}
+
+async function copyServerSummary(server: McpServerInfo) {
+  const summary = [
+    `服务: ${server.code}`,
+    `状态: ${statusText(server)}`,
+    `授权: ${server.authorized === false ? '未授权' : '已授权'}`,
+    `问题: ${formatIssueReason(server.issueReason) || '无'}`,
+    `命令: ${server.commandLinePreview || buildCommandText(server) || '-'}`,
+    `入口文件: ${server.entryFile || '-'}`,
+    `提示: ${server.runtimeHint || '无'}`
+  ].join('\n')
+  await copyText(summary, '服务摘要')
 }
 
 async function copyOverview() {
   const lines = [
     'MCP 管理概览',
     `客户端状态：${clientEnabled.value ? '已启用' : '已停用'}`,
+    `诊断助手：${selectedAgentLabel.value}`,
     `服务数量：${data.value?.count ?? 0}`,
-    `已启用服务端：${enabledServerCount.value}`,
-    `需处理项：${issueCount.value}`,
-    `配置来源：${data.value?.source || 'classpath:mcp-servers.json'}`,
-    `更新时间：${lastUpdatedLabel.value}`
+    `已授权服务：${data.value?.authorizedCount ?? data.value?.count ?? 0}`,
+    `就绪服务：${readyServerCount.value}`,
+    `待处理项：${issueCount.value}`,
+    `配置来源：${data.value?.source || 'classpath:mcp-servers.json'}`
   ]
-  try {
-    await navigator.clipboard.writeText(lines.join('\n'))
-    showToast('已复制 MCP 概览')
-  } catch {
-    showToast('复制 MCP 概览失败')
-  }
+  await copyText(lines.join('\n'), 'MCP 概览')
 }
 
 async function loadData() {
   loading.value = true
   error.value = ''
   try {
-    data.value = await getMcpServers()
-    lastLoadedAt.value = Date.now()
+    data.value = selectedAgent.value === 'all'
+      ? await getMcpServers()
+      : await getMcpServersByAgent(selectedAgent.value)
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'MCP 配置加载失败'
   } finally {
@@ -330,13 +376,9 @@ onMounted(() => {
 }
 
 .summary-value {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
   color: var(--text);
-}
-
-.source-text {
-  font-size: 14px;
 }
 
 .summary-subtitle {
@@ -346,15 +388,8 @@ onMounted(() => {
   line-height: 1.6;
 }
 
-.server-code {
-  font-weight: 600;
-  color: var(--text);
-}
-
-.issue-reason {
-  margin-top: 4px;
-  color: #b45309;
-  font-size: 12px;
+.agent-filter-select {
+  min-width: 160px;
 }
 
 .filter-tabs {
@@ -378,12 +413,6 @@ onMounted(() => {
   border-color: var(--accent);
   color: var(--accent2);
   background: var(--accent-dim);
-}
-
-.args-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
 }
 
 .mcp-summary-note {
@@ -412,42 +441,43 @@ onMounted(() => {
   line-height: 1.6;
 }
 
-.issue-banner-actions {
+.issue-banner-actions,
+.action-list,
+.service-flags,
+.status-stack {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.issue-banner-actions {
   margin-top: 10px;
 }
 
-.command-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+.server-code {
+  font-weight: 700;
+  color: var(--text);
 }
 
-.arg-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+.subtle-text {
+  margin-top: 4px;
+  color: var(--text3);
+  font-size: 12px;
+  word-break: break-all;
 }
 
-.arg-chip,
+.issue-reason {
+  margin-top: 6px;
+  color: #b45309;
+  font-size: 12px;
+}
+
 .status-chip {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
   padding: 4px 10px;
   font-size: 12px;
-}
-
-.arg-chip {
-  background: rgba(15, 23, 42, 0.06);
-  color: var(--text2);
-}
-
-.status-chip {
   font-weight: 600;
 }
 
@@ -459,6 +489,16 @@ onMounted(() => {
 .status-off {
   color: #b45309;
   background: rgba(245, 158, 11, 0.14);
+}
+
+.command-block,
+.entry-block {
+  display: grid;
+  gap: 6px;
+}
+
+.entry-status {
+  font-size: 12px;
 }
 
 .empty-cell {
@@ -478,15 +518,31 @@ onMounted(() => {
   transition: all var(--transition);
 }
 
-.table-action-btn:hover {
+.table-action-btn:hover:not(:disabled) {
   background: var(--surface2);
   color: var(--text);
   border-color: var(--border2);
 }
 
+.table-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 @media (max-width: 960px) {
   .summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .page-hero-actions {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .agent-filter-select {
+    width: 100%;
   }
 }
 </style>

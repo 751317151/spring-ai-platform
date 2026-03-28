@@ -68,6 +68,34 @@
         </div>
       </div>
 
+      <div class="troubleshooting-grid section-gap">
+        <div class="card troubleshooting-card">
+          <div class="troubleshooting-label">当前排障焦点</div>
+          <div class="troubleshooting-value">{{ troubleshootingFocus.title }}</div>
+          <div class="troubleshooting-desc">{{ troubleshootingFocus.description }}</div>
+        </div>
+        <div class="card troubleshooting-card">
+          <div class="troubleshooting-label">优先排查动作</div>
+          <div class="troubleshooting-value">{{ troubleshootingNextAction.title }}</div>
+          <div class="troubleshooting-desc">{{ troubleshootingNextAction.description }}</div>
+        </div>
+        <div class="card troubleshooting-card">
+          <div class="troubleshooting-label">失败原因聚合</div>
+          <div class="troubleshooting-chip-list">
+            <button
+              v-for="item in failureReasonSummary"
+              :key="item.label"
+              class="troubleshooting-chip"
+              type="button"
+              @click="focusFailureReason(item.label)"
+            >
+              {{ item.label }} · {{ item.count }}
+            </button>
+            <span v-if="!failureReasonSummary.length" class="troubleshooting-empty">当前筛选范围内没有失败样本。</span>
+          </div>
+        </div>
+      </div>
+
       <div class="card section-gap context-card">
         <div class="card-header">
           <div>
@@ -420,6 +448,68 @@ const toolAuditSummary = computed(() => {
   const slowest = [...filteredToolAudits.value].sort((a, b) => b.latency_ms - a.latency_ms)[0]
   return `失败 ${failed} 条，最慢工具 ${(slowest?.tool_name || slowest?.tool_class || '-')} ${slowest?.latency_ms || 0}ms`
 })
+const failureReasonSummary = computed(() => {
+  const counts = new Map<string, number>()
+  filteredFailureSamples.value.forEach((item) => {
+    const normalized = (item.error_message || '未记录错误').replace(/\s+/g, ' ').trim()
+    const label = normalized.length > 30 ? `${normalized.slice(0, 30)}...` : normalized
+    counts.set(label, (counts.get(label) || 0) + 1)
+  })
+  return [...counts.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 4)
+    .map(([label, count]) => ({ label, count }))
+})
+const troubleshootingFocus = computed(() => {
+  if (selectedTraceId.value && traceDetail.value) {
+    return {
+      title: `Trace ${selectedTraceId.value}`,
+      description: '已进入单次链路排查视角，可以直接比对输入、输出、阶段耗时和工具执行。'
+    }
+  }
+  if (filteredFailureSamples.value.length) {
+    const latestFailure = [...filteredFailureSamples.value].sort((a, b) => parseTime(b.created_at)! - parseTime(a.created_at)!)[0]
+    return {
+      title: `${agentLabel(latestFailure.agent_type)} / ${latestFailure.user_id || '未知用户'}`,
+      description: `当前失败样本 ${filteredFailureSamples.value.length} 条，最近一次错误为“${(latestFailure.error_message || '未记录错误').slice(0, 36)}${(latestFailure.error_message || '').length > 36 ? '...' : ''}”。`
+    }
+  }
+  if (filteredSlowRequests.value.length) {
+    const slowest = [...filteredSlowRequests.value].sort((a, b) => b.latency_ms - a.latency_ms)[0]
+    return {
+      title: `${agentLabel(slowest.agent_type)} / ${slowest.latency_ms}ms`,
+      description: '当前没有失败样本，优先处理最慢请求，判断瓶颈来自模型、工具还是下游服务。'
+    }
+  }
+  return {
+    title: '暂无明显异常',
+    description: '当前筛选范围内没有失败样本或慢请求，可以切换时间范围或用户继续排查。'
+  }
+})
+const troubleshootingNextAction = computed(() => {
+  if (selectedTraceId.value) {
+    return {
+      title: '继续下钻 Trace',
+      description: '优先看阶段耗时占比和工具执行详情，再决定是模型问题、工具问题还是上下游依赖问题。'
+    }
+  }
+  if (filteredFailureSamples.value.some((item) => item.trace_id)) {
+    return {
+      title: '先看失败样本的 Trace',
+      description: '当前已有可下钻链路，建议先打开失败样本对应 Trace，再结合错误信息确认归因。'
+    }
+  }
+  if (failureReasonSummary.value.length) {
+    return {
+      title: '按失败原因收敛范围',
+      description: '当前缺少可直接下钻的 Trace 时，先按失败原因聚合和用户/助手筛选缩小问题范围。'
+    }
+  }
+  return {
+    title: '扩大筛选范围',
+    description: '当前工作台没有足够异常样本，建议切到最近 7 天或清空筛选继续观察。'
+  }
+})
 const selectedSampleAdvice = computed(() => {
   if (!selectedSample.value) return ''
   if (selectedSample.value.kind === 'slow') {
@@ -457,6 +547,16 @@ function syncRouteQuery() {
 function applyUserFilter(userId: string) { selectedUserId.value = userId; syncRouteQuery() }
 function applyAgentFilter(agent: string) { selectedAgent.value = agent; syncRouteQuery() }
 function applyTraceFilter(traceId: string) { selectedTraceId.value = traceId; syncRouteQuery() }
+function focusFailureReason(reason: string) {
+  const target = filteredFailureSamples.value.find((item) => (item.error_message || '未记录错误').includes(reason.replace(/\.\.\.$/, '')))
+  if (!target) {
+    return
+  }
+  selectedSample.value = { kind: 'failure', ...target }
+  if (target.trace_id) {
+    applyTraceFilter(target.trace_id)
+  }
+}
 function clearTraceFilter() { selectedTraceId.value = ''; syncRouteQuery() }
 function applyRange(range: RangeValue) { selectedRange.value = range; syncRouteQuery() }
 function clearContextFilter() { selectedUserId.value = ''; selectedAgent.value = ''; selectedTraceId.value = ''; syncRouteQuery() }
@@ -514,9 +614,17 @@ watch([filteredSlowRequests, filteredFailureSamples], () => {
 .metric-unit { font-size: 14px; }
 .summary-grid, .context-grid, .trace-meta-grid, .sample-meta-grid { display: grid; gap: 12px; }
 .summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.troubleshooting-grid { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .context-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .trace-meta-grid, .sample-meta-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 12px; }
 .summary-card, .context-item, .trace-meta-item, .trace-block, .sample-meta-item, .sample-insight-block { padding: 14px; border: 1px solid var(--border); border-radius: 16px; background: rgba(255, 255, 255, 0.03); }
+.troubleshooting-card { padding: 14px; border: 1px solid var(--border); border-radius: 16px; background: linear-gradient(180deg, rgba(79, 142, 247, 0.06), rgba(255, 255, 255, 0.03)); }
+.troubleshooting-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; }
+.troubleshooting-value { margin-top: 8px; color: var(--text); font-size: 18px; font-weight: 700; }
+.troubleshooting-desc { margin-top: 8px; color: var(--text2); font-size: 13px; line-height: 1.7; }
+.troubleshooting-chip-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.troubleshooting-chip { border: 1px solid var(--border); background: rgba(255, 255, 255, 0.04); color: var(--text); border-radius: 999px; padding: 6px 10px; cursor: pointer; font-size: 12px; }
+.troubleshooting-empty { color: var(--text3); font-size: 12px; }
 .summary-label, .context-label, .trace-meta-label, .sample-meta-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; }
 .summary-value { font-size: 18px; font-weight: 600; color: var(--text); }
 .summary-sub, .trace-detail-loading, .sample-insight-content { font-size: 12px; color: var(--text3); }
@@ -560,7 +668,7 @@ watch([filteredSlowRequests, filteredFailureSamples], () => {
 .tool-name { margin-bottom: 6px; color: var(--text); }
 @media (max-width: 1100px) { .monitor-detail-grid { grid-template-columns: 1fr; } .sample-detail-panel, .context-card { position: static; } }
 @media (max-width: 960px) {
-  .summary-grid, .context-grid, .trace-meta-grid, .trace-content-grid, .sample-meta-grid, .grid-2 { grid-template-columns: 1fr; }
+  .summary-grid, .troubleshooting-grid, .context-grid, .trace-meta-grid, .trace-content-grid, .sample-meta-grid, .grid-2 { grid-template-columns: 1fr; }
   .page-hero-actions, .range-switch, .copy-cell, .sample-action-row { width: 100%; }
   .page-hero-actions .btn, .range-chip, .sample-row-action { width: 100%; justify-content: center; }
   .copy-cell .mini-action, .copy-cell .context-link { width: 100%; justify-content: center; text-align: center; }

@@ -41,6 +41,24 @@ vi.mock('@/components/chat/AgentList.vue', () => ({
   })
 }))
 
+vi.mock('@/components/chat/ChatAgentDiagnosticsPanel.vue', () => ({
+  default: defineComponent({
+    name: 'ChatAgentDiagnosticsPanelStub',
+    props: {
+      focusedTraceId: {
+        type: String,
+        default: ''
+      }
+    },
+    setup(props) {
+      return () => h('div', {
+        class: 'chat-agent-diagnostics-stub',
+        'data-trace-id': props.focusedTraceId
+      })
+    }
+  })
+}))
+
 vi.mock('@/components/chat/SessionList.vue', () => ({
   default: defineComponent({
     name: 'SessionListStub',
@@ -71,7 +89,7 @@ vi.mock('@/components/common/BackendStatusBanner.vue', () => ({
 vi.mock('@/components/chat/ChatMessages.vue', () => ({
   default: defineComponent({
     name: 'ChatMessagesStub',
-    emits: ['use-prompt', 'insert-prompt', 'branch-session', 'continue-response', 'regenerate-response'],
+    emits: ['use-prompt', 'insert-prompt', 'branch-session', 'continue-response', 'regenerate-response', 'open-trace'],
     setup(_props, { emit }) {
       return () => h('div', { class: 'chat-messages-stub' }, [
         h('button', {
@@ -85,6 +103,10 @@ vi.mock('@/components/chat/ChatMessages.vue', () => ({
         h('button', {
           class: 'emit-branch',
           onClick: () => emit('branch-session', 1)
+        }),
+        h('button', {
+          class: 'emit-open-trace',
+          onClick: () => emit('open-trace', 'trace-001')
         })
       ])
     }
@@ -171,6 +193,14 @@ describe('ChatView', () => {
           maxContextMessages: 4,
           knowledgeEnabled: false
         }
+      },
+      {
+        role: 'assistant',
+        content: 'continue with rollback drills and monitoring',
+        derivedFrom: {
+          action: 'continue',
+          messageIndex: 1
+        }
       }
     ] as never
     chatStore.selectAgent = vi.fn().mockResolvedValue(undefined) as never
@@ -221,6 +251,15 @@ describe('ChatView', () => {
     expect(String(writeText.mock.calls.at(-1)?.[0])).toContain('一、问题背景')
     expect(String(writeText.mock.calls.at(-1)?.[0])).toContain('二、关键结论')
     expect(showToast).toHaveBeenCalledWith('会话复盘已复制')
+  })
+
+  it('renders lineage card for derived responses', async () => {
+    seedStore()
+    const wrapper = mount(ChatView)
+
+    expect(wrapper.text()).toContain('会话分支与继续生成')
+    expect(wrapper.text()).toContain('继续生成')
+    expect(wrapper.text()).toContain('源消息 #2 · 结果消息 #3')
   })
 
   it('saves session review into learning notes', async () => {
@@ -423,5 +462,20 @@ describe('ChatView', () => {
       knowledgeEnabled: false
     }))
     expect(setMessageSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('focuses diagnostics panel when opening a trace from message actions', async () => {
+    seedStore()
+    const scrollIntoView = vi.fn()
+    const wrapper = mount(ChatView)
+    vi.spyOn(document, 'querySelector').mockReturnValue({
+      scrollIntoView
+    } as unknown as Element)
+
+    await wrapper.get('.emit-open-trace').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('.chat-agent-diagnostics-stub').attributes('data-trace-id')).toBe('trace-001')
+    expect(scrollIntoView).toHaveBeenCalled()
   })
 })

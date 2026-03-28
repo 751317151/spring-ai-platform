@@ -1,6 +1,7 @@
 package com.huah.ai.platform.agent.tools;
 
 import com.huah.ai.platform.agent.config.ToolsProperties;
+import com.huah.ai.platform.common.exception.AiServiceException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -12,13 +13,27 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 天气查询工具集 — 接入和风天气 (QWeather) API
- * <p>
- * 两步调用：城市名 → GEO API 查 locationId → Weather API 查天气
+ * Weather tools backed by the QWeather API.
  */
 @Slf4j
 @Component
 public class WeatherTools {
+
+    private static final String FIELD_ERROR = "error";
+    private static final String RESPONSE_CODE_OK = "200";
+    private static final String FIELD_CITY = "city";
+    private static final String FIELD_DATE = "date";
+    private static final String FIELD_WEATHER = "weather";
+    private static final String FIELD_WIND = "wind";
+    private static final String UNIT_CELSIUS = " C";
+    private static final String UNIT_WIND_LEVEL = " level";
+    private static final String MESSAGE_API_KEY_MISSING =
+            "Weather service is unavailable. Configure QWEATHER_API_KEY first.";
+    private static final String MESSAGE_CURRENT_WEATHER_FAILED = "Failed to query current weather";
+    private static final String MESSAGE_FORECAST_FAILED = "Failed to query weather forecast";
+    private static final String MESSAGE_FORECAST_EMPTY = "No forecast data returned";
+    private static final String MESSAGE_CITY_LOOKUP_FAILED = "Failed to resolve city";
+    private static final String MESSAGE_CITY_NOT_FOUND = "City not found: ";
 
     private final RestClient weatherClient;
     private final RestClient geoClient;
@@ -34,13 +49,13 @@ public class WeatherTools {
                 .build();
     }
 
-    @Tool(description = "查询指定城市的当前天气，包括温度、湿度、风力、天气描述")
+    @Tool(description = "Query the current weather for a city, including temperature, humidity, wind, and conditions.")
     public Map<String, Object> queryWeather(
-            @ToolParam(description = "城市名称，如北京、上海、深圳") String city) {
+            @ToolParam(description = "City name, for example Beijing or Shanghai") String city) {
         log.info("[Tool] queryWeather: city={}", city);
         try {
-            if (config.getApiKey() == null || config.getApiKey().isBlank()) {
-                return Map.of("error", "天气服务未配置 API Key，请设置环境变量 QWEATHER_API_KEY");
+            if (!hasApiKey()) {
+                return Map.of(FIELD_ERROR, MESSAGE_API_KEY_MISSING);
             }
 
             String locationId = lookupCityId(city);
@@ -51,38 +66,38 @@ public class WeatherTools {
                     .retrieve()
                     .body(Map.class);
 
-            if (response == null || !"200".equals(String.valueOf(response.get("code")))) {
-                return Map.of("error", "天气查询失败，状态码: " + (response != null ? response.get("code") : "null"));
+            if (response == null || !RESPONSE_CODE_OK.equals(String.valueOf(response.get("code")))) {
+                return Map.of(FIELD_ERROR, MESSAGE_CURRENT_WEATHER_FAILED + ": " + resolveResponseCode(response));
             }
 
             @SuppressWarnings("unchecked")
             Map<String, Object> now = (Map<String, Object>) response.get("now");
             Map<String, Object> result = new HashMap<>();
-            result.put("city", city);
-            result.put("temperature", now.get("temp") + "°C");
-            result.put("feelsLike", now.get("feelsLike") + "°C");
+            result.put(FIELD_CITY, city);
+            result.put("temperature", now.get("temp") + UNIT_CELSIUS);
+            result.put("feelsLike", now.get("feelsLike") + UNIT_CELSIUS);
             result.put("humidity", now.get("humidity") + "%");
-            result.put("wind", now.get("windDir") + " " + now.get("windScale") + "级");
-            result.put("weather", String.valueOf(now.get("text")));
+            result.put(FIELD_WIND, now.get("windDir") + " " + now.get("windScale") + UNIT_WIND_LEVEL);
+            result.put(FIELD_WEATHER, String.valueOf(now.get("text")));
             result.put("updateTime", String.valueOf(now.get("obsTime")));
             return result;
-        } catch (Exception e) {
-            log.error("[Tool] queryWeather failed: city={}, error={}", city, e.getMessage());
-            return Map.of("error", "天气查询失败: " + e.getMessage());
+        } catch (Exception exception) {
+            log.error("[Tool] queryWeather failed: city={}, error={}", city, exception.getMessage());
+            return Map.of(FIELD_ERROR, MESSAGE_CURRENT_WEATHER_FAILED + ": " + exception.getMessage());
         }
     }
 
-    @Tool(description = "查询指定城市的多日天气预报")
+    @Tool(description = "Query a 3-day or 7-day weather forecast for a city.")
     public Object queryWeatherForecast(
-            @ToolParam(description = "城市名称") String city,
-            @ToolParam(description = "预报天数，支持 3 或 7") int days) {
+            @ToolParam(description = "City name") String city,
+            @ToolParam(description = "Forecast days, supports 3 or 7") int days) {
         log.info("[Tool] queryWeatherForecast: city={}, days={}", city, days);
         try {
-            if (config.getApiKey() == null || config.getApiKey().isBlank()) {
-                return List.of(Map.of("error", "天气服务未配置 API Key，请设置环境变量 QWEATHER_API_KEY"));
+            if (!hasApiKey()) {
+                return List.of(Map.of(FIELD_ERROR, MESSAGE_API_KEY_MISSING));
             }
 
-            int forecastDays = (days <= 3) ? 3 : 7;
+            int forecastDays = days <= 3 ? 3 : 7;
             String locationId = lookupCityId(city);
 
             @SuppressWarnings("unchecked")
@@ -91,37 +106,34 @@ public class WeatherTools {
                     .retrieve()
                     .body(Map.class);
 
-            if (response == null || !"200".equals(String.valueOf(response.get("code")))) {
-                return List.of(Map.of("error", "天气预报查询失败"));
+            if (response == null || !RESPONSE_CODE_OK.equals(String.valueOf(response.get("code")))) {
+                return List.of(Map.of(FIELD_ERROR, MESSAGE_FORECAST_FAILED + ": " + resolveResponseCode(response)));
             }
 
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> daily = (List<Map<String, Object>>) response.get("daily");
             if (daily == null) {
-                return List.of(Map.of("error", "无预报数据"));
+                return List.of(Map.of(FIELD_ERROR, MESSAGE_FORECAST_EMPTY));
             }
 
             return daily.stream()
                     .limit(days)
-                    .map(d -> {
-                        Map<String, Object> item = new HashMap<>();
-                        item.put("date", String.valueOf(d.get("fxDate")));
-                        item.put("weather", String.valueOf(d.get("textDay")));
-                        item.put("high", d.get("tempMax") + "°C");
-                        item.put("low", d.get("tempMin") + "°C");
-                        item.put("wind", d.get("windDirDay") + " " + d.get("windScaleDay") + "级");
-                        return item;
+                    .map(item -> {
+                        Map<String, Object> result = new HashMap<>();
+                        result.put(FIELD_DATE, String.valueOf(item.get("fxDate")));
+                        result.put(FIELD_WEATHER, String.valueOf(item.get("textDay")));
+                        result.put("high", item.get("tempMax") + UNIT_CELSIUS);
+                        result.put("low", item.get("tempMin") + UNIT_CELSIUS);
+                        result.put(FIELD_WIND, item.get("windDirDay") + " " + item.get("windScaleDay") + UNIT_WIND_LEVEL);
+                        return result;
                     })
                     .toList();
-        } catch (Exception e) {
-            log.error("[Tool] queryWeatherForecast failed: city={}, error={}", city, e.getMessage());
-            return List.of(Map.of("error", "天气预报查询失败: " + e.getMessage()));
+        } catch (Exception exception) {
+            log.error("[Tool] queryWeatherForecast failed: city={}, error={}", city, exception.getMessage());
+            return List.of(Map.of(FIELD_ERROR, MESSAGE_FORECAST_FAILED + ": " + exception.getMessage()));
         }
     }
 
-    /**
-     * 城市名称 → locationId（和风天气 GEO API）
-     */
     @SuppressWarnings("unchecked")
     private String lookupCityId(String city) {
         Map<String, Object> response = geoClient.get()
@@ -129,15 +141,23 @@ public class WeatherTools {
                 .retrieve()
                 .body(Map.class);
 
-        if (response == null || !"200".equals(String.valueOf(response.get("code")))) {
-            throw new RuntimeException("城市查询失败: " + (response != null ? response.get("code") : "null"));
+        if (response == null || !RESPONSE_CODE_OK.equals(String.valueOf(response.get("code")))) {
+            throw new AiServiceException(MESSAGE_CITY_LOOKUP_FAILED + ": " + resolveResponseCode(response));
         }
 
         List<Map<String, Object>> locations = (List<Map<String, Object>>) response.get("location");
         if (locations == null || locations.isEmpty()) {
-            throw new RuntimeException("未找到城市: " + city);
+            throw new AiServiceException(MESSAGE_CITY_NOT_FOUND + city);
         }
 
-        return locations.get(0).get("id").toString();
+        return String.valueOf(locations.get(0).get("id"));
+    }
+
+    private boolean hasApiKey() {
+        return config.getApiKey() != null && !config.getApiKey().isBlank();
+    }
+
+    private String resolveResponseCode(Map<String, Object> response) {
+        return response == null ? "null" : String.valueOf(response.get("code"));
     }
 }

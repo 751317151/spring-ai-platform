@@ -73,7 +73,9 @@ client.interceptors.response.use(
     if (data && typeof data.code === 'number') {
       if (data.code !== 200) {
         const error = new Error(data.message || '请求失败')
-        ;(error as Error & { responseCode?: number }).responseCode = data.code
+        ;(error as Error & { responseCode?: number; responseError?: unknown; responseTraceId?: string }).responseCode = data.code
+        ;(error as Error & { responseCode?: number; responseError?: unknown; responseTraceId?: string }).responseError = data.error
+        ;(error as Error & { responseCode?: number; responseError?: unknown; responseTraceId?: string }).responseTraceId = data.traceId
         return Promise.reject(error)
       }
       return data.data

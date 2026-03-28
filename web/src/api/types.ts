@@ -2,6 +2,7 @@ export interface Result<T> {
   code: number
   message: string
   data: T
+  error?: unknown
   timestamp: number
   traceId?: string
 }
@@ -75,6 +76,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   responseId?: string
+  traceId?: string
   feedback?: 'up' | 'down' | null
   sessionConfigSnapshot?: SessionConfig | null
   derivedFrom?: MessageDerivedFrom | null
@@ -108,6 +110,14 @@ export interface LearningNoteRecord {
   relatedMessageIndex?: number | null
   tags?: string[]
   createdAt: number
+  updatedAt: number
+}
+
+export interface FollowUpTemplateRecord {
+  id: string
+  name: string
+  content: string
+  sourceCount: number
   updatedAt: number
 }
 
@@ -154,6 +164,7 @@ export interface SSEChunk {
   chunk: string
   done: boolean
   responseId?: string
+  traceId?: string
   sources?: SourceDocument[]
 }
 
@@ -495,11 +506,418 @@ export interface McpServerInfo {
   enabled: boolean
   clientEnabled: boolean
   source: string
+  entryFile?: string
+  entryFileExists?: boolean
+  commandAvailable?: boolean
+  diagnosticStatus?: 'ready' | 'issue' | 'disabled' | string
+  issueReason?: string
+  commandLinePreview?: string
+  runtimeHint?: string
+  authorized?: boolean
+  authorizedAgentType?: string
+  authorizedTools?: string[]
+  accessReasonCode?: string
+  accessReasonMessage?: string
+  accessDetail?: string
 }
 
 export interface McpServerListResponse {
   clientEnabled: boolean
   source: string
+  agentType?: string
   count: number
+  authorizedCount?: number
+  issueCount?: number
   servers: McpServerInfo[]
+}
+
+export interface ToolSecurityOverviewResponse {
+  securityEnabled: boolean
+  agentType: string
+  allowedTools: string[]
+  allowedConnectors: string[]
+  enabledConnectors: string[]
+}
+
+export interface AgentAccessRuleItem {
+  code: string
+  name: string
+  category: string
+  enabled: boolean
+  authorized: boolean
+  status: string
+  reason?: string
+  reasonCode?: string
+  reasonMessage?: string
+  resource?: string
+  detail?: string
+}
+
+export interface AgentAccessOverviewResponse {
+  agentType: string
+  securityEnabled: boolean
+  runtimePolicySummary?: AgentRuntimePolicySummary
+  tools: AgentAccessRuleItem[]
+  connectors: AgentAccessRuleItem[]
+  mcpServers: AgentAccessRuleItem[]
+  summary: string
+}
+
+export interface AgentWorkbenchFailureItem {
+  traceId?: string
+  sessionId?: string
+  userId?: string
+  summary?: string
+  errorMessage?: string
+  latencyMs?: number
+  createdAt?: string
+}
+
+export interface AgentWorkbenchTrendPoint {
+  label: string
+  totalCalls: number
+  failureCalls: number
+  toolCalls: number
+  avgLatencyMs: number
+}
+
+export interface AgentWorkbenchToolRankItem {
+  toolName: string
+  callCount: number
+  failureCount: number
+  avgLatencyMs: number
+  latestTraceId?: string
+}
+
+export interface AgentWorkbenchErrorTypeItem {
+  type: string
+  label: string
+  count: number
+}
+
+export interface AgentWorkbenchHealthSummary {
+  accessible: boolean
+  failureSpike: boolean
+  toolFailureSpike: boolean
+  warning: boolean
+  summary: string
+}
+
+export interface AgentRuntimePolicySummary {
+  securityEnabled: boolean
+  connectorResourceIsolationEnabled: boolean
+  mcpToolIsolationEnabled: boolean
+  dataScopeIsolationEnabled: boolean
+  dataSourceIsolationEnabled?: boolean
+  crossSchemaAccessControlled?: boolean
+  concurrencyIsolationEnabled?: boolean
+  wildcardToolAccess: boolean
+  wildcardConnectorAccess: boolean
+  wildcardMcpAccess: boolean
+  wildcardDataAccess: boolean
+  wildcardDataSourceAccess?: boolean
+  wildcardCrossSchemaAccess?: boolean
+  currentActiveRequests?: number
+  maxConcurrency?: number
+  dailyTokenLimit?: number
+  requestTimeoutMs?: number
+  streamTimeoutMs?: number
+  restrictedResourceCount: number
+  riskCount: number
+  riskLevel: 'low' | 'medium' | 'high' | string
+  summary: string
+  highlights?: string[]
+}
+
+export interface AgentWorkbenchChangeItem {
+  type: string
+  label: string
+  direction: 'up' | 'down' | 'flat' | string
+  severity: 'low' | 'medium' | 'high' | string
+  summary: string
+}
+
+export interface AgentWorkbenchCompareInsight {
+  type: string
+  severity: 'low' | 'medium' | 'high' | string
+  winnerAgentType: string
+  loserAgentType: string
+  metricKey: string
+  title: string
+  summary: string
+  leftEvidence: string
+  rightEvidence: string
+  whyItMatters: string
+  suggestedAction: string
+}
+
+export interface AgentWorkbenchCompareMetric {
+  key: string
+  label: string
+  leftValue: string
+  rightValue: string
+  delta: string
+  trend: string
+  winnerAgentType: string
+  summary: string
+}
+
+export interface AgentLogLifecycleBucket {
+  type: string
+  archiveAfterDays: number
+  deleteAfterDays: number
+  activeCount: number
+  archiveCandidateCount: number
+  deleteCandidateCount: number
+}
+
+export interface AgentLogArchiveArtifact {
+  type: string
+  path: string
+  recordCount: number
+}
+
+export interface AgentLogArchiveSample {
+  type: string
+  id?: string
+  traceId?: string
+  sessionId?: string
+  summary?: string
+  createdAt?: string
+}
+
+export interface AgentLogArchiveDetailResponse {
+  agentType: string
+  enabled: boolean
+  manifestDir?: string
+  bundleDir?: string
+  manifestPath?: string
+  generatedAt?: string
+  dryRun?: boolean
+  exportedRecordCount?: number
+  coldDataCount?: number
+  sampleLimit?: number
+  exportBatchSize?: number
+  operationHints?: string[]
+  artifacts: AgentLogArchiveArtifact[]
+  samples: AgentLogArchiveSample[]
+}
+
+export interface AgentLogArchivePreviewItem {
+  lineNumber: number
+  content: string
+}
+
+export interface AgentLogArchivePreviewResponse {
+  agentType: string
+  artifactType: string
+  bundleDir?: string
+  artifactPath?: string
+  previewLimit: number
+  items: AgentLogArchivePreviewItem[]
+}
+
+export interface AgentLogLifecycleSummaryResponse {
+  agentType: string
+  totalActiveCount: number
+  totalArchiveCandidateCount: number
+  totalDeleteCandidateCount: number
+  totalColdDataCount?: number
+  automationEnabled: boolean
+  automationDryRun: boolean
+  automationIntervalMs: number
+  archiveManifestDir?: string
+  lastArchiveBundleDir?: string
+  lastArchiveManifestPath?: string
+  lastArchiveManifestAt?: string
+  lastArchiveExportedRecordCount?: number
+  buckets: AgentLogLifecycleBucket[]
+  summary: string
+}
+
+export interface AgentLogCleanupRequest {
+  dryRun?: boolean
+}
+
+export interface AgentLogCleanupResponse {
+  agentType: string
+  dryRun: boolean
+  deletedAuditLogs: number
+  deletedToolAuditLogs: number
+  deletedTraceSteps: number
+  deletedTraces: number
+  summary: string
+}
+
+export interface AgentWorkbenchSummaryResponse {
+  agentType: string
+  windowLabel: string
+  totalCalls: number
+  failureCalls: number
+  successRate: number
+  avgLatencyMs: number
+  toolCallCount: number
+  toolFailureCount: number
+  avgToolLatencyMs: number
+  slowestToolName?: string
+  slowestToolLatencyMs: number
+  recentTraceCount: number
+  latestTraceId?: string
+  latestErrorMessage?: string
+  healthSummary?: AgentWorkbenchHealthSummary
+  runtimePolicySummary?: AgentRuntimePolicySummary
+  last24hTrend?: AgentWorkbenchTrendPoint[]
+  last7dTrend?: AgentWorkbenchTrendPoint[]
+  last4wTrend?: AgentWorkbenchTrendPoint[]
+  toolRanking?: AgentWorkbenchToolRankItem[]
+  errorTypes?: AgentWorkbenchErrorTypeItem[]
+  recentChanges?: AgentWorkbenchChangeItem[]
+  weeklyDigest?: string
+  recentFailures: AgentWorkbenchFailureItem[]
+}
+
+export interface AgentWorkbenchCompareResponse {
+  left: AgentWorkbenchSummaryResponse
+  right: AgentWorkbenchSummaryResponse
+  summary: string
+  metrics: AgentWorkbenchCompareMetric[]
+  insights: AgentWorkbenchCompareInsight[]
+  leftDetail?: AgentWorkbenchCompareAgentDetail
+  rightDetail?: AgentWorkbenchCompareAgentDetail
+  changeComparison?: AgentWorkbenchCompareChangeItem[]
+}
+
+export interface AgentWorkbenchCompareAgentDetail {
+  agentType: string
+  summary?: string
+  healthSummary?: string
+  policySummary?: string
+  totalCalls?: number
+  failureRateLabel?: string
+  riskLevel?: string
+  highlights?: string[]
+  topErrorTypes?: string[]
+  recentChanges?: AgentWorkbenchChangeItem[]
+  recentFailures?: AgentWorkbenchFailureItem[]
+}
+
+export interface AgentWorkbenchCompareChangeItem {
+  type: string
+  label: string
+  leftSummary: string
+  rightSummary: string
+  direction: string
+  severity: 'low' | 'medium' | 'high' | string
+  suggestedAction: string
+}
+
+export interface AgentArchivedTraceLookupResponse {
+  agentType: string
+  found: boolean
+  artifactType?: string
+  artifactPath?: string
+  traceId?: string
+  archivedAt?: string
+  summary?: string
+  replayable?: boolean
+  trace?: MultiAgentTraceResponse
+}
+
+export interface AgentMetadataItem {
+  agentType: string
+  name: string
+  icon: string
+  color: string
+  description: string
+  defaultModel?: string
+  defaultTemperature?: number
+  defaultMaxContextMessages?: number
+  supportsKnowledge: boolean
+  supportsTools: boolean
+  supportsMultiAgentMode: boolean
+  supportsMultiStepRecovery: boolean
+  registered: boolean
+}
+
+export interface AgentMetadataResponse {
+  count: number
+  agents: AgentMetadataItem[]
+}
+
+export interface AgentToolAuditLog {
+  id: string
+  userId?: string
+  sessionId?: string
+  agentType?: string
+  toolName?: string
+  toolClass?: string
+  inputSummary?: string
+  outputSummary?: string
+  success?: boolean
+  errorMessage?: string
+  reasonCode?: string
+  deniedResource?: string
+  latencyMs?: number
+  traceId?: string
+  createdAt?: string
+}
+
+export interface MultiAgentTraceStepResponse {
+  stepOrder: number
+  stage: string
+  agentName: string
+  inputSummary?: string
+  outputSummary?: string
+  promptTokens?: number
+  completionTokens?: number
+  latencyMs?: number
+  success: boolean
+  errorMessage?: string
+  recoverable?: boolean
+  skipped?: boolean
+  recoveryAction?: string
+  sourceTraceId?: string
+  sourceStepOrder?: number
+  createdAt?: string
+}
+
+export interface MultiAgentTraceResponse {
+  traceId: string
+  sessionId: string
+  userId: string
+  agentType: string
+  requestSummary?: string
+  finalSummary?: string
+  status: string
+  totalPromptTokens?: number
+  totalCompletionTokens?: number
+  totalLatencyMs?: number
+  stepCount?: number
+  errorMessage?: string
+  parentTraceId?: string
+  recoverySourceTraceId?: string
+  recoverySourceStepOrder?: number
+  recoveryAction?: string
+  createdAt?: string
+  updatedAt?: string
+  steps?: MultiAgentTraceStepResponse[] | null
+}
+
+export interface MultiAgentTraceRecoverRequest {
+  stepOrder?: number | null
+  action?: 'retry' | 'replay' | 'skip' | string
+}
+
+export interface AgentDiagnosticsResponse {
+  agentType: string
+  accessible: boolean
+  toolSecurityEnabled: boolean
+  allowedTools: string[]
+  allowedConnectors: string[]
+  allowedMcpServers: string[]
+  enabledConnectors: string[]
+  recentMultiTraceCount: number
+  availableMcpServerCount: number
+  mcpIssueCount: number
+  summary: string
 }

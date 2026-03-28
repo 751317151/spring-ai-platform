@@ -47,6 +47,7 @@
         :role="msg.role"
         :content="msg.content"
         :response-id="msg.responseId"
+        :trace-id="msg.traceId"
         :feedback="msg.feedback"
         :session-config-snapshot="msg.sessionConfigSnapshot"
         :agent-type="chatStore.currentAgent"
@@ -54,11 +55,13 @@
         :session-summary="chatStore.sessionList.find((item) => item.sessionId === chatStore.currentSessionId)?.summary"
         :message-index="idx"
         :highlighted="highlightedMessageIndex === idx"
+        :derived-from="msg.derivedFrom"
         @feedback="handleFeedback(idx, $event)"
         @insert-prompt="$emit('insert-prompt', $event)"
         @branch-session="$emit('branch-session', idx)"
         @continue-response="$emit('continue-response', idx)"
         @regenerate-response="$emit('regenerate-response', idx)"
+        @open-trace="$emit('open-trace', $event)"
       />
 
       <div v-if="followUpSuggestions.length || recentPrompts.length" class="chat-followup-panel">
@@ -109,6 +112,7 @@ const emit = defineEmits<{
   (e: 'branch-session', messageIndex: number): void
   (e: 'continue-response', messageIndex: number): void
   (e: 'regenerate-response', messageIndex: number): void
+  (e: 'open-trace', traceId: string): void
 }>()
 
 const props = withDefaults(defineProps<{

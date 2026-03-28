@@ -456,11 +456,12 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import * as agentApi from '@/api/agent'
 import * as authApi from '@/api/auth'
-import type { FavoriteMessageRecord, LearningNoteRecord, SessionSearchResult } from '@/api/types'
+import * as learningApi from '@/api/learning'
+import type { FavoriteMessageRecord, FollowUpTemplateRecord, LearningNoteRecord, SessionSearchResult } from '@/api/types'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { useToast } from '@/composables/useToast'
 import { AGENT_CONFIG } from '@/utils/constants'
-import { listFavoriteMessages, listLearningNotes, normalizeTags, removeFavoriteMessage, removeLearningNote, saveLearningNote } from '@/utils/learning'
+import { hydrateLearningCenterCacheFromServer, listFavoriteMessages, listLearningNotes, normalizeTags, removeFavoriteMessage, removeLearningNote, saveLearningNote } from '@/utils/learning'
 
 type RangeValue = 'all' | '7d' | '30d' | '90d'
 
@@ -489,14 +490,6 @@ interface FollowUpDraftItem {
     session: string
     message?: string
   }
-}
-
-interface FollowUpTemplateRecord {
-  id: string
-  name: string
-  content: string
-  sourceCount: number
-  updatedAt: number
 }
 
 const router = useRouter()
@@ -731,6 +724,13 @@ function reloadLearningData() {
 }
 
 function readFollowUpTemplates() {
+  if (learningApi.isLearningCenterServerEnabled()) {
+    return followUpTemplates.value
+  }
+  return readFollowUpTemplatesFromLocal()
+}
+
+function readFollowUpTemplatesFromLocal() {
   try {
     const raw = localStorage.getItem(FOLLOW_UP_TEMPLATES_KEY)
     return raw ? JSON.parse(raw) as FollowUpTemplateRecord[] : []
@@ -741,6 +741,31 @@ function readFollowUpTemplates() {
 
 function persistFollowUpTemplates(value: FollowUpTemplateRecord[]) {
   localStorage.setItem(FOLLOW_UP_TEMPLATES_KEY, JSON.stringify(value.slice(0, 20)))
+}
+
+async function syncTemplatesFromServer() {
+  const localTemplates = readFollowUpTemplatesFromLocal()
+  if (!learningApi.isLearningCenterServerEnabled()) {
+    followUpTemplates.value = localTemplates
+    return
+  }
+  try {
+    const templates = await learningApi.listFollowUpTemplates()
+    const remoteIds = new Set(templates.map((item) => item.id))
+    const merged = [
+      ...localTemplates.filter((item) => !remoteIds.has(item.id)),
+      ...templates
+    ]
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .slice(0, 20)
+    followUpTemplates.value = merged
+    persistFollowUpTemplates(merged)
+    await Promise.all(localTemplates
+      .filter((item) => !remoteIds.has(item.id))
+      .map((item) => learningApi.saveFollowUpTemplateApi(item).catch(() => {})))
+  } catch {
+    followUpTemplates.value = localTemplates
+  }
 }
 
 function matchRange(timestamp: number, range: RangeValue) {
@@ -1167,8 +1192,9 @@ function saveFollowUpTemplate() {
   }
 
   const now = Date.now()
+  const existing = followUpTemplates.value.find((item) => item.name === name)
   const record: FollowUpTemplateRecord = {
-    id: `template-${now}`,
+    id: existing?.id || `template-${now}`,
     name,
     content,
     sourceCount: followUpDraftItems.value.length,
@@ -1177,7 +1203,10 @@ function saveFollowUpTemplate() {
   const next = [record, ...followUpTemplates.value.filter((item) => item.name !== name)].slice(0, 20)
   followUpTemplates.value = next
   persistFollowUpTemplates(next)
-  showToast('追问模板已保存')
+  if (learningApi.isLearningCenterServerEnabled()) {
+    void learningApi.saveFollowUpTemplateApi(record).catch(() => {})
+  }
+  showToast('???????')
 }
 
 function applyFollowUpTemplate(id: string) {
@@ -1188,13 +1217,16 @@ function applyFollowUpTemplate(id: string) {
   followUpDraftText.value = target.content
   followUpTemplateName.value = target.name
   followUpDraftDirty.value = target.content !== lastAutoFollowUpDraftPrompt.value
-  showToast('已套用追问模板')
+  showToast('???????')
 }
 
 function removeFollowUpTemplate(id: string) {
   followUpTemplates.value = followUpTemplates.value.filter((item) => item.id !== id)
   persistFollowUpTemplates(followUpTemplates.value)
-  showToast('追问模板已删除')
+  if (learningApi.isLearningCenterServerEnabled()) {
+    void learningApi.deleteFollowUpTemplateApi(id).catch(() => {})
+  }
+  showToast('???????')
 }
 
 function legacySendFollowUpDraftToChat() {
@@ -1498,8 +1530,10 @@ function saveSearchResultAsNote(item: SessionSearchResult) {
   showToast('已把搜索结果带入笔记编辑区')
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await hydrateLearningCenterCacheFromServer()
   reloadLearningData()
+  await syncTemplatesFromServer()
 })
 </script>
 

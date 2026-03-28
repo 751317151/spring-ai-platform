@@ -1,7 +1,8 @@
 package com.huah.ai.platform.agent.audit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.huah.ai.platform.agent.config.ToolsProperties;
+import com.huah.ai.platform.agent.security.ToolAccessDeniedException;
+import com.huah.ai.platform.agent.security.ToolSecurityService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -28,53 +29,44 @@ public class ToolAuditAspect {
 
     private final AiToolAuditLogMapper toolAuditLogMapper;
     private final ObjectMapper objectMapper;
-    private final ToolsProperties toolsProperties;
+    private final ToolSecurityService toolSecurityService;
 
     @Around("@annotation(tool)")
     public Object auditTool(ProceedingJoinPoint pjp, Tool tool) throws Throwable {
         long start = System.currentTimeMillis();
         boolean success = true;
         String errorMessage = null;
+        String reasonCode = null;
+        String deniedResource = null;
         Object result = null;
         Method method = ((MethodSignature) pjp.getSignature()).getMethod();
         String toolName = resolveToolName(method, tool);
 
         try {
-            validateToolAccess(toolName);
+            toolSecurityService.validateToolAccess(toolName, ToolExecutionContext.current());
             result = pjp.proceed();
             return result;
         } catch (Throwable ex) {
             success = false;
             errorMessage = ex.getMessage();
+            if (ex instanceof ToolAccessDeniedException deniedException) {
+                reasonCode = deniedException.getReasonCode();
+                deniedResource = deniedException.getResource();
+            }
             throw ex;
         } finally {
-            persistAuditLog(pjp, toolName, success, errorMessage, result, System.currentTimeMillis() - start);
+            persistAuditLog(pjp, toolName, success, errorMessage, reasonCode, deniedResource, result, System.currentTimeMillis() - start);
         }
     }
 
-    private void validateToolAccess(String toolName) {
-        ToolExecutionContext.Context context = ToolExecutionContext.current();
-        if (context == null || toolsProperties == null || toolsProperties.getSecurity() == null) {
-            return;
-        }
-        ToolsProperties.SecurityConfig security = toolsProperties.getSecurity();
-        if (!security.isEnabled()) {
-            return;
-        }
-        var allowlist = security.getAgentToolAllowlist();
-        if (allowlist == null || allowlist.isEmpty()) {
-            return;
-        }
-        var allowed = allowlist.get(context.getAgentType());
-        if (allowed == null || allowed.isEmpty()) {
-            return;
-        }
-        if (!allowed.contains(toolName)) {
-            throw new IllegalStateException("当前助手无权调用工具: " + toolName);
-        }
-    }
-
-    private void persistAuditLog(ProceedingJoinPoint pjp, String toolName, boolean success, String errorMessage, Object result, long latencyMs) {
+    private void persistAuditLog(ProceedingJoinPoint pjp,
+                                 String toolName,
+                                 boolean success,
+                                 String errorMessage,
+                                 String reasonCode,
+                                 String deniedResource,
+                                 Object result,
+                                 long latencyMs) {
         ToolExecutionContext.Context context = ToolExecutionContext.current();
         Method method = ((MethodSignature) pjp.getSignature()).getMethod();
 
@@ -90,6 +82,8 @@ public class ToolAuditAspect {
                     .outputSummary(summarizeValue(result))
                     .success(success)
                     .errorMessage(truncate(errorMessage))
+                    .reasonCode(truncate(reasonCode))
+                    .deniedResource(truncate(deniedResource))
                     .latencyMs(latencyMs)
                     .traceId(context != null ? context.getTraceId() : null)
                     .createdAt(LocalDateTime.now())

@@ -1,11 +1,8 @@
 {
   "mcpServers": {
-    "sequential-thinking": {
-      "command": "npx.cmd",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-sequential-thinking"
-      ]
-    }
+      "gemini": {
+          "command": "node",
+          "args": ["F:\\Java\\gemini-skill\\src\\mcp-server.js"]
+      }
   }
 }

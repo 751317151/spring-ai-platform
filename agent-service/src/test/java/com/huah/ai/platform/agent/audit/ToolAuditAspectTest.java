@@ -2,6 +2,7 @@ package com.huah.ai.platform.agent.audit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.huah.ai.platform.agent.config.ToolsProperties;
+import com.huah.ai.platform.agent.security.ToolSecurityService;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.junit.jupiter.api.AfterEach;
@@ -23,7 +24,7 @@ class ToolAuditAspectTest {
 
     private final AiToolAuditLogMapper mapper = mock(AiToolAuditLogMapper.class);
     private final ToolsProperties toolsProperties = new ToolsProperties();
-    private final ToolAuditAspect aspect = new ToolAuditAspect(mapper, new ObjectMapper(), toolsProperties);
+    private final ToolAuditAspect aspect = new ToolAuditAspect(mapper, new ObjectMapper(), new ToolSecurityService(toolsProperties));
 
     @AfterEach
     void tearDown() {

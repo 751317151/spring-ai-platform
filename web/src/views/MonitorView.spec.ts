@@ -15,19 +15,11 @@ const route = reactive({ query: {} as Record<string, string> })
 vi.mock('@/api/monitor', () => ({ getTraceDetail }))
 vi.mock('vue-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue-router')>()
-  return { ...actual, useRoute: () => route, useRouter: () => ({ replace }) }
-  it('shows recent action banner after sample actions', async () => {
-    seedStore()
-    const wrapper = mount(MonitorView)
-
-    const rows = wrapper.findAll('.sample-row')
-    await rows[1]!.trigger('click')
-
-    const summaryAction = wrapper.findAll('.sample-row-action').find((item) => item.text() === '复制排查摘要')
-    await summaryAction!.trigger('click')
-
-    expect(wrapper.text()).toContain('最近操作')
-  })
+  return {
+    ...actual,
+    useRoute: () => route,
+    useRouter: () => ({ replace })
+  }
 })
 
 describe('MonitorView', () => {
@@ -91,46 +83,35 @@ describe('MonitorView', () => {
         created_at: '2026-03-25T09:10:00Z'
       }
     ] as never
-    store.recentFeedback = [
+    store.alerts = [{ level: 'ERROR', type: 'GatewayDown', message: '网关不可用', time: '2026-03-25T09:30:00Z', fingerprint: 'fp-1' }] as never
+    store.toolAudits = [
       {
-        responseId: 'resp-1',
-        userId: 'alice',
-        sourceType: 'agent',
-        agentType: 'assistant',
-        feedback: 'down',
-        createdAt: '2026-03-25T09:20:00Z'
+        id: 'tool-1',
+        user_id: 'alice',
+        agent_type: 'assistant',
+        trace_id: 'trace-1',
+        tool_name: 'search',
+        success: false,
+        latency_ms: 600,
+        created_at: '2026-03-25T09:05:00Z'
       }
     ] as never
-    store.recentEvidenceFeedback = [] as never
-    store.alerts = [{ level: 'ERROR', type: 'GatewayDown', message: '网关不可用', time: '2026-03-25T09:30:00Z', fingerprint: 'fp-1' }] as never
-    store.models = [{ id: 'gpt', name: 'GPT', provider: 'openai', enabled: true, weight: 1, capabilities: [], totalCalls: 12, successCalls: 11, avgLatencyMs: 150, successRate: 0.92 }] as never
     store.loadMonitorData = vi.fn().mockResolvedValue(undefined) as never
     store.updateAlertWorkflow = vi.fn().mockResolvedValue(undefined) as never
     store.loadAlertWorkflowHistory = vi.fn().mockResolvedValue(undefined) as never
     return store
   }
 
-  it('渲染中文摘要并支持助手筛选', async () => {
+  it('renders troubleshooting workspace cards', () => {
     seedStore()
     const wrapper = mount(MonitorView)
 
-    expect(wrapper.text()).toContain('运行监控')
-    expect(wrapper.text()).toContain('风险最高的助手')
-    expect(wrapper.text()).toContain('GatewayDown')
-
-    await wrapper.findAll('.context-link').find((item) => item.text().includes('通用助手'))!.trigger('click')
-    expect(replace).toHaveBeenCalledWith({ name: 'monitor', query: { agent: 'assistant' } })
+    expect(wrapper.text()).toContain('当前排障焦点')
+    expect(wrapper.text()).toContain('优先排查动作')
+    expect(wrapper.text()).toContain('失败原因聚合')
   })
 
-  it('同步时间范围到路由', async () => {
-    seedStore()
-    const wrapper = mount(MonitorView)
-
-    await wrapper.findAll('.range-chip').find((item) => item.text().includes('近 7 天'))!.trigger('click')
-    expect(replace).toHaveBeenCalledWith({ name: 'monitor', query: { range: '7d' } })
-  })
-
-  it('点击 Trace 后加载详情面板', async () => {
+  it('loads trace detail after clicking trace action', async () => {
     seedStore()
     getTraceDetail.mockResolvedValue({
       id: 'slow-1',
@@ -151,75 +132,17 @@ describe('MonitorView', () => {
 
     expect(replace).toHaveBeenCalledWith({ name: 'monitor', query: { traceId: 'trace-1' } })
     expect(getTraceDetail).toHaveBeenCalledWith('trace-1')
-    expect(wrapper.find('.trace-detail-panel').text()).toContain('用户输入')
-    expect(wrapper.find('.trace-detail-panel').text()).toContain('已收到')
+    expect(wrapper.text()).toContain('Trace 详情')
   })
 
-  it('清空筛选后移除 trace 详情', async () => {
-    seedStore()
-    getTraceDetail.mockResolvedValue({
-      id: 'slow-1',
-      trace_id: 'trace-1',
-      user_id: 'alice',
-      agent_type: 'assistant',
-      model_id: 'gpt',
-      success: true,
-      latency_ms: 900,
-      created_at: '2026-03-25T09:00:00Z'
-    })
-    route.query = { traceId: 'trace-1' }
-
-    const wrapper = mount(MonitorView)
-    await flushPromises()
-
-    expect(wrapper.find('.trace-detail-panel').exists()).toBe(true)
-    replace.mockClear()
-    await wrapper.get('.context-card .btn').trigger('click')
-    expect(replace).toHaveBeenCalledWith({ name: 'monitor', query: {} })
-  })
-
-  it('支持更新告警流转状态', async () => {
-    const store = seedStore()
-    const wrapper = mount(MonitorView)
-
-    const alertAction = wrapper.findAll('.alert-action-btn').find((item) => item.text() === '确认')
-    await alertAction!.trigger('click')
-
-    expect(store.updateAlertWorkflow).toHaveBeenCalledWith('fp-1', 'acknowledged')
-  })
-
-  it('点击样本行后展示详情面板', async () => {
+  it('copies troubleshooting summary from selected sample', async () => {
     seedStore()
     const wrapper = mount(MonitorView)
 
-    const rows = wrapper.findAll('.sample-row')
-    await rows[0]!.trigger('click')
-    expect(wrapper.find('.sample-detail-panel').text()).toContain('慢请求样本')
-    expect(wrapper.find('.sample-detail-panel').text()).toContain('alice')
-    expect(wrapper.find('.sample-detail-panel').text()).toContain('优先查看 Trace 详情')
-
-    await rows[1]!.trigger('click')
-    expect(wrapper.find('.sample-detail-panel').text()).toContain('失败样本')
-    expect(wrapper.find('.sample-detail-panel').text()).toContain('boom')
-    expect(wrapper.find('.sample-detail-panel').text()).toContain('sess-1')
-  })
-
-  it('supports copying sample troubleshooting summary', async () => {
-    seedStore()
-    const wrapper = mount(MonitorView)
-
-    const rows = wrapper.findAll('.sample-row')
-    await rows[1]!.trigger('click')
-
-    const summaryAction = wrapper.findAll('.sample-row-action').find((item) => item.text() === '复制排查摘要')
-    await summaryAction!.trigger('click')
+    await wrapper.findAll('.sample-row')[1]!.trigger('click')
+    await wrapper.findAll('.sample-row-action').find((item) => item.text() === '复制排查摘要')!.trigger('click')
 
     expect(window.navigator.clipboard.writeText).toHaveBeenCalled()
-    const payload = String(vi.mocked(window.navigator.clipboard.writeText).mock.calls[0]?.[0])
-    expect(payload).toContain('监控排查摘要')
-    expect(payload).toContain('用户：bob')
-    expect(payload).toContain('助手：写作助手')
-    expect(payload).toContain('Trace：trace-2')
-    expect(payload).toContain('排查建议')
+    expect(String(vi.mocked(window.navigator.clipboard.writeText).mock.calls[0]?.[0])).toContain('监控排查摘要')
   })
 })

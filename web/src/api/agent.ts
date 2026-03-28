@@ -1,5 +1,25 @@
 import client, { buildHeaders } from './client'
-import type { AgentType, ChatMessage, McpServerListResponse, SessionConfig, SessionInfo } from './types'
+import type {
+  AgentAccessOverviewResponse,
+  AgentLogArchiveDetailResponse,
+  AgentLogArchivePreviewResponse,
+  AgentDiagnosticsResponse,
+  AgentArchivedTraceLookupResponse,
+  AgentLogCleanupRequest,
+  AgentLogCleanupResponse,
+  AgentLogLifecycleSummaryResponse,
+  AgentMetadataResponse,
+  AgentToolAuditLog,
+  AgentType,
+  AgentWorkbenchSummaryResponse,
+  ChatMessage,
+  McpServerListResponse,
+  MultiAgentTraceRecoverRequest,
+  MultiAgentTraceResponse,
+  SessionConfig,
+  SessionInfo,
+  ToolSecurityOverviewResponse
+} from './types'
 
 const BASE = '/api/v1/agent'
 
@@ -82,4 +102,110 @@ export function submitFeedback(responseId: string, feedback: 'up' | 'down', comm
 
 export function getMcpServers(): Promise<McpServerListResponse> {
   return client.get(`${BASE}/mcp/servers`)
+}
+
+export function getAgentMetadata(): Promise<AgentMetadataResponse> {
+  return client.get(`${BASE}/metadata`)
+}
+
+export function getMcpServersByAgent(agentType: AgentType): Promise<McpServerListResponse> {
+  return client.get(`${BASE}/mcp/servers/${agentType}`)
+}
+
+export function getToolSecurityOverview(agentType: AgentType): Promise<ToolSecurityOverviewResponse> {
+  return client.get(`${BASE}/tools/security/${agentType}`)
+}
+
+export function getAgentAccessOverview(agentType: AgentType): Promise<AgentAccessOverviewResponse> {
+  return client.get(`${BASE}/access/${agentType}`)
+}
+
+export function getAgentWorkbenchSummary(agentType: AgentType): Promise<AgentWorkbenchSummaryResponse> {
+  return client.get(`${BASE}/workbench/${agentType}`)
+}
+
+export function compareAgentWorkbench(leftAgent: AgentType, rightAgent: AgentType): Promise<import('./types').AgentWorkbenchCompareResponse> {
+  return client.get(`${BASE}/workbench/compare`, {
+    params: {
+      leftAgent,
+      rightAgent
+    }
+  })
+}
+
+export function getAgentLogLifecycleSummary(agentType: AgentType): Promise<AgentLogLifecycleSummaryResponse> {
+  return client.get(`${BASE}/logs/lifecycle/${agentType}`)
+}
+
+export function getLatestAgentLogArchive(agentType: AgentType): Promise<AgentLogArchiveDetailResponse> {
+  return client.get(`${BASE}/logs/lifecycle/${agentType}/archive/latest`)
+}
+
+export function previewLatestAgentLogArchive(
+  agentType: AgentType,
+  artifactType: string,
+  limit = 5
+): Promise<AgentLogArchivePreviewResponse> {
+  return client.get(`${BASE}/logs/lifecycle/${agentType}/archive/latest/preview`, {
+    params: {
+      artifactType,
+      limit
+    }
+  })
+}
+
+export function findLatestArchivedTrace(
+  agentType: AgentType,
+  traceId: string
+): Promise<AgentArchivedTraceLookupResponse> {
+  return client.get(`${BASE}/logs/lifecycle/${agentType}/archive/latest/trace`, {
+    params: { traceId }
+  })
+}
+
+export function replayLatestArchivedTrace(
+  agentType: AgentType,
+  traceId: string
+): Promise<MultiAgentTraceResponse> {
+  return client.post(`${BASE}/logs/lifecycle/${agentType}/archive/latest/trace/replay`, undefined, {
+    params: { traceId }
+  })
+}
+
+export function cleanupAgentLogs(agentType: AgentType, body?: AgentLogCleanupRequest): Promise<AgentLogCleanupResponse> {
+  return client.post(`${BASE}/logs/lifecycle/${agentType}/cleanup`, body || { dryRun: true })
+}
+
+export function getToolAuditLogs(
+  limit = 20,
+  agentType?: AgentType,
+  toolName?: string,
+  traceId?: string
+): Promise<AgentToolAuditLog[]> {
+  const params: Record<string, unknown> = { limit }
+  if (agentType) params.agentType = agentType
+  if (toolName) params.toolName = toolName
+  if (traceId) params.traceId = traceId
+  return client.get(`${BASE}/tools/audit`, { params })
+}
+
+export function getAgentDiagnostics(agentType: AgentType): Promise<AgentDiagnosticsResponse> {
+  return client.get(`${BASE}/diagnostics/${agentType}`)
+}
+
+export function getMultiAgentTraces(sessionId?: string | null, limit = 20): Promise<MultiAgentTraceResponse[]> {
+  return client.get(`${BASE}/multi/traces`, {
+    params: {
+      sessionId: sessionId || undefined,
+      limit
+    }
+  })
+}
+
+export function getMultiAgentTrace(traceId: string): Promise<MultiAgentTraceResponse> {
+  return client.get(`${BASE}/multi/traces/${traceId}`)
+}
+
+export function recoverMultiAgentTrace(traceId: string, body: MultiAgentTraceRecoverRequest): Promise<MultiAgentTraceResponse> {
+  return client.post(`${BASE}/multi/traces/${traceId}/recover`, body)
 }

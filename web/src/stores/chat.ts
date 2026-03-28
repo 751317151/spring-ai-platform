@@ -5,6 +5,7 @@ import * as authApi from '@/api/auth'
 import type { AgentType, BotPermission, ChatMessage, SendMessageOptions, SessionConfig, SessionInfo, SSEChunk } from '@/api/types'
 import { AGENT_CONFIG, MOCK_RESPONSES } from '@/utils/constants'
 import type { AgentConfig } from '@/utils/constants'
+import { useAgentMetadata } from '@/composables/useAgentMetadata'
 import { useAuthStore } from './auth'
 import { useRuntimeStore } from './runtime'
 
@@ -31,6 +32,7 @@ export const useChatStore = defineStore('chat', () => {
 
   const authStore = useAuthStore()
   const runtimeStore = useRuntimeStore()
+  const { agentList: metadataAgentList, getAgentConfig: getMetadataAgentConfig, loadAgentMetadata } = useAgentMetadata()
 
   function normalizeSessionConfig(config?: SessionConfig | null): SessionConfig {
     const temperature = typeof config?.temperature === 'number'
@@ -86,14 +88,22 @@ export const useChatStore = defineStore('chat', () => {
 
   const agentList = computed(() => {
     if (runtimeStore.demoMode) {
-      return Object.entries(AGENT_CONFIG).map(([type, config]) => ({
-        type,
-        ...config
-      }))
+      return metadataAgentList.value.length
+        ? metadataAgentList.value.map((item) => ({
+            type: item.agentType,
+            name: item.name,
+            icon: item.icon,
+            color: item.color,
+            desc: item.desc
+          }))
+        : Object.entries(AGENT_CONFIG).map(([type, config]) => ({
+            type,
+            ...config
+          }))
     }
 
     return availableBots.value.map((bot) => {
-      const staticConfig = AGENT_CONFIG[bot.botType]
+      const staticConfig = getMetadataAgentConfig(bot.botType)
       return {
         type: bot.botType,
         name: staticConfig?.name || bot.botType,
@@ -112,7 +122,13 @@ export const useChatStore = defineStore('chat', () => {
     if (found) {
       return { name: found.name, icon: found.icon, color: found.color, desc: found.desc }
     }
-    return AGENT_CONFIG[currentAgent.value] || AGENT_CONFIG.rd
+    const metadataConfig = getMetadataAgentConfig(currentAgent.value)
+    return {
+      name: metadataConfig.name,
+      icon: metadataConfig.icon,
+      color: metadataConfig.color,
+      desc: metadataConfig.desc
+    }
   }
 
   function isPinned(session: SessionInfo): boolean {
@@ -182,6 +198,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function loadAvailableBots() {
+    void loadAgentMetadata()
     try {
       const bots = await authApi.getMyBots()
       availableBots.value = bots || []
@@ -477,7 +494,8 @@ export const useChatStore = defineStore('chat', () => {
               chatHistory.value[messageIndex] = {
                 ...chatHistory.value[messageIndex],
                 role: 'assistant',
-                content: fullResponse
+                content: fullResponse,
+                traceId: data.traceId || chatHistory.value[messageIndex]?.traceId
               }
             }
             if (data.done && data.responseId) {
@@ -486,6 +504,7 @@ export const useChatStore = defineStore('chat', () => {
                 role: 'assistant',
                 content: fullResponse,
                 responseId: data.responseId,
+                traceId: data.traceId || chatHistory.value[messageIndex]?.traceId,
                 feedback: chatHistory.value[messageIndex]?.feedback ?? null
               }
             }

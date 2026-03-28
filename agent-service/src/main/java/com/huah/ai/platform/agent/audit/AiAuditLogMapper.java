@@ -28,4 +28,36 @@ public interface AiAuditLogMapper extends BaseMapper<AiAuditLog> {
 
     @Select("SELECT COUNT(*) FROM ai_audit_logs WHERE user_id = #{userId} AND created_at > #{after}")
     long countByUserIdAfter(@Param("userId") String userId, @Param("after") LocalDateTime after);
+
+    @Select("SELECT COUNT(*) FROM ai_audit_logs WHERE agent_type = #{agentType}")
+    long countByAgentType(@Param("agentType") String agentType);
+
+    @Select("SELECT COUNT(*) FROM ai_audit_logs WHERE agent_type = #{agentType} AND created_at < #{before}")
+    long countByAgentTypeBefore(@Param("agentType") String agentType, @Param("before") LocalDateTime before);
+
+    @Select("""
+            SELECT * FROM ai_audit_logs
+            WHERE agent_type = #{agentType}
+              AND created_at < #{before}
+            ORDER BY created_at ASC
+            LIMIT #{limit}
+            """)
+    List<AiAuditLog> selectArchiveCandidates(@Param("agentType") String agentType,
+                                             @Param("before") LocalDateTime before,
+                                             @Param("limit") int limit);
+
+    @Select("""
+            SELECT * FROM ai_audit_logs
+            WHERE agent_type = #{agentType}
+              AND created_at < #{before}
+            ORDER BY created_at ASC
+            LIMIT #{limit} OFFSET #{offset}
+            """)
+    List<AiAuditLog> selectArchiveCandidatesBatch(@Param("agentType") String agentType,
+                                                  @Param("before") LocalDateTime before,
+                                                  @Param("limit") int limit,
+                                                  @Param("offset") long offset);
+
+    @org.apache.ibatis.annotations.Delete("DELETE FROM ai_audit_logs WHERE agent_type = #{agentType} AND created_at < #{before}")
+    int deleteByAgentTypeBefore(@Param("agentType") String agentType, @Param("before") LocalDateTime before);
 }

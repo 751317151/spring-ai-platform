@@ -57,7 +57,7 @@ ai:
         provider: openai
         api-key: ${OPENAI_API_KEY:sk-xxx}
         base-url: https://api.openai.com
-        enabled: true
+        enabled: false
         weight: 2
         capabilities: [chat, code, analysis]
         rpm-limit: 60
@@ -70,7 +70,7 @@ ai:
         provider: openai
         api-key: ${OPENAI_API_KEY:sk-xxx}
         base-url: https://api.openai.com
-        enabled: true
+        enabled: false
         weight: 3
         capabilities: [chat]
         rpm-limit: 500
@@ -96,7 +96,7 @@ ai:
         provider: qwen
         api-key: ${QWEN_API_KEY:sk-xxx}
         base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-        enabled: true
+        enabled: false
         weight: 2
         capabilities: [chat, document]
         rpm-limit: 60

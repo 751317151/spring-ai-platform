@@ -70,6 +70,19 @@ public class ToolsProperties {
     public static class SecurityConfig {
         private boolean enabled = false;
         private java.util.Map<String, java.util.List<String>> agentToolAllowlist = new java.util.LinkedHashMap<>();
+        private java.util.Map<String, java.util.List<String>> agentConnectorAllowlist = new java.util.LinkedHashMap<>();
+        private java.util.Map<String, java.util.List<String>> agentMcpServerAllowlist = new java.util.LinkedHashMap<>();
+        private java.util.Map<String, java.util.Map<String, java.util.List<String>>> agentConnectorResourceAllowlist = new java.util.LinkedHashMap<>();
+        private java.util.Map<String, java.util.Map<String, java.util.List<String>>> agentMcpToolAllowlist = new java.util.LinkedHashMap<>();
+        private java.util.Map<String, java.util.List<String>> agentDataScopeAllowlist = new java.util.LinkedHashMap<>();
+        private java.util.Map<String, java.util.List<String>> agentDataSourceAllowlist = new java.util.LinkedHashMap<>();
+        private java.util.Map<String, java.util.List<String>> agentCrossSchemaAccessAllowlist = new java.util.LinkedHashMap<>();
+        private java.util.Map<String, String> schemaDataSourceBindings = new java.util.LinkedHashMap<>();
+        private java.util.Map<String, Integer> agentMaxConcurrency = new java.util.LinkedHashMap<>();
+        private java.util.Map<String, Integer> agentMaxQueueDepth = new java.util.LinkedHashMap<>();
+        private java.util.Map<String, Long> agentQueueWaitTimeoutMs = new java.util.LinkedHashMap<>();
+        private java.util.Map<String, Long> agentRequestTimeoutMs = new java.util.LinkedHashMap<>();
+        private java.util.Map<String, Long> agentStreamTimeoutMs = new java.util.LinkedHashMap<>();
     }
 
     @Data

@@ -8,8 +8,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 多模型注册表配置
- * 支持：OpenAI、DeepSeek、通义千问、文心一言、Ollama 本地模型等
+ * Multi-model registry configuration.
+ * Supports OpenAI-compatible providers, Anthropic, Ollama, and related routing settings.
  */
 @Data
 @Component
@@ -17,71 +17,71 @@ import java.util.Map;
 public class ModelRegistryConfig {
 
     /**
-     * 默认模型
+     * Default model id.
      */
     private String defaultModel = "gpt-4o-mini";
 
     /**
-     * 负载均衡策略: round-robin | weighted | least-latency
+     * Load-balance strategy: round-robin | weighted | least-latency.
      */
     private String loadBalanceStrategy = "round-robin";
 
     /**
-     * 注册的模型列表
+     * Registered model definitions.
      */
     private List<ModelDefinition> registry;
 
     /**
-     * 场景路由规则：场景名 -> 优先模型列表
+     * Scene route mapping: scene name -> preferred model ids.
      */
     private Map<String, List<String>> sceneRoutes;
 
     /**
-     * 主动健康探测配置
+     * Active health probe configuration.
      */
     private HealthProbe healthProbe = new HealthProbe();
 
     @Data
     public static class ModelDefinition {
-        /** 模型唯一标识 */
+        /** Stable model identifier. */
         private String id;
-        /** 模型名称 */
+        /** Display name. */
         private String name;
-        /** 提供商: openai | anthropic | ollama | qwen | deepseek */
+        /** Provider id: openai | anthropic | ollama | qwen | deepseek. */
         private String provider;
-        /** API Key */
+        /** API key. */
         private String apiKey;
-        /** Base URL（用于兼容 OpenAI 协议的国产模型） */
+        /** Base URL for OpenAI-compatible or self-hosted providers. */
         private String baseUrl;
-        /** 是否启用 */
+        /** Whether the model is enabled. */
         private boolean enabled = true;
-        /** 权重（用于加权负载均衡） */
+        /** Weight used by weighted load balancing. */
         private int weight = 1;
-        /** 最大并发数 */
+        /** Maximum concurrent requests. */
         private int maxConcurrency = 20;
-        /** 超时（毫秒） */
+        /** Request timeout in milliseconds. */
         private long timeoutMs = 30000;
-        /** 是否支持流式 */
+        /** Whether streaming responses are enabled. */
         private boolean streaming = true;
-        /** 模型能力标签: chat | embedding | image | code */
+        /** Capability tags: chat | embedding | image | code. */
         private List<String> capabilities;
-        /** 每分钟 Token 限制 */
+        /** Requests-per-minute limit. */
         private int rpmLimit = 60;
-        /** 输入 token 单价，单位：每 1k token */
+        /** Prompt token cost per 1K tokens. */
         private double promptCostPer1kTokens = 0;
-        /** 输出 token 单价，单位：每 1k token */
+        /** Completion token cost per 1K tokens. */
         private double completionCostPer1kTokens = 0;
     }
 
     @Data
     public static class HealthProbe {
-        /** 是否启用主动健康探测 */
+        /** Whether active probing is enabled. */
         private boolean enabled = true;
-        /** 探测间隔毫秒 */
+        /** Probe interval in milliseconds. */
         private long intervalMs = 300000;
-        /** 单次探测提示词 */
+        /** Probe prompt content. */
         private String prompt = "ping";
-        /** 启动后是否立即探测 */
+        /** Whether to probe immediately on startup. */
         private boolean runOnStartup = true;
     }
 }

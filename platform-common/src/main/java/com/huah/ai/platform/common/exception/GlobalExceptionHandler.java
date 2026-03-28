@@ -14,44 +14,57 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    private static final int HTTP_BAD_REQUEST = 400;
+    private static final int HTTP_FORBIDDEN = 403;
+    private static final int HTTP_SERVICE_UNAVAILABLE = 503;
+    private static final int HTTP_INTERNAL_SERVER_ERROR = 500;
+    private static final String MESSAGE_AI_SERVICE_UNAVAILABLE = "AI service is temporarily unavailable";
+    private static final String MESSAGE_ACCESS_DENIED = "You do not have permission to access this resource";
+    private static final String MESSAGE_VALIDATION_FAILED = "Request validation failed";
+    private static final String MESSAGE_INTERNAL_SERVER_ERROR = "Internal server error";
+
     @ExceptionHandler(BizException.class)
-    public Result<Void> handleBizException(BizException e) {
-        log.warn("Business exception: code={}, msg={}", e.getCode(), e.getMessage());
-        return Result.fail(e.getCode(), e.getMessage());
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleBizException(BizException exception) {
+        log.warn("Business exception: code={}, message={}", exception.getCode(), exception.getMessage());
+        return Result.fail(exception.getCode(), exception.getMessage());
     }
 
     @ExceptionHandler(AiServiceException.class)
-    public Result<Void> handleAiServiceException(AiServiceException e) {
-        log.error("AI service exception: {}", e.getMessage(), e);
-        return Result.fail(503, "AI服务暂时不可用: " + e.getMessage());
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    public Result<Void> handleAiServiceException(AiServiceException exception) {
+        log.error("AI service exception: {}", exception.getMessage(), exception);
+        return Result.fail(HTTP_SERVICE_UNAVAILABLE, MESSAGE_AI_SERVICE_UNAVAILABLE + ": " + exception.getMessage());
     }
 
     @ExceptionHandler(PermissionDeniedException.class)
     @ResponseStatus(HttpStatus.FORBIDDEN)
-    public Result<Void> handlePermissionDenied(PermissionDeniedException e) {
-        return Result.fail(403, e.getMessage());
+    public Result<Void> handlePermissionDenied(PermissionDeniedException exception) {
+        log.warn("Permission denied: {}", exception.getMessage());
+        return Result.fail(HTTP_FORBIDDEN, exception.getMessage());
     }
 
     @ExceptionHandler({AccessDeniedException.class, AuthorizationDeniedException.class})
     @ResponseStatus(HttpStatus.FORBIDDEN)
-    public Result<Void> handleAccessDenied(Exception e) {
-        log.warn("Access denied: {}", e.getMessage());
-        return Result.fail(403, "无权限访问该资源");
+    public Result<Void> handleAccessDenied(Exception exception) {
+        log.warn("Access denied: {}", exception.getMessage());
+        return Result.fail(HTTP_FORBIDDEN, MESSAGE_ACCESS_DENIED);
     }
 
     @ExceptionHandler(BindException.class)
-    public Result<Void> handleValidation(BindException e) {
-        String msg = e.getBindingResult().getFieldErrors().stream()
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleValidation(BindException exception) {
+        String message = exception.getBindingResult().getFieldErrors().stream()
                 .map(field -> field.getField() + ": " + field.getDefaultMessage())
                 .findFirst()
-                .orElse("参数校验失败");
-        return Result.fail(400, msg);
+                .orElse(MESSAGE_VALIDATION_FAILED);
+        return Result.fail(HTTP_BAD_REQUEST, message);
     }
 
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    public Result<Void> handleException(Exception e) {
-        log.error("Unhandled exception", e);
-        return Result.fail(500, "系统内部错误");
+    public Result<Void> handleException(Exception exception) {
+        log.error("Unhandled exception", exception);
+        return Result.fail(HTTP_INTERNAL_SERVER_ERROR, MESSAGE_INTERNAL_SERVER_ERROR);
     }
 }

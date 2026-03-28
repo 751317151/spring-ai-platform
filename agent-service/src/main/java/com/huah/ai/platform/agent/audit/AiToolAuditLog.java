@@ -28,6 +28,8 @@ public class AiToolAuditLog {
     private String outputSummary;
     private Boolean success;
     private String errorMessage;
+    private String reasonCode;
+    private String deniedResource;
     private Long latencyMs;
     private String traceId;
 

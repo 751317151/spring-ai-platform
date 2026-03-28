@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
- * Agent 访问权限和 Token 配额检查器。
+ * Agent access and token quota checker.
  */
 @Slf4j
 @Service
@@ -35,7 +35,7 @@ public class AgentAccessChecker {
 
     public String checkPermission(String agentType, String userRoles, String department) {
         if (userRoles == null || userRoles.isBlank()) {
-            return "用户未分配角色";
+            return "The current user has no assigned roles";
         }
 
         Set<String> roles = Arrays.stream(userRoles.split(","))
@@ -50,14 +50,14 @@ public class AgentAccessChecker {
         try {
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(QUERY_PERMISSION, agentType);
             if (rows.isEmpty()) {
-                log.warn("Agent 权限配置缺失，拒绝访问: agentType={}", agentType);
-                return "未找到该 Agent 的权限配置";
+                log.warn("Agent permission config missing, deny access: agentType={}", agentType);
+                return "No permission configuration was found for the requested agent";
             }
 
             Map<String, Object> permission = rows.get(0);
             Boolean enabled = (Boolean) permission.get("enabled");
             if (enabled != null && !enabled) {
-                return "该 Agent 已被禁用";
+                return "The requested agent is disabled";
             }
 
             String allowedRolesStr = (String) permission.get("allowed_roles");
@@ -68,14 +68,14 @@ public class AgentAccessChecker {
                         .collect(Collectors.toSet());
                 boolean hasRole = roles.stream().anyMatch(allowedRoles::contains);
                 if (!hasRole) {
-                    return "您的角色无权使用该 Agent，需要角色: " + allowedRolesStr;
+                    return "The current user role is not allowed to use this agent. Allowed roles: " + allowedRolesStr;
                 }
             }
 
             String allowedDepartments = (String) permission.get("allowed_departments");
             if (allowedDepartments != null && !allowedDepartments.isBlank()) {
                 if (department == null || department.isBlank()) {
-                    return "当前用户缺少部门信息，无法访问该 Agent";
+                    return "The current user does not have department information and cannot access this agent";
                 }
 
                 Set<String> departmentSet = Arrays.stream(allowedDepartments.split(","))
@@ -83,15 +83,15 @@ public class AgentAccessChecker {
                         .filter(value -> !value.isEmpty())
                         .collect(Collectors.toSet());
                 if (!departmentSet.contains(department.trim())) {
-                    return "您的部门无权使用该 Agent，需要部门: " + allowedDepartments;
+                    return "The current user department is not allowed to use this agent. Allowed departments: " + allowedDepartments;
                 }
             }
 
             return null;
         } catch (Exception e) {
             metricsCollector.recordDependencyFailure("database", "permission-query");
-            log.warn("Agent 权限检查失败，拒绝访问: agentType={}, error={}", agentType, e.getMessage());
-            return "权限校验失败，请稍后重试";
+            log.warn("Agent permission validation failed, deny access: agentType={}, error={}", agentType, e.getMessage());
+            return "Permission validation failed, please try again later";
         }
     }
 
@@ -104,7 +104,7 @@ public class AgentAccessChecker {
             }
         } catch (Exception e) {
             metricsCollector.recordDependencyFailure("database", "token-limit-query");
-            log.warn("获取 Token 限额失败: agentType={}, error={}", agentType, e.getMessage());
+            log.warn("Failed to load token limit: agentType={}, error={}", agentType, e.getMessage());
         }
         return Integer.MAX_VALUE;
     }
@@ -125,13 +125,13 @@ public class AgentAccessChecker {
             if (current != null && current > limit) {
                 redisTemplate.opsForValue().decrement(key, tokens);
                 metricsCollector.recordTokenLimitExceeded(agentType);
-                log.warn("Token 超限: userId={}, agentType={}, usage={}, limit={}", userId, agentType, current, limit);
-                return "今日 Token 配额已用完，限额: " + limit;
+                log.warn("Token limit exceeded: userId={}, agentType={}, usage={}, limit={}", userId, agentType, current, limit);
+                return "The daily token quota has been exhausted. Limit: " + limit;
             }
         } catch (Exception e) {
             metricsCollector.recordDependencyFailure("redis", "token-quota-check");
-            log.warn("Redis Token 配额检查失败: userId={}, agentType={}, error={}", userId, agentType, e.getMessage());
-            return "Token 配额检查失败，请稍后重试";
+            log.warn("Redis token quota validation failed: userId={}, agentType={}, error={}", userId, agentType, e.getMessage());
+            return "Token quota validation failed, please try again later";
         }
 
         return null;
@@ -152,7 +152,7 @@ public class AgentAccessChecker {
             }
         } catch (Exception e) {
             metricsCollector.recordDependencyFailure("redis", "token-quota-adjust");
-            log.warn("Redis Token 配额修正失败: userId={}, error={}", userId, e.getMessage());
+            log.warn("Redis token quota adjustment failed: userId={}, error={}", userId, e.getMessage());
         }
     }
 }

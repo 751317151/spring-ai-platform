@@ -17,6 +17,7 @@ import com.huah.ai.platform.rag.service.RagAuditService;
 import com.huah.ai.platform.rag.service.DocumentMetaService;
 import com.huah.ai.platform.rag.service.FileStorageService;
 import com.huah.ai.platform.rag.service.RagService;
+import jakarta.annotation.PreDestroy;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +48,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @RestController
@@ -54,13 +58,28 @@ import java.util.concurrent.Executors;
 @RequiredArgsConstructor
 public class RagController {
 
+    private static final long EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS = 5L;
+
     private final RagService ragService;
     private final DocumentIngestionService ingestionService;
     private final DocumentMetaService metaService;
     private final FileStorageService fileStorageService;
     private final RagAuditService ragAuditService;
     private final S3Properties s3Properties;
-    private final ExecutorService executor = Executors.newCachedThreadPool();
+    private final ExecutorService executor = Executors.newCachedThreadPool(new RagControllerThreadFactory());
+
+    @PreDestroy
+    void shutdownExecutor() {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            executor.shutdownNow();
+        }
+    }
 
     @PostMapping("/query")
     public Result<RagQueryResponse> query(@RequestBody RagQueryRequest req, HttpServletRequest request) {
@@ -397,5 +416,16 @@ public class RagController {
         String roles = rolesAttr != null ? String.valueOf(rolesAttr) : request.getHeader("X-Roles");
         boolean isAdmin = roles != null && roles.contains("ROLE_ADMIN");
         return new DocumentMetaService.AccessContext(userId, department, isAdmin);
+    }
+
+    private static final class RagControllerThreadFactory implements ThreadFactory {
+        private final AtomicInteger sequence = new AtomicInteger(1);
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable, "rag-controller-" + sequence.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        }
     }
 }

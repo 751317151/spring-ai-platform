@@ -24,4 +24,30 @@ public class McpServerInfo {
     private boolean clientEnabled;
 
     private String source;
+
+    private String entryFile;
+
+    private boolean entryFileExists;
+
+    private boolean commandAvailable;
+
+    private String diagnosticStatus;
+
+    private String issueReason;
+
+    private String commandLinePreview;
+
+    private String runtimeHint;
+
+    private boolean authorized;
+
+    private String authorizedAgentType;
+
+    private List<String> authorizedTools;
+
+    private String accessReasonCode;
+
+    private String accessReasonMessage;
+
+    private String accessDetail;
 }

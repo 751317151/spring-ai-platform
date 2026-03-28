@@ -161,6 +161,11 @@ const mainNav = [
 
 const adminNav = [
   {
+    to: '/agents',
+    label: 'Agent 工作台',
+    icon: '<path d="M12 3l7 4v10l-7 4-7-4V7z"/><path d="M12 7v10"/><path d="M8 9.5l4 2 4-2"/>'
+  },
+  {
     to: '/gateway',
     label: '模型网关',
     icon: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>'

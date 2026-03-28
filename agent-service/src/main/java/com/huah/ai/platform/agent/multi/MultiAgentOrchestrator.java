@@ -155,11 +155,17 @@ public class MultiAgentOrchestrator {
         private final String content;
         private final int promptTokens;
         private final int completionTokens;
+        private final long latencyMs;
 
         public StepResult(String content, int promptTokens, int completionTokens) {
+            this(content, promptTokens, completionTokens, 0L);
+        }
+
+        public StepResult(String content, int promptTokens, int completionTokens, long latencyMs) {
             this.content = content;
             this.promptTokens = promptTokens;
             this.completionTokens = completionTokens;
+            this.latencyMs = latencyMs;
         }
 
         static StepResult from(ChatResponse response) {
@@ -177,6 +183,10 @@ public class MultiAgentOrchestrator {
                 }
             }
             return new StepResult(text != null ? text : "", prompt, completion);
+        }
+
+        public StepResult withLatencyMs(long latencyMs) {
+            return new StepResult(content, promptTokens, completionTokens, latencyMs);
         }
     }
 }

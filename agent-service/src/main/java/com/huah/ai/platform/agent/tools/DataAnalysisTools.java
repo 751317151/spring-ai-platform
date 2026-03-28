@@ -1,6 +1,9 @@
 package com.huah.ai.platform.agent.tools;
 
+import com.huah.ai.platform.agent.audit.ToolExecutionContext;
 import com.huah.ai.platform.agent.config.ToolsProperties;
+import com.huah.ai.platform.agent.security.ToolAccessDecision;
+import com.huah.ai.platform.agent.security.ToolSecurityService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -36,17 +39,25 @@ public class DataAnalysisTools {
 
     private final JdbcTemplate jdbcTemplate;
     private final ToolsProperties.DataAnalysisConfig config;
+    private final ToolSecurityService toolSecurityService;
 
-    public DataAnalysisTools(JdbcTemplate jdbcTemplate, ToolsProperties props) {
+    public DataAnalysisTools(JdbcTemplate jdbcTemplate,
+                             ToolsProperties props,
+                             ToolSecurityService toolSecurityService) {
         this.jdbcTemplate = jdbcTemplate;
         this.config = props.getDataAnalysis();
+        this.toolSecurityService = toolSecurityService;
     }
 
-    @Tool(description = "列出当前只读 SQL 助手可访问的数据表，帮助用户先了解库表范围后再写查询。")
+    @Tool(description = "List tables or views visible to the current read-only SQL agent.")
     public Map<String, Object> listAccessibleTables() {
         log.info("[Tool] listAccessibleTables");
         try {
             String schema = resolveSchema();
+            ToolAccessDecision decision = toolSecurityService.decideDataScopeAccess(currentAgentType(), schema, List.of());
+            if (!decision.isAllowed()) {
+                return Map.of("error", decision.getReasonMessage());
+            }
             List<Map<String, Object>> tables = jdbcTemplate.execute((ConnectionCallback<List<Map<String, Object>>>) connection -> {
                 DatabaseMetaData metaData = connection.getMetaData();
                 List<Map<String, Object>> rows = new ArrayList<>();
@@ -54,6 +65,14 @@ public class DataAnalysisTools {
                     while (rs.next()) {
                         String tableName = rs.getString("TABLE_NAME");
                         if (!isTableAllowed(tableName)) {
+                            continue;
+                        }
+                        ToolAccessDecision tableDecision = toolSecurityService.decideDataScopeAccess(
+                                currentAgentType(),
+                                schema,
+                                List.of(tableName)
+                        );
+                        if (!tableDecision.isAllowed()) {
                             continue;
                         }
                         rows.add(Map.of(
@@ -72,21 +91,26 @@ public class DataAnalysisTools {
             );
         } catch (Exception e) {
             log.error("[Tool] listAccessibleTables failed: {}", e.getMessage(), e);
-            return Map.of("error", "列出数据表失败: " + e.getMessage());
+            return Map.of("error", "List tables failed: " + e.getMessage());
         }
     }
 
-    @Tool(description = "查看指定数据表的字段定义，返回字段名、类型、是否可空和备注，帮助编写正确 SQL。")
+    @Tool(description = "Describe columns for a single allowed table.")
     public Map<String, Object> describeTable(
-            @ToolParam(description = "要查看的数据表名，仅支持当前白名单内的数据表") String tableName) {
+            @ToolParam(description = "Table name in the current allowed scope.") String tableName) {
         log.info("[Tool] describeTable: table={}", tableName);
         try {
-            String normalizedTable = normalizeSimpleIdentifier(tableName, "表名");
+            String normalizedTable = normalizeSimpleIdentifier(tableName, "table");
             if (!isTableAllowed(normalizedTable)) {
-                return Map.of("error", "当前表不在只读助手允许范围内: " + normalizedTable);
+                return Map.of("error", "Table is outside the allowed scope: " + normalizedTable);
             }
 
             String schema = resolveSchema();
+            ToolAccessDecision decision = toolSecurityService.decideDataScopeAccess(currentAgentType(), schema, List.of(normalizedTable));
+            if (!decision.isAllowed()) {
+                return Map.of("error", decision.getReasonMessage());
+            }
+
             List<Map<String, Object>> columns = jdbcTemplate.query("""
                             SELECT column_name, data_type, is_nullable, column_default
                             FROM information_schema.columns
@@ -113,13 +137,13 @@ public class DataAnalysisTools {
             return Map.of("error", e.getMessage());
         } catch (Exception e) {
             log.error("[Tool] describeTable failed: table={}, error={}", tableName, e.getMessage(), e);
-            return Map.of("error", "查看表结构失败: " + e.getMessage());
+            return Map.of("error", "Describe table failed: " + e.getMessage());
         }
     }
 
-    @Tool(description = "预览一条只读 SQL 的执行计划，不真正返回业务数据，适合在正式查询前检查扫描范围和索引使用情况。")
+    @Tool(description = "Preview the execution plan for a read-only SQL query.")
     public Map<String, Object> explainQuery(
-            @ToolParam(description = "要预览执行计划的 SQL，只支持 SELECT 或 WITH 查询") String sql) {
+            @ToolParam(description = "SQL that must be a SELECT or WITH query.") String sql) {
         log.info("[Tool] explainQuery: sql={}", sql);
         try {
             String safeSql = validateAndNormalizeReadOnlySql(sql);
@@ -149,13 +173,13 @@ public class DataAnalysisTools {
             return Map.of("error", e.getMessage());
         } catch (Exception e) {
             log.error("[Tool] explainQuery failed: sql={}, error={}", sql, e.getMessage(), e);
-            return Map.of("error", "执行计划预览失败: " + e.getMessage());
+            return Map.of("error", "Explain query failed: " + e.getMessage());
         }
     }
 
-    @Tool(description = "执行只读 SQL 查询，返回数据库查询结果。仅支持 SELECT 或 WITH 查询，会自动做安全检查和 LIMIT 限制。")
+    @Tool(description = "Execute a read-only SQL query. Only SELECT or WITH queries are allowed.")
     public Map<String, Object> executeQuery(
-            @ToolParam(description = "要执行的 SQL 查询语句，仅支持 SELECT 或 WITH") String sql) {
+            @ToolParam(description = "SQL query. Only SELECT or WITH is allowed.") String sql) {
         log.info("[Tool] executeQuery: sql={}", sql);
         try {
             String finalSql = validateAndNormalizeReadOnlySql(sql);
@@ -210,39 +234,43 @@ public class DataAnalysisTools {
             return Map.of("error", e.getMessage());
         } catch (Exception e) {
             log.error("[Tool] executeQuery failed: sql={}, error={}", sql, e.getMessage(), e);
-            return Map.of("error", "SQL 执行失败: " + e.getMessage());
+            return Map.of("error", "SQL execution failed: " + e.getMessage());
         }
     }
 
-    @Tool(description = "生成图表配置建议，支持柱状图、折线图、饼图等。请先用 executeQuery 获取数据，再调用此工具。")
+    @Tool(description = "Generate chart metadata after a query result is prepared.")
     public Map<String, Object> generateChart(
-            @ToolParam(description = "图表类型: bar|line|pie|scatter") String chartType,
-            @ToolParam(description = "数据描述或来源") String data,
-            @ToolParam(description = "图表标题") String title) {
+            @ToolParam(description = "Chart type: bar|line|pie|scatter") String chartType,
+            @ToolParam(description = "Data description") String data,
+            @ToolParam(description = "Chart title") String title) {
         log.info("[Tool] generateChart: type={}, title={}", chartType, title);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("chartType", chartType);
         result.put("title", title);
         result.put("dataDescription", data);
-        result.put("suggestion", "请先使用 executeQuery 获取实际数据，然后基于返回数据生成前端可用的 ECharts 配置");
+        result.put("suggestion", "Run executeQuery first, then build chart options on top of real rows");
         result.put("templateUrl", "https://echarts.apache.org/examples");
         return result;
     }
 
-    @Tool(description = "分析数据表的统计特征，包括记录数、平均值、最小值、最大值和标准差。")
+    @Tool(description = "Compute summary statistics for allowed numeric columns in a table.")
     public Map<String, Object> analyzeDataset(
-            @ToolParam(description = "数据库表名，仅支持白名单内的数据表") String datasetName,
-            @ToolParam(description = "要分析的数值列名，逗号分隔") String metrics) {
+            @ToolParam(description = "Dataset table name in the allowed scope") String datasetName,
+            @ToolParam(description = "Numeric columns separated by comma") String metrics) {
         log.info("[Tool] analyzeDataset: dataset={}, metrics={}", datasetName, metrics);
         try {
-            String tableName = normalizeSimpleIdentifier(datasetName, "表名");
+            String tableName = normalizeSimpleIdentifier(datasetName, "table");
             if (!isTableAllowed(tableName)) {
-                return Map.of("error", "当前表不在只读助手允许范围内: " + tableName);
+                return Map.of("error", "Table is outside the allowed scope: " + tableName);
+            }
+            ToolAccessDecision decision = toolSecurityService.decideDataScopeAccess(currentAgentType(), resolveSchema(), List.of(tableName));
+            if (!decision.isAllowed()) {
+                return Map.of("error", decision.getReasonMessage());
             }
 
             String[] columns = metrics.split(",");
             for (String col : columns) {
-                normalizeSimpleIdentifier(col.trim(), "列名");
+                normalizeSimpleIdentifier(col.trim(), "column");
             }
 
             StringBuilder sqlBuilder = new StringBuilder("SELECT COUNT(*) AS record_count");
@@ -264,29 +292,29 @@ public class DataAnalysisTools {
             return Map.of("error", e.getMessage());
         } catch (Exception e) {
             log.error("[Tool] analyzeDataset failed: dataset={}, error={}", datasetName, e.getMessage(), e);
-            return Map.of("error", "数据分析失败: " + e.getMessage());
+            return Map.of("error", "Analyze dataset failed: " + e.getMessage());
         }
     }
 
     private String validateAndNormalizeReadOnlySql(String sql) {
         if (sql == null || sql.isBlank()) {
-            throw new IllegalArgumentException("SQL 不能为空");
+            throw new IllegalArgumentException("SQL must not be empty");
         }
         String normalized = sql.trim().replaceAll("\\s+", " ");
         String upper = normalized.toUpperCase(Locale.ROOT);
 
         if (!upper.startsWith("SELECT") && !upper.startsWith("WITH")) {
-            throw new IllegalArgumentException("只允许 SELECT 查询语句或 WITH ... SELECT 查询");
+            throw new IllegalArgumentException("Only SELECT or WITH queries are allowed");
         }
         if (normalized.contains(";")) {
-            throw new IllegalArgumentException("不允许多条 SQL 语句");
+            throw new IllegalArgumentException("Multiple SQL statements are not allowed");
         }
         if (normalized.contains("--") || normalized.contains("/*")) {
-            throw new IllegalArgumentException("SQL 不允许包含注释");
+            throw new IllegalArgumentException("SQL comments are not allowed");
         }
         for (String keyword : DANGEROUS_KEYWORDS) {
             if (upper.matches(".*\\b" + keyword + "\\b.*")) {
-                throw new IllegalArgumentException("SQL 包含不允许的关键字: " + keyword);
+                throw new IllegalArgumentException("SQL contains a forbidden keyword: " + keyword);
             }
         }
 
@@ -299,25 +327,52 @@ public class DataAnalysisTools {
     }
 
     private void validateTableReferences(String sql) {
-        Set<String> referencedTables = new LinkedHashSet<>();
+        Set<TableRef> referencedTables = new LinkedHashSet<>();
         Matcher matcher = TABLE_REFERENCE_PATTERN.matcher(sql);
         while (matcher.find()) {
             String rawTable = matcher.group(1);
             if (rawTable == null || rawTable.isBlank()) {
                 continue;
             }
-            String normalized = rawTable.contains(".")
-                    ? rawTable.substring(rawTable.lastIndexOf('.') + 1)
-                    : rawTable;
-            referencedTables.add(normalized);
+            referencedTables.add(parseTableRef(rawTable));
         }
 
-        for (String table : referencedTables) {
-            String safeTable = normalizeSimpleIdentifier(table, "表名");
-            if (!isTableAllowed(safeTable)) {
-                throw new IllegalArgumentException("当前表不在只读助手允许范围内: " + safeTable);
+        List<ToolSecurityService.DataScopeTarget> targets = referencedTables.isEmpty()
+                ? List.of(new ToolSecurityService.DataScopeTarget(resolveSchema(), null))
+                : referencedTables.stream()
+                .map(item -> new ToolSecurityService.DataScopeTarget(item.schema(), item.table()))
+                .toList();
+
+        ToolAccessDecision decision = toolSecurityService.decideDataScopeAccess(currentAgentType(), targets);
+        if (!decision.isAllowed()) {
+            String detail = decision.getDetail();
+            throw new IllegalArgumentException(
+                    detail == null || detail.isBlank()
+                            ? decision.getReasonMessage()
+                            : decision.getReasonMessage() + " [" + detail + "]"
+            );
+        }
+
+        for (TableRef tableRef : referencedTables) {
+            if (!isTableAllowed(tableRef.table())) {
+                throw new IllegalArgumentException("Table is outside the allowed scope: " + tableRef.table());
             }
         }
+    }
+
+    private TableRef parseTableRef(String rawTable) {
+        String normalized = rawTable.trim();
+        String[] parts = normalized.split("\\.");
+        if (parts.length == 1) {
+            return new TableRef(resolveSchema(), normalizeSimpleIdentifier(parts[0], "table"));
+        }
+        if (parts.length == 2) {
+            return new TableRef(
+                    normalizeSimpleIdentifier(parts[0], "schema"),
+                    normalizeSimpleIdentifier(parts[1], "table")
+            );
+        }
+        throw new IllegalArgumentException("Unsupported qualified table reference: " + rawTable);
     }
 
     private boolean isTableAllowed(String tableName) {
@@ -335,11 +390,11 @@ public class DataAnalysisTools {
 
     private String normalizeSimpleIdentifier(String identifier, String label) {
         if (identifier == null || identifier.isBlank()) {
-            throw new IllegalArgumentException(label + "不能为空");
+            throw new IllegalArgumentException(label + " must not be empty");
         }
         String normalized = identifier.trim();
         if (!normalized.matches("^[a-zA-Z_][a-zA-Z0-9_]*$")) {
-            throw new IllegalArgumentException("无效的" + label + ": " + identifier);
+            throw new IllegalArgumentException("Invalid " + label + ": " + identifier);
         }
         return normalized;
     }
@@ -348,5 +403,13 @@ public class DataAnalysisTools {
         return (config.getDefaultSchema() == null || config.getDefaultSchema().isBlank())
                 ? "public"
                 : config.getDefaultSchema();
+    }
+
+    private String currentAgentType() {
+        ToolExecutionContext.Context context = ToolExecutionContext.current();
+        return context != null ? context.getAgentType() : null;
+    }
+
+    private record TableRef(String schema, String table) {
     }
 }

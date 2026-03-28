@@ -19,5 +19,11 @@ public class McpServerListResponse {
 
     private int count;
 
+    private int issueCount;
+
+    private String agentType;
+
+    private int authorizedCount;
+
     private List<McpServerInfo> servers;
 }

@@ -91,6 +91,21 @@ describe('MessageBubble', () => {
     expect(wrapper.find('.msg').attributes('data-message-index')).toBe('3')
   })
 
+  it('renders derived-from chip for assistant messages', () => {
+    const wrapper = mount(MessageBubble, {
+      props: {
+        role: 'assistant',
+        content: 'follow-up answer',
+        derivedFrom: {
+          action: 'continue',
+          messageIndex: 2
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('继续生成自 #3')
+  })
+
   it('deduplicates similar favorites and exports a single message', async () => {
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     const first = mount(MessageBubble, {

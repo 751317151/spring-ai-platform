@@ -92,6 +92,8 @@
         unavailable-message="聊天后端暂时不可用，页面不会静默回退到模拟结果。"
       />
 
+      <ChatAgentDiagnosticsPanel :focused-trace-id="focusedTraceId" />
+
       <div v-if="entryContextMessage" class="card section-card entry-context-card">
         <div class="entry-context-copy">
           <div class="entry-context-title">当前延续上一页的工作上下文</div>
@@ -260,6 +262,30 @@
         </div>
       </div>
 
+      <div v-if="messageLineage.length" class="card section-card lineage-card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">会话分支与继续生成</div>
+            <div class="card-subtitle">把继续生成、重新回答和分支会话整理成可追踪的演化关系，方便回看每次回答是从哪里延伸出来的。</div>
+          </div>
+        </div>
+
+        <div class="lineage-grid">
+          <article v-for="item in messageLineage" :key="item.id" class="lineage-item">
+            <div class="lineage-item-head">
+              <div>
+                <div class="lineage-item-title">{{ item.actionLabel }}</div>
+                <div class="lineage-item-meta">源消息 #{{ item.sourceNumber }} · 结果消息 #{{ item.targetNumber }}</div>
+              </div>
+              <button class="btn btn-ghost btn-sm" type="button" @click="focusLineageMessage(item.targetIndex)">定位结果</button>
+            </div>
+            <div class="lineage-item-source">{{ item.sourcePreview }}</div>
+            <div class="lineage-item-arrow">→</div>
+            <div class="lineage-item-target">{{ item.targetPreview }}</div>
+          </article>
+        </div>
+      </div>
+
       <div class="chat-stage-card">
         <div class="chat-stage-toolbar">
           <div>
@@ -285,6 +311,7 @@
           @branch-session="handleBranchSession"
           @continue-response="handleContinueResponse"
           @regenerate-response="handleRegenerateResponse"
+          @open-trace="handleOpenTrace"
         />
         <ChatInput ref="chatInputRef" @send="handleSend" />
       </div>
@@ -335,6 +362,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AgentList from '@/components/chat/AgentList.vue'
+import ChatAgentDiagnosticsPanel from '@/components/chat/ChatAgentDiagnosticsPanel.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
 import ChatMessages from '@/components/chat/ChatMessages.vue'
 import SessionConfigPanel from '@/components/chat/SessionConfigPanel.vue'
@@ -360,6 +388,7 @@ const selectedCommandIndex = ref(0)
 const syncingRoute = ref(false)
 const recentActionLabel = ref('')
 const highlightedMessageIndex = ref<number | null>(null)
+const focusedTraceId = ref('')
 const LAST_OPENED_SESSION_KEY = 'chat_last_opened_session'
 const RECENT_VISITED_KEY = 'chat_recent_visited_sessions'
 const entrySource = computed(() => typeof route.query.source === 'string' ? route.query.source : '')
@@ -459,6 +488,27 @@ const highlightedContextCard = computed(() => {
     nextSummary: nextMessage ? compactPreview(nextMessage.content, 120) : '当前定位已经是会话中的最后一条消息。'
   }
 })
+const messageLineage = computed(() =>
+  chatStore.chatHistory
+    .map((message, index) => {
+      const relation = message.derivedFrom
+      if (!relation) {
+        return null
+      }
+      const sourceMessage = chatStore.chatHistory[relation.messageIndex]
+      return {
+        id: `${relation.action}-${relation.messageIndex}-${index}`,
+        actionLabel: lineageActionLabel(relation.action),
+        sourceIndex: relation.messageIndex,
+        sourceNumber: relation.messageIndex + 1,
+        targetIndex: index,
+        targetNumber: index + 1,
+        sourcePreview: compactPreview(sourceMessage?.content || '未找到源消息', 96),
+        targetPreview: compactPreview(message.content || '结果内容为空', 120)
+      }
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+)
 
 const commandActions = computed(() => [
   {
@@ -550,6 +600,15 @@ function handleInsertPrompt(message: string) {
   chatInputRef.value?.setMessage(message)
 }
 
+function handleOpenTrace(traceId: string) {
+  if (!traceId) {
+    return
+  }
+  focusedTraceId.value = traceId
+  document.querySelector('.agent-diagnostics-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  setRecentAction(`已定位到执行轨迹 ${traceId}。`)
+}
+
 function focusChatInput() {
   chatInputRef.value?.focusInput()
   setRecentAction('已回到聊天输入框。')
@@ -567,6 +626,16 @@ function compactPreview(value: string, maxLength = 120) {
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized
 }
 
+function lineageActionLabel(action: 'continue' | 'regenerate' | 'branch') {
+  if (action === 'continue') {
+    return '继续生成'
+  }
+  if (action === 'regenerate') {
+    return '重新回答'
+  }
+  return '分支会话'
+}
+
 function clearHighlightedMessage(skipRouteSync = false) {
   if (highlightedMessageIndex.value === null) {
     return
@@ -580,6 +649,12 @@ function clearHighlightedMessage(skipRouteSync = false) {
 async function clearHighlightedContext() {
   clearHighlightedMessage(true)
   await syncRouteFromState()
+}
+
+async function focusLineageMessage(messageIndex: number) {
+  highlightedMessageIndex.value = messageIndex
+  await syncRouteFromState()
+  setRecentAction(`已定位到派生结果消息 #${messageIndex + 1}。`)
 }
 
 function continueFromHighlightedMessage() {
@@ -1446,6 +1521,66 @@ watch(filteredCommands, (commands) => {
 
 .continuation-card {
   overflow: hidden;
+}
+
+.lineage-card {
+  overflow: hidden;
+}
+
+.lineage-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.lineage-item {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.lineage-item-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.lineage-item-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.lineage-item-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text3);
+}
+
+.lineage-item-source,
+.lineage-item-target {
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text2);
+}
+
+.lineage-item-source {
+  background: rgba(79, 142, 247, 0.08);
+}
+
+.lineage-item-target {
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.lineage-item-arrow {
+  padding: 8px 0;
+  text-align: center;
+  color: var(--text3);
+  font-size: 18px;
 }
 
 .continuation-grid {

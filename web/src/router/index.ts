@@ -39,6 +39,12 @@ const router = createRouter({
           meta: { title: '学习中心' }
         },
         {
+          path: 'agents',
+          name: 'agents',
+          component: () => import('@/views/AgentWorkbenchView.vue'),
+          meta: { title: 'Agent 工作台', requiresAdmin: true }
+        },
+        {
           path: 'gateway',
           name: 'gateway',
           component: () => import('@/views/GatewayView.vue'),

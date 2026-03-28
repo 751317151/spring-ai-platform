@@ -31,8 +31,8 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -41,6 +41,23 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ModelGatewayService {
     private static final int DEGRADE_FAILURE_THRESHOLD = 3;
     private static final long DEGRADE_COOLDOWN_MILLIS = TimeUnit.MINUTES.toMillis(5);
+    private static final String STRATEGY_MANUAL = "manual";
+    private static final String STRATEGY_ROUND_ROBIN = "round-robin";
+    private static final String STRATEGY_WEIGHTED = "weighted";
+    private static final String STRATEGY_LEAST_LATENCY = "least-latency";
+    private static final String STATUS_HEALTHY = "healthy";
+    private static final String STATUS_DEGRADED = "degraded";
+    private static final String SAFE_MODEL_ID_AUTO = "auto";
+    private static final String DEFAULT_PROBE_PROMPT = "ping";
+    private static final String REASON_MANUAL_OVERRIDE = "Matched explicit model selection and skipped automatic routing";
+    private static final String REASON_SCENE_HEALTHY_ROUTE = "Matched scene routing and selected from healthy candidates";
+    private static final String REASON_SCENE_DEGRADED_FALLBACK = "Matched scene routing but no healthy candidates remained, so routing fallback to degraded candidates";
+    private static final String REASON_GLOBAL_HEALTHY_ROUTE = "No scene-specific route matched, selected from globally healthy models";
+    private static final String REASON_GLOBAL_FALLBACK = "No scene-specific healthy route matched, selected from the full model pool as fallback";
+    private static final String REASON_PROBE_SUCCESS = "Active health probe succeeded";
+    private static final String REASON_PROBE_FAILED_PREFIX = "Active health probe failed: ";
+    private static final String REASON_CONSECUTIVE_FAILURES = "Consecutive failures: %d";
+    private static final String REASON_DEGRADED = "Too many consecutive failures, model temporarily degraded";
 
     private final ModelRegistryConfig registryConfig;
     private final JdbcTemplate jdbcTemplate;
@@ -184,8 +201,8 @@ public class ModelGatewayService {
                     .scene(scene)
                     .requestedModelId(requestedModelId)
                     .selectedModelId(requestedModelId)
-                    .strategy("manual")
-                    .reason("命中显式模型指定，跳过自动路由")
+                    .strategy(STRATEGY_MANUAL)
+                    .reason(REASON_MANUAL_OVERRIDE)
                     .candidateModelIds(List.of(requestedModelId))
                     .healthyCandidateModelIds(isHealthyForRouting(requestedModelId) ? List.of(requestedModelId) : List.of())
                     .degradedModelIds(isHealthyForRouting(requestedModelId) ? List.of() : List.of(requestedModelId))
@@ -205,7 +222,7 @@ public class ModelGatewayService {
                         .scene(scene)
                         .selectedModelId(selectedModelId)
                         .strategy(normalizeStrategy())
-                        .reason("命中场景路由，并从健康候选模型中完成负载选择")
+                        .reason(REASON_SCENE_HEALTHY_ROUTE)
                         .candidateModelIds(candidates)
                         .healthyCandidateModelIds(healthyCandidates)
                         .degradedModelIds(findDegradedCandidates(candidates))
@@ -218,7 +235,7 @@ public class ModelGatewayService {
                         .scene(scene)
                         .selectedModelId(selectedModelId)
                         .strategy(normalizeStrategy())
-                        .reason("命中场景路由，但健康候选为空，已回退到降级模型池")
+                        .reason(REASON_SCENE_DEGRADED_FALLBACK)
                         .candidateModelIds(candidates)
                         .healthyCandidateModelIds(List.of())
                         .degradedModelIds(findDegradedCandidates(candidates))
@@ -248,9 +265,7 @@ public class ModelGatewayService {
                 .scene(scene)
                 .selectedModelId(selectedModelId)
                 .strategy(normalizeStrategy())
-                .reason(fallbackTriggered
-                        ? "未命中特定场景健康路由，已从全量模型中回退选择"
-                        : "未命中特定场景路由，已从全局健康模型中选择")
+                .reason(fallbackTriggered ? REASON_GLOBAL_FALLBACK : REASON_GLOBAL_HEALTHY_ROUTE)
                 .candidateModelIds(allModels)
                 .healthyCandidateModelIds(healthyModels)
                 .degradedModelIds(findDegradedCandidates(allModels))
@@ -271,15 +286,15 @@ public class ModelGatewayService {
     private String loadBalance(List<String> candidates) {
         String strategy = registryConfig.getLoadBalanceStrategy();
         return switch (strategy) {
-            case "weighted" -> weightedSelect(candidates);
-            case "least-latency" -> leastLatencySelect(candidates);
+            case STRATEGY_WEIGHTED -> weightedSelect(candidates);
+            case STRATEGY_LEAST_LATENCY -> leastLatencySelect(candidates);
             default -> roundRobinSelect(candidates);
         };
     }
 
     private String normalizeStrategy() {
         String strategy = registryConfig.getLoadBalanceStrategy();
-        return (strategy == null || strategy.isBlank()) ? "round-robin" : strategy;
+        return (strategy == null || strategy.isBlank()) ? STRATEGY_ROUND_ROBIN : strategy;
     }
 
     private List<String> findDegradedCandidates(List<String> candidates) {
@@ -306,7 +321,7 @@ public class ModelGatewayService {
             return candidates.get(0);
         }
 
-        int rand = new Random().nextInt(totalWeight);
+        int rand = ThreadLocalRandom.current().nextInt(totalWeight);
         int cumulative = 0;
         for (ModelDefinition definition : registryConfig.getRegistry()) {
             if (!candidates.contains(definition.getId())) {
@@ -387,7 +402,7 @@ public class ModelGatewayService {
     }
 
     public void recordCall(String modelId, long latencyMs, boolean success, Integer promptTokens, Integer completionTokens) {
-        String safeModelId = modelId == null || modelId.isBlank() ? "auto" : modelId;
+        String safeModelId = modelId == null || modelId.isBlank() ? SAFE_MODEL_ID_AUTO : modelId;
         ModelStats stats = statsMap.computeIfAbsent(safeModelId, ModelStats::new);
         ModelHealth health = healthMap.computeIfAbsent(safeModelId, ModelHealth::new);
         stats.record(latencyMs, success, promptTokens, completionTokens, estimateCost(safeModelId, promptTokens, completionTokens));
@@ -456,12 +471,12 @@ public class ModelGatewayService {
         long start = System.currentTimeMillis();
         String prompt = registryConfig.getHealthProbe() != null && registryConfig.getHealthProbe().getPrompt() != null
                 ? registryConfig.getHealthProbe().getPrompt()
-                : "ping";
+                : DEFAULT_PROBE_PROMPT;
         ModelHealth health = healthMap.computeIfAbsent(modelId, ModelHealth::new);
         try {
             model.call(new Prompt(prompt));
             long latency = System.currentTimeMillis() - start;
-            health.recordProbe(true, latency, "主动探测成功");
+            health.recordProbe(true, latency, REASON_PROBE_SUCCESS);
             return Map.of(
                     "modelId", modelId,
                     "status", health.getStatus(),
@@ -470,7 +485,7 @@ public class ModelGatewayService {
             );
         } catch (Exception e) {
             long latency = System.currentTimeMillis() - start;
-            health.recordProbe(false, latency, "主动探测失败: " + e.getMessage());
+            health.recordProbe(false, latency, REASON_PROBE_FAILED_PREFIX + e.getMessage());
             recordDependencyFailure("model-health-probe", modelId);
             log.warn("Model health probe failed: modelId={}, error={}", modelId, e.getMessage());
             return Map.of(
@@ -492,12 +507,7 @@ public class ModelGatewayService {
     }
 
     private double estimateCost(String modelId, Integer promptTokens, Integer completionTokens) {
-        ModelRegistryConfig.ModelDefinition definition = registryConfig.getRegistry() == null
-                ? null
-                : registryConfig.getRegistry().stream()
-                .filter(item -> modelId.equals(item.getId()))
-                .findFirst()
-                .orElse(null);
+        ModelDefinition definition = getModelDefinition(modelId);
         if (definition == null) {
             return 0d;
         }
@@ -572,10 +582,10 @@ public class ModelGatewayService {
             }
 
             int failures = consecutiveFailures.incrementAndGet();
-            lastReason = "连续失败 " + failures + " 次";
+            lastReason = REASON_CONSECUTIVE_FAILURES.formatted(failures);
             if (failures >= DEGRADE_FAILURE_THRESHOLD) {
                 degradedUntil = System.currentTimeMillis() + DEGRADE_COOLDOWN_MILLIS;
-                lastReason = "连续失败过多，已临时降级";
+                lastReason = REASON_DEGRADED;
             }
         }
 
@@ -594,7 +604,7 @@ public class ModelGatewayService {
             if (failures >= DEGRADE_FAILURE_THRESHOLD) {
                 degradedUntil = System.currentTimeMillis() + DEGRADE_COOLDOWN_MILLIS;
                 if (lastReason == null || lastReason.isBlank()) {
-                    lastReason = "连续失败过多，已临时降级";
+                    lastReason = REASON_DEGRADED;
                 }
             }
         }
@@ -604,7 +614,7 @@ public class ModelGatewayService {
         }
 
         public String getStatus() {
-            return isTemporarilyDegraded() ? "degraded" : "healthy";
+            return isTemporarilyDegraded() ? STATUS_DEGRADED : STATUS_HEALTHY;
         }
     }
 

@@ -25,6 +25,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -41,11 +42,23 @@ import java.util.Optional;
 import java.util.StringJoiner;
 import java.util.ArrayList;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class MonitorQueryService {
 
     private static final DateTimeFormatter CSV_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final String PHASE_AUTH_LABEL = "Auth and context";
+    private static final String PHASE_RETRIEVAL_LABEL = "Retrieval and preparation";
+    private static final String PHASE_TOOLS_LABEL = "Tool execution";
+    private static final String PHASE_GENERATION_LABEL = "Model generation";
+    private static final String PHASE_PERSISTENCE_LABEL = "Persistence and audit";
+    private static final String PHASE_AUTH_DESCRIPTION = "Gateway entry, authorization checks, and request context setup.";
+    private static final String PHASE_RETRIEVAL_DESCRIPTION = "Knowledge retrieval, prompt preparation, and model input assembly.";
+    private static final String PHASE_TOOLS_EMPTY_DESCRIPTION = "No tool execution was recorded for this trace.";
+    private static final String PHASE_TOOLS_DESCRIPTION = "Accumulated tool latency derived from audit records.";
+    private static final String PHASE_GENERATION_DESCRIPTION = "Model inference and final answer generation.";
+    private static final String PHASE_PERSISTENCE_DESCRIPTION = "Audit logging, feedback linkage, and persistence work.";
 
     private final MeterRegistry meterRegistry;
     private final StringRedisTemplate redisTemplate;
@@ -88,6 +101,7 @@ public class MonitorQueryService {
                     .activeRequests(getGaugeValue("ai.requests.active"))
                     .build();
         } catch (Exception e) {
+            log.warn("Failed to load monitor overview: {}", e.getMessage());
             return MonitorOverviewView.builder()
                     .totalRequests(0)
                     .errorRequests(0)
@@ -121,6 +135,7 @@ public class MonitorQueryService {
                     today
             );
         } catch (Exception e) {
+            log.warn("Failed to load agent stats: {}", e.getMessage());
             return Collections.emptyList();
         }
     }
@@ -143,6 +158,7 @@ public class MonitorQueryService {
                     today
             );
         } catch (Exception e) {
+            log.warn("Failed to load model stats: {}", e.getMessage());
             return Collections.emptyList();
         }
     }
@@ -169,6 +185,7 @@ public class MonitorQueryService {
                     ? jdbcTemplate.query(sql, this::mapAuditLog, userId, limit)
                     : jdbcTemplate.query(sql, this::mapAuditLog, limit);
         } catch (Exception e) {
+            log.warn("Failed to load audit logs: userId={}, limit={}, error={}", userId, limit, e.getMessage());
             return Collections.emptyList();
         }
     }
@@ -188,6 +205,7 @@ public class MonitorQueryService {
                             .build(),
                     LocalDateTime.now().minusDays(1));
         } catch (Exception e) {
+            log.warn("Failed to load top users: {}", e.getMessage());
             return Collections.emptyList();
         }
     }
@@ -210,6 +228,7 @@ public class MonitorQueryService {
                     limit
             );
         } catch (Exception e) {
+            log.warn("Failed to load slow requests: limit={}, error={}", limit, e.getMessage());
             return Collections.emptyList();
         }
     }
@@ -233,6 +252,7 @@ public class MonitorQueryService {
                     limit
             );
         } catch (Exception e) {
+            log.warn("Failed to load failure samples: limit={}, error={}", limit, e.getMessage());
             return Collections.emptyList();
         }
     }
@@ -260,6 +280,8 @@ public class MonitorQueryService {
             args.add(limit);
             return jdbcTemplate.query(sql.toString(), this::mapToolAudit, args.toArray());
         } catch (Exception e) {
+            log.warn("Failed to load tool audits: userId={}, agentType={}, toolName={}, limit={}, error={}",
+                    userId, agentType, toolName, limit, e.getMessage());
             return Collections.emptyList();
         }
     }
@@ -297,6 +319,7 @@ public class MonitorQueryService {
             );
             return rows.stream().findFirst();
         } catch (Exception e) {
+            log.warn("Failed to load trace detail: traceId={}, error={}", traceId, e.getMessage());
             return Optional.empty();
         }
     }
@@ -321,6 +344,7 @@ public class MonitorQueryService {
                     .positiveRate(total > 0 ? (double) positive / total : 0)
                     .build();
         } catch (Exception e) {
+            log.warn("Failed to load feedback overview: {}", e.getMessage());
             return FeedbackOverviewView.builder()
                     .totalCount(0)
                     .positiveCount(0)
@@ -350,6 +374,7 @@ public class MonitorQueryService {
                     limit
             );
         } catch (Exception e) {
+            log.warn("Failed to load recent feedback: limit={}, error={}", limit, e.getMessage());
             return Collections.emptyList();
         }
     }
@@ -373,6 +398,7 @@ public class MonitorQueryService {
                     limit
             );
         } catch (Exception e) {
+            log.warn("Failed to load recent evidence feedback: limit={}, error={}", limit, e.getMessage());
             return Collections.emptyList();
         }
     }
@@ -400,6 +426,7 @@ public class MonitorQueryService {
                     today
             );
         } catch (Exception e) {
+            log.warn("Failed to load hourly stats: {}", e.getMessage());
             return Collections.emptyList();
         }
     }
@@ -564,6 +591,7 @@ public class MonitorQueryService {
                     .activeRequests(getGaugeValue("ai.requests.active"))
                     .build();
         } catch (Exception e) {
+            log.warn("Failed to build alert snapshot: {}", e.getMessage());
             return AlertMetricsSnapshot.builder()
                     .totalCount(0)
                     .errorCount(0)
@@ -618,6 +646,7 @@ public class MonitorQueryService {
                     traceId
             );
         } catch (Exception e) {
+            log.warn("Failed to load tool audits for trace: traceId={}, error={}", traceId, e.getMessage());
             return Collections.emptyList();
         }
     }
@@ -654,6 +683,7 @@ public class MonitorQueryService {
                             .build())
                     .toList();
         } catch (Exception e) {
+            log.warn("Failed to parse trace phases: {}", e.getMessage());
             return List.of();
         }
     }

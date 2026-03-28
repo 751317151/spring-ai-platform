@@ -1,7 +1,7 @@
 package com.huah.ai.platform.agent.tools;
 
 import com.huah.ai.platform.agent.config.ToolsProperties;
-import com.huah.ai.platform.agent.tools.InternalApiTools;
+import com.huah.ai.platform.agent.security.ToolSecurityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
@@ -36,7 +36,11 @@ class InternalApiToolsTest {
         properties.getInternalApi().getConnectors().put("issue-center", enabled);
         properties.getInternalApi().getConnectors().put("disabled-api", disabled);
 
-        internalApiTools = new InternalApiTools(mock(RestClient.Builder.class, RETURNS_DEEP_STUBS), properties);
+        internalApiTools = new InternalApiTools(
+                mock(RestClient.Builder.class, RETURNS_DEEP_STUBS),
+                properties,
+                new ToolSecurityService(properties)
+        );
     }
 
     @Test

@@ -1,7 +1,7 @@
 <template>
   <article class="msg" :class="[role, { 'is-highlighted': highlighted }]" :data-message-index="messageIndex">
     <div class="msg-avatar" :class="role === 'user' ? 'user-av' : 'ai'">
-      {{ role === 'user' ? '你' : 'AI' }}
+      {{ role === 'user' ? 'U' : 'AI' }}
     </div>
 
     <div class="msg-content-wrap">
@@ -9,6 +9,15 @@
         <div class="msg-header-main">
           <span class="msg-role-label">{{ role === 'user' ? '用户' : '助手' }}</span>
           <span v-if="role === 'assistant' && responseId" class="msg-response-chip">已生成</span>
+          <button
+            v-if="role === 'assistant' && traceId"
+            class="msg-trace-chip"
+            type="button"
+            @click="emit('open-trace', traceId)"
+          >
+            Trace
+          </button>
+          <span v-if="derivedFromLabel" class="msg-derived-chip">{{ derivedFromLabel }}</span>
         </div>
         <span class="msg-time">{{ timeLabel }}</span>
       </div>
@@ -18,7 +27,7 @@
       </div>
 
       <div v-if="summaryItems.length" class="msg-summary-card">
-        <div class="msg-summary-title">快速摘录</div>
+        <div class="msg-summary-title">快速摘要</div>
         <div class="msg-summary-list">
           <button
             v-for="item in summaryItems"
@@ -49,19 +58,48 @@
 
       <div class="msg-meta">
         <button v-if="content" class="msg-text-btn" type="button" @click="copyContent">复制</button>
+        <button v-if="traceId" class="msg-text-btn" type="button" @click="copyTraceId">复制 TraceId</button>
+        <button v-if="traceId" class="msg-text-btn" type="button" @click="emit('open-trace', traceId)">查看轨迹</button>
         <button v-if="content" class="msg-text-btn" type="button" @click="quoteContent">引用</button>
         <button v-if="content" class="msg-text-btn" type="button" @click="toggleFavorite">
           {{ isFavorite ? '已收藏' : '收藏' }}
         </button>
         <button v-if="content" class="msg-text-btn" type="button" @click="exportMessage">导出</button>
-        <button v-if="role === 'assistant' && content" class="msg-text-btn" type="button" @click="emit('branch-session')">分支会话</button>
-        <button v-if="role === 'assistant' && content" class="msg-text-btn" type="button" @click="emit('continue-response')">继续生成</button>
-        <button v-if="role === 'assistant' && content" class="msg-text-btn" type="button" @click="emit('regenerate-response')">重新回答</button>
-        <button v-if="role === 'assistant' && content" class="msg-text-btn accent" type="button" @click="followUp">继续追问</button>
+        <button
+          v-if="role === 'assistant' && content"
+          class="msg-text-btn"
+          type="button"
+          @click="emit('branch-session')"
+        >
+          分支会话
+        </button>
+        <button
+          v-if="role === 'assistant' && content"
+          class="msg-text-btn"
+          type="button"
+          @click="emit('continue-response')"
+        >
+          继续生成
+        </button>
+        <button
+          v-if="role === 'assistant' && content"
+          class="msg-text-btn"
+          type="button"
+          @click="emit('regenerate-response')"
+        >
+          重新回答
+        </button>
+        <button v-if="role === 'assistant' && content" class="msg-text-btn accent" type="button" @click="followUp">
+          继续追问
+        </button>
 
         <div v-if="showFeedback" class="msg-actions">
-          <button class="feedback-btn" :class="{ active: feedback === 'up' }" type="button" @click="$emit('feedback', 'up')">有帮助</button>
-          <button class="feedback-btn" :class="{ active: feedback === 'down' }" type="button" @click="$emit('feedback', 'down')">待改进</button>
+          <button class="feedback-btn" :class="{ active: feedback === 'up' }" type="button" @click="$emit('feedback', 'up')">
+            有帮助
+          </button>
+          <button class="feedback-btn" :class="{ active: feedback === 'down' }" type="button" @click="$emit('feedback', 'down')">
+            待改进
+          </button>
         </div>
       </div>
     </div>
@@ -70,10 +108,10 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import type { MessageDerivedFrom, SessionConfig } from '@/api/types'
 import { useToast } from '@/composables/useToast'
-import type { FavoriteMessageRecord, SessionConfig } from '@/api/types'
-import { isFavoriteMessage, removeFavoriteMessage, saveFavoriteMessage } from '@/utils/learning'
 import { formatMarkdown } from '@/utils/format'
+import { isFavoriteMessage, removeFavoriteMessage, saveFavoriteMessage } from '@/utils/learning'
 
 interface TextBlock {
   type: 'text'
@@ -92,6 +130,7 @@ const props = defineProps<{
   role: 'user' | 'assistant'
   content: string
   responseId?: string
+  traceId?: string
   feedback?: 'up' | 'down' | null
   sessionConfigSnapshot?: SessionConfig | null
   agentType?: string
@@ -99,6 +138,7 @@ const props = defineProps<{
   sessionSummary?: string
   messageIndex?: number
   highlighted?: boolean
+  derivedFrom?: MessageDerivedFrom | null
 }>()
 
 const emit = defineEmits<{
@@ -107,15 +147,19 @@ const emit = defineEmits<{
   (e: 'branch-session'): void
   (e: 'continue-response'): void
   (e: 'regenerate-response'): void
+  (e: 'open-trace', traceId: string): void
 }>()
 
 const { showToast } = useToast()
 const copiedCodeIndex = ref<number | null>(null)
 const isFavorite = ref(false)
+const renderedAt = new Date()
 
 const contentBlocks = computed<ContentBlock[]>(() => {
   const source = props.content || ''
-  if (!source) return [{ type: 'text', html: '' }]
+  if (!source) {
+    return [{ type: 'text', html: '' }]
+  }
 
   const blocks: ContentBlock[] = []
   const regex = /```([\w-]*)\n([\s\S]*?)```/g
@@ -160,10 +204,28 @@ const runtimeConfigItems = computed(() => {
   ].filter(Boolean)
 })
 
+const derivedFromLabel = computed(() => {
+  if (!props.derivedFrom) {
+    return ''
+  }
+  const messageNumber = props.derivedFrom.messageIndex + 1
+  if (props.derivedFrom.action === 'continue') {
+    return `继续生成自 #${messageNumber}`
+  }
+  if (props.derivedFrom.action === 'regenerate') {
+    return `重新回答自 #${messageNumber}`
+  }
+  return `分支自 #${messageNumber}`
+})
+
 const summaryItems = computed(() => {
-  if (props.role !== 'assistant') return []
+  if (props.role !== 'assistant') {
+    return []
+  }
   const normalized = (props.content || '').replace(/```[\s\S]*?```/g, ' ').replace(/\s+/g, ' ').trim()
-  if (normalized.length < 90) return []
+  if (normalized.length < 90) {
+    return []
+  }
   return normalized
     .split(/[。！？；\n]/)
     .map((item) => item.trim())
@@ -172,10 +234,7 @@ const summaryItems = computed(() => {
 })
 
 const showFeedback = computed(() => props.role === 'assistant' && Boolean(props.responseId) && Boolean(props.content))
-const timeLabel = computed(() => {
-  const now = new Date()
-  return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
-})
+const timeLabel = computed(() => renderedAt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
 const favoriteStorageKey = computed(() => props.responseId || `${props.role}:${compactContent(props.content, 80)}`)
 
 function syncFavoriteState() {
@@ -188,6 +247,18 @@ async function copyContent() {
     showToast('消息已复制')
   } catch {
     showToast('复制失败，请重试')
+  }
+}
+
+async function copyTraceId() {
+  if (!props.traceId) {
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(props.traceId)
+    showToast('TraceId 已复制')
+  } catch {
+    showToast('TraceId 复制失败')
   }
 }
 
@@ -251,6 +322,7 @@ function exportMessage() {
   const payload = [
     `角色: ${props.role === 'assistant' ? '助手' : '用户'}`,
     `时间: ${timeLabel.value}`,
+    props.traceId ? `TraceId: ${props.traceId}` : '',
     runtimeConfigItems.value.length ? `参数: ${runtimeConfigItems.value.join(' / ')}` : '',
     '',
     props.content
@@ -299,6 +371,7 @@ syncFavoriteState()
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex-wrap: wrap;
 }
 
 .msg-role-label {
@@ -308,16 +381,34 @@ syncFavoriteState()
   letter-spacing: 0.08em;
 }
 
-.msg-response-chip {
+.msg-response-chip,
+.msg-trace-chip,
+.msg-derived-chip {
   display: inline-flex;
   align-items: center;
   padding: 3px 8px;
   border-radius: 999px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.msg-response-chip {
   background: rgba(79, 142, 247, 0.08);
   border: 1px solid rgba(79, 142, 247, 0.14);
   color: var(--accent2);
-  font-size: 11px;
-  line-height: 1;
+}
+
+.msg-trace-chip {
+  border: 1px solid rgba(245, 158, 11, 0.18);
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+  cursor: pointer;
+}
+
+.msg-derived-chip {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.16);
+  color: #0f766e;
 }
 
 .msg-time {
@@ -451,7 +542,8 @@ syncFavoriteState()
 
 .msg-text-btn:hover,
 .feedback-btn:hover,
-.msg-summary-item:hover {
+.msg-summary-item:hover,
+.msg-trace-chip:hover {
   color: var(--text);
   border-color: var(--border2);
   background: var(--surface2);

@@ -5,6 +5,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Mapper
@@ -23,6 +24,9 @@ public interface AiToolAuditLogMapper extends BaseMapper<AiToolAuditLog> {
             <if test="toolName != null and toolName != ''">
               AND tool_name = #{toolName}
             </if>
+            <if test="traceId != null and traceId != ''">
+              AND trace_id = #{traceId}
+            </if>
             ORDER BY created_at DESC
             LIMIT #{limit}
             </script>
@@ -30,5 +34,53 @@ public interface AiToolAuditLogMapper extends BaseMapper<AiToolAuditLog> {
     List<AiToolAuditLog> selectRecent(@Param("userId") String userId,
                                       @Param("agentType") String agentType,
                                       @Param("toolName") String toolName,
+                                      @Param("traceId") String traceId,
                                       @Param("limit") int limit);
+
+    @Select("""
+            <script>
+            SELECT * FROM ai_tool_audit_logs
+            WHERE agent_type = #{agentType}
+              AND created_at &gt;= #{after}
+            ORDER BY created_at DESC
+            LIMIT #{limit}
+            </script>
+            """)
+    List<AiToolAuditLog> selectRecentByAgentTypeAfter(@Param("agentType") String agentType,
+                                                      @Param("after") LocalDateTime after,
+                                                      @Param("limit") int limit);
+
+    @Select("SELECT COUNT(*) FROM ai_tool_audit_logs WHERE agent_type = #{agentType}")
+    long countByAgentType(@Param("agentType") String agentType);
+
+    @Select("SELECT COUNT(*) FROM ai_tool_audit_logs WHERE agent_type = #{agentType} AND created_at < #{before}")
+    long countByAgentTypeBefore(@Param("agentType") String agentType,
+                                @Param("before") LocalDateTime before);
+
+    @Select("""
+            SELECT * FROM ai_tool_audit_logs
+            WHERE agent_type = #{agentType}
+              AND created_at < #{before}
+            ORDER BY created_at ASC
+            LIMIT #{limit}
+            """)
+    List<AiToolAuditLog> selectArchiveCandidates(@Param("agentType") String agentType,
+                                                 @Param("before") LocalDateTime before,
+                                                 @Param("limit") int limit);
+
+    @Select("""
+            SELECT * FROM ai_tool_audit_logs
+            WHERE agent_type = #{agentType}
+              AND created_at < #{before}
+            ORDER BY created_at ASC
+            LIMIT #{limit} OFFSET #{offset}
+            """)
+    List<AiToolAuditLog> selectArchiveCandidatesBatch(@Param("agentType") String agentType,
+                                                      @Param("before") LocalDateTime before,
+                                                      @Param("limit") int limit,
+                                                      @Param("offset") long offset);
+
+    @org.apache.ibatis.annotations.Delete("DELETE FROM ai_tool_audit_logs WHERE agent_type = #{agentType} AND created_at < #{before}")
+    int deleteByAgentTypeBefore(@Param("agentType") String agentType,
+                                @Param("before") LocalDateTime before);
 }

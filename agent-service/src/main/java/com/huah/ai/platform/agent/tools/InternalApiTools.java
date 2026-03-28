@@ -2,7 +2,10 @@ package com.huah.ai.platform.agent.tools;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.huah.ai.platform.agent.audit.ToolExecutionContext;
 import com.huah.ai.platform.agent.config.ToolsProperties;
+import com.huah.ai.platform.agent.security.ToolAccessDeniedException;
+import com.huah.ai.platform.agent.security.ToolSecurityService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -21,16 +24,26 @@ public class InternalApiTools {
 
     private final RestClient.Builder restClientBuilder;
     private final ToolsProperties.InternalApiConfig config;
+    private final ToolSecurityService toolSecurityService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public InternalApiTools(RestClient.Builder restClientBuilder, ToolsProperties props) {
+    public InternalApiTools(RestClient.Builder restClientBuilder,
+                            ToolsProperties props,
+                            ToolSecurityService toolSecurityService) {
         this.restClientBuilder = restClientBuilder;
         this.config = props.getInternalApi();
+        this.toolSecurityService = toolSecurityService;
     }
 
-    @Tool(description = "列出当前已配置的内部 API connector，返回可用 connector 编码、名称和允许调用的路径前缀。")
+    @Tool(description = "List configured internal API connectors that are visible to the current agent.")
     public List<Map<String, Object>> listConnectors() {
-        return config.getConnectors().entrySet().stream()
+        String agentType = currentAgentType();
+        List<String> allowedConnectorCodes = toolSecurityService.filterAuthorizedConnectors(
+                agentType,
+                config.getConnectors().keySet());
+
+        return allowedConnectorCodes.stream()
+                .map(code -> Map.entry(code, config.getConnectors().get(code)))
                 .filter(entry -> entry.getValue() != null && entry.getValue().isEnabled())
                 .map(entry -> {
                     ToolsProperties.ConnectorDefinition connector = entry.getValue();
@@ -44,14 +57,21 @@ public class InternalApiTools {
                 .toList();
     }
 
-    @Tool(description = "调用已配置的内部 API connector，只支持 GET 请求。必须提供 connector 编码、路径和可选查询参数 JSON。")
+    @Tool(description = "Call an allowed internal API connector with a GET request and optional JSON query parameters.")
     public Map<String, Object> callConnector(
-            @ToolParam(description = "connector 编码，例如 jira-internal、docs-api") String connectorCode,
-            @ToolParam(description = "GET 路径，例如 /api/issues 或 /v1/docs/search") String path,
-            @ToolParam(description = "可选查询参数 JSON，例如 {\"status\":\"OPEN\",\"limit\":10}，为空时传 {}") String queryParamsJson) {
+            @ToolParam(description = "Connector code, for example jira-internal or docs-api") String connectorCode,
+            @ToolParam(description = "GET path, for example /api/issues or /v1/docs/search") String path,
+            @ToolParam(description = "Optional query parameters in JSON, for example {\"status\":\"OPEN\",\"limit\":10}") String queryParamsJson) {
         try {
+            toolSecurityService.validateConnectorAccess(connectorCode, ToolExecutionContext.current());
             ToolsProperties.ConnectorDefinition connector = requireConnector(connectorCode);
             String normalizedPath = normalizePath(path);
+            toolSecurityService.validateConnectorPathAccess(
+                    connectorCode,
+                    normalizedPath,
+                    ToolExecutionContext.current(),
+                    connector.getAllowedPathPrefixes()
+            );
             validatePathAllowed(connector, normalizedPath);
             Map<String, Object> queryParams = parseQueryParams(queryParamsJson);
 
@@ -79,41 +99,60 @@ public class InternalApiTools {
             result.put("query", queryParams);
             result.put("response", parseResponseBody(responseText));
             return result;
-        } catch (IllegalArgumentException e) {
+        } catch (ToolAccessDeniedException e) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("error", e.getMessage());
+            result.put("errorCode", e.getReasonCode());
+            result.put("resource", e.getResource());
+            result.put("detail", e.getDetail());
+            return result;
+        } catch (IllegalArgumentException | IllegalStateException e) {
             return Map.of("error", e.getMessage());
         } catch (Exception e) {
             log.error("[Tool] callConnector failed: connector={}, path={}, error={}", connectorCode, path, e.getMessage(), e);
-            return Map.of("error", "内部 API 调用失败: " + e.getMessage());
+            return Map.of("error", "Internal API call failed: " + e.getMessage());
         }
+    }
+
+    public List<String> listEnabledConnectorCodes() {
+        return config.getConnectors().entrySet().stream()
+                .filter(entry -> entry.getValue() != null && entry.getValue().isEnabled())
+                .map(Map.Entry::getKey)
+                .toList();
+    }
+
+    private String currentAgentType() {
+        ToolExecutionContext.Context context = ToolExecutionContext.current();
+        return context != null ? context.getAgentType() : null;
     }
 
     private ToolsProperties.ConnectorDefinition requireConnector(String connectorCode) {
         if (connectorCode == null || connectorCode.isBlank()) {
-            throw new IllegalArgumentException("connectorCode不能为空");
+            throw new IllegalArgumentException("connectorCode must not be blank");
         }
         ToolsProperties.ConnectorDefinition connector = config.getConnectors().get(connectorCode);
         if (connector == null) {
-            throw new IllegalArgumentException("未找到内部 API connector: " + connectorCode);
+            throw new IllegalArgumentException("Unknown internal API connector: " + connectorCode);
         }
         if (!connector.isEnabled()) {
-            throw new IllegalArgumentException("内部 API connector 未启用: " + connectorCode);
+            throw new IllegalArgumentException("The internal API connector is disabled: " + connectorCode);
         }
         if (connector.getBaseUrl() == null || connector.getBaseUrl().isBlank()) {
-            throw new IllegalArgumentException("内部 API connector 缺少 baseUrl 配置: " + connectorCode);
+            throw new IllegalArgumentException("The internal API connector is missing baseUrl: " + connectorCode);
         }
         return connector;
     }
 
     private String normalizePath(String path) {
         if (path == null || path.isBlank()) {
-            throw new IllegalArgumentException("path不能为空");
+            throw new IllegalArgumentException("path must not be blank");
         }
         String normalized = path.trim();
         if (!normalized.startsWith("/")) {
-            throw new IllegalArgumentException("path 必须以 / 开头");
+            throw new IllegalArgumentException("path must start with '/'");
         }
         if (normalized.contains("://") || normalized.contains("..")) {
-            throw new IllegalArgumentException("path 非法");
+            throw new IllegalArgumentException("path contains an invalid traversal or absolute URL");
         }
         return normalized;
     }
@@ -125,7 +164,7 @@ public class InternalApiTools {
         }
         boolean matched = allowedPrefixes.stream().anyMatch(path::startsWith);
         if (!matched) {
-            throw new IllegalArgumentException("当前 path 不在 connector 允许范围内: " + path);
+            throw new IllegalArgumentException("The requested path is outside the connector allowlist: " + path);
         }
     }
 
@@ -137,7 +176,7 @@ public class InternalApiTools {
             Map<String, Object> parsed = objectMapper.readValue(queryParamsJson, new TypeReference<>() {});
             return parsed != null ? parsed : Map.of();
         } catch (Exception e) {
-            throw new IllegalArgumentException("queryParamsJson 必须是合法 JSON 对象");
+            throw new IllegalArgumentException("queryParamsJson must be valid JSON");
         }
     }
 

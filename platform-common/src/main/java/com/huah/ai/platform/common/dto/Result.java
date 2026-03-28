@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 
 /**
- * 统一响应体
+ * Standard API response envelope.
  */
 @Data
 @NoArgsConstructor
@@ -18,17 +18,18 @@ public class Result<T> {
     private int code;
     private String message;
     private T data;
+    private Object error;
     private long timestamp;
     private String traceId;
 
     public static <T> Result<T> ok(T data) {
-        Result<T> r = new Result<>();
-        r.code = 200;
-        r.message = "success";
-        r.data = data;
-        r.timestamp = Instant.now().toEpochMilli();
-        r.traceId = TraceIdContext.currentTraceId();
-        return r;
+        Result<T> response = new Result<>();
+        response.code = 200;
+        response.message = "success";
+        response.data = data;
+        response.timestamp = Instant.now().toEpochMilli();
+        response.traceId = TraceIdContext.currentTraceId();
+        return response;
     }
 
     public static <T> Result<T> ok() {
@@ -36,12 +37,17 @@ public class Result<T> {
     }
 
     public static <T> Result<T> fail(int code, String message) {
-        Result<T> r = new Result<>();
-        r.code = code;
-        r.message = message;
-        r.timestamp = Instant.now().toEpochMilli();
-        r.traceId = TraceIdContext.currentTraceId();
-        return r;
+        return fail(code, message, null);
+    }
+
+    public static <T> Result<T> fail(int code, String message, Object error) {
+        Result<T> response = new Result<>();
+        response.code = code;
+        response.message = message;
+        response.error = error;
+        response.timestamp = Instant.now().toEpochMilli();
+        response.traceId = TraceIdContext.currentTraceId();
+        return response;
     }
 
     public static <T> Result<T> fail(String message) {

@@ -23,8 +23,27 @@ function persist<T>(key: string, value: T) {
   localStorage.setItem(key, JSON.stringify(value))
 }
 
+async function runServerSync(task: (api: typeof import('@/api/learning')) => Promise<unknown>) {
+  try {
+    const api = await import('@/api/learning')
+    if (!api.isLearningCenterServerEnabled()) {
+      return
+    }
+    await task(api)
+  } catch {
+    // keep local cache as the fallback path when server sync is unavailable
+  }
+}
+
 function compactText(value: string) {
   return (value || '').replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+function mergeById<T extends { id: string }>(localItems: T[], remoteItems: T[]) {
+  const map = new Map<string, T>()
+  remoteItems.forEach((item) => map.set(item.id, item))
+  localItems.forEach((item) => map.set(item.id, item))
+  return [...map.values()]
 }
 
 export function normalizeTags(values?: string[] | string | null) {
@@ -94,6 +113,7 @@ export function saveFavoriteMessage(record: FavoriteMessageRecord): SaveFavorite
     })
     const next = [updated, ...favorites.filter((item) => item.id !== normalized.id)].slice(0, 300)
     persist(FAVORITES_KEY, next)
+    void runServerSync((api) => api.saveLearningFavorite(updated))
     return { status: 'updated', record: updated }
   }
 
@@ -112,16 +132,19 @@ export function saveFavoriteMessage(record: FavoriteMessageRecord): SaveFavorite
     })
     const next = [merged, ...favorites.filter((item) => item.id !== duplicate.id)].slice(0, 300)
     persist(FAVORITES_KEY, next)
+    void runServerSync((api) => api.saveLearningFavorite(merged))
     return { status: 'deduplicated', record: merged }
   }
 
   const next = [normalized, ...favorites].slice(0, 300)
   persist(FAVORITES_KEY, next)
+  void runServerSync((api) => api.saveLearningFavorite(normalized))
   return { status: 'created', record: normalized }
 }
 
 export function removeFavoriteMessage(id: string) {
   persist(FAVORITES_KEY, listFavoriteMessages().filter((item) => item.id !== id))
+  void runServerSync((api) => api.deleteLearningFavorite(id))
 }
 
 export function isFavoriteMessage(id: string) {
@@ -139,6 +162,7 @@ export function updateFavoriteMessageTags(id: string, tags: string[]) {
     tags: mergeTags(tags, deriveFavoriteTags(target))
   })
   persist(FAVORITES_KEY, [updated, ...favorites.filter((item) => item.id !== id)])
+  void runServerSync((api) => api.saveLearningFavorite(updated))
   return updated
 }
 
@@ -159,8 +183,42 @@ export function saveLearningNote(note: LearningNoteRecord) {
   const normalized = normalizeLearningNote(note)
   const next = [normalized, ...listLearningNotes().filter((item) => item.id !== note.id)].slice(0, 300)
   persist(NOTES_KEY, next)
+  void runServerSync((api) => api.saveLearningNoteApi(normalized))
 }
 
 export function removeLearningNote(id: string) {
   persist(NOTES_KEY, listLearningNotes().filter((item) => item.id !== id))
+  void runServerSync((api) => api.deleteLearningNoteApi(id))
+}
+
+export async function hydrateLearningCenterCacheFromServer() {
+  try {
+    const api = await import('@/api/learning')
+    if (!api.isLearningCenterServerEnabled()) {
+      return false
+    }
+    const localFavorites = listFavoriteMessages()
+    const localNotes = listLearningNotes()
+    const [favorites, notes] = await Promise.all([
+      api.listLearningFavorites(),
+      api.listLearningNotesApi()
+    ])
+    const mergedFavorites = mergeById(localFavorites, favorites)
+    const mergedNotes = mergeById(localNotes, notes)
+    persist(FAVORITES_KEY, mergedFavorites)
+    persist(NOTES_KEY, mergedNotes)
+    const remoteFavoriteIds = new Set(favorites.map((item) => item.id))
+    const remoteNoteIds = new Set(notes.map((item) => item.id))
+    await Promise.all([
+      ...localFavorites
+        .filter((item) => !remoteFavoriteIds.has(item.id))
+        .map((item) => api.saveLearningFavorite(item).catch(() => {})),
+      ...localNotes
+        .filter((item) => !remoteNoteIds.has(item.id))
+        .map((item) => api.saveLearningNoteApi(item).catch(() => {}))
+    ])
+    return true
+  } catch {
+    return false
+  }
 }

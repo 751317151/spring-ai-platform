@@ -121,6 +121,41 @@
       </div>
     </div>
 
+    <div class="card section-spacing structured-summary-card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">结构化文件解析概览</div>
+          <div class="card-subtitle">聚焦 CSV、JSON、XML 等结构化文件，确认当前知识库里哪些文档已经进入可检索链路。</div>
+        </div>
+      </div>
+      <div class="structured-summary-grid">
+        <div class="structured-summary-item">
+          <span class="structured-summary-label">结构化文档</span>
+          <strong class="structured-summary-value">{{ structuredDocumentCount }}</strong>
+        </div>
+        <div class="structured-summary-item">
+          <span class="structured-summary-label">已索引结构化文档</span>
+          <strong class="structured-summary-value">{{ indexedStructuredDocumentCount }}</strong>
+        </div>
+        <div class="structured-summary-item">
+          <span class="structured-summary-label">待处理结构化文档</span>
+          <strong class="structured-summary-value">{{ processingStructuredDocumentCount }}</strong>
+        </div>
+      </div>
+      <div class="structured-type-list">
+        <button
+          v-for="item in structuredTypeSummary"
+          :key="item.label"
+          class="structured-type-chip"
+          type="button"
+          @click="focusStructuredType(item.extension)"
+        >
+          {{ item.label }} · {{ item.count }}
+        </button>
+        <span v-if="!structuredTypeSummary.length" class="structured-type-empty">当前知识库还没有结构化文件。</span>
+      </div>
+    </div>
+
     <div class="card section-spacing quick-actions-card">
       <div class="card-header">
         <div>
@@ -260,6 +295,20 @@ const filterChips = [
 const filteredDocumentCount = computed(() => documentStatusFilter.value === 'ALL' ? ragStore.documents.length : ragStore.documents.filter((item) => item.status === documentStatusFilter.value).length)
 const failedDocumentCount = computed(() => ragStore.documents.filter((item) => item.status === 'FAILED').length)
 const processingDocumentCount = computed(() => ragStore.documents.filter((item) => item.status === 'PROCESSING').length)
+const structuredExtensions = ['csv', 'json', 'xml']
+const structuredDocuments = computed(() => ragStore.documents.filter((item) => structuredExtensions.includes(resolveDocumentExtension(item.filename))))
+const structuredDocumentCount = computed(() => structuredDocuments.value.length)
+const indexedStructuredDocumentCount = computed(() => structuredDocuments.value.filter((item) => item.status === 'INDEXED').length)
+const processingStructuredDocumentCount = computed(() => structuredDocuments.value.filter((item) => item.status === 'PROCESSING').length)
+const structuredTypeSummary = computed(() =>
+  structuredExtensions
+    .map((extension) => ({
+      extension,
+      label: extension.toUpperCase(),
+      count: structuredDocuments.value.filter((item) => resolveDocumentExtension(item.filename) === extension).length
+    }))
+    .filter((item) => item.count > 0)
+)
 const failureReasonSummary = computed(() => {
   const counts = new Map<string, number>()
   ragStore.documents.filter((item) => item.status === 'FAILED').forEach((item) => {
@@ -299,6 +348,18 @@ function formatDateTime(value: string) {
   } catch {
     return value
   }
+}
+
+function resolveDocumentExtension(filename: string) {
+  const normalized = (filename || '').toLowerCase()
+  const index = normalized.lastIndexOf('.')
+  return index >= 0 ? normalized.slice(index + 1) : ''
+}
+
+function focusStructuredType(extension: string) {
+  documentStatusFilter.value = 'ALL'
+  highlightDocumentName.value = structuredDocuments.value.find((item) => resolveDocumentExtension(item.filename) === extension)?.filename || ''
+  scrollToSection(tableRef)
 }
 
 async function copyOverview() {
@@ -467,6 +528,13 @@ onMounted(async () => {
 .failure-summary-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .failure-summary-item { padding: 14px; border-radius: 14px; border: 1px solid var(--border); background: rgba(239, 68, 68, 0.06); transition: transform var(--transition), border-color var(--transition); }
 .failure-summary-count { display: block; margin-top: 8px; color: var(--text); font-size: 22px; }
+.structured-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.structured-summary-item { padding: 14px; border-radius: 14px; border: 1px solid var(--border); background: rgba(16, 185, 129, 0.06); }
+.structured-summary-label { display: block; font-size: 12px; color: var(--text3); }
+.structured-summary-value { display: block; margin-top: 8px; font-size: 24px; color: var(--text); }
+.structured-type-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.structured-type-chip { min-height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border); background: rgba(255, 255, 255, 0.04); color: var(--text2); cursor: pointer; }
+.structured-type-empty { color: var(--text3); font-size: 12px; }
 .quick-action-btn, .filter-chip { min-height: 36px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--border); background: transparent; color: var(--text2); cursor: pointer; transition: all var(--transition); }
 .quick-action-btn:hover, .filter-chip.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent2); }
 .quick-action-btn.warning:hover { border-color: #f59e0b; background: rgba(245, 158, 11, 0.14); color: #b45309; }
@@ -476,7 +544,7 @@ onMounted(async () => {
 .rag-onboarding-index { width: 28px; height: 28px; border-radius: 999px; background: var(--accent-dim); color: var(--accent2); display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
 .rag-onboarding-title { font-size: 13px; font-weight: 600; color: var(--text); }
 @media (max-width: 960px) {
-  .rag-onboarding-grid, .summary-grid, .status-focus-grid, .evaluation-grid, .evaluation-metrics { grid-template-columns: 1fr; }
+  .rag-onboarding-grid, .summary-grid, .status-focus-grid, .evaluation-grid, .evaluation-metrics, .structured-summary-grid { grid-template-columns: 1fr; }
   .dashboard-context-banner { flex-direction: column; align-items: stretch; }
   .failure-summary-list { grid-template-columns: 1fr; }
 }
