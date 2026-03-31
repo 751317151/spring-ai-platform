@@ -6,21 +6,81 @@ const client = axios.create({
   timeout: 30000
 })
 
+const ACCESS_TOKEN_EXPIRES_AT_KEY = 'auth_token_expires_at'
+const REFRESH_TOKEN_EXPIRES_AT_KEY = 'auth_refresh_token_expires_at'
+const ACCESS_TOKEN_REFRESH_BUFFER_MS = 60 * 1000
+
 let refreshPromise: Promise<LoginResponse | null> | null = null
+
+type RetryableRequest = {
+  _retry?: boolean
+  headers?: Record<string, string>
+  url?: string
+}
 
 function getRefreshToken(): string | null {
   return localStorage.getItem('auth_refreshToken')
+}
+
+function getExpireAt(key: string): number | null {
+  const value = localStorage.getItem(key)
+  if (!value) {
+    return null
+  }
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function setExpireAt(key: string, expiresInSeconds?: number) {
+  if (!expiresInSeconds || expiresInSeconds <= 0) {
+    localStorage.removeItem(key)
+    return
+  }
+  localStorage.setItem(key, String(Date.now() + expiresInSeconds * 1000))
+}
+
+function isExpiringSoon(expiresAt: number | null, bufferMs: number): boolean {
+  if (!expiresAt) {
+    return false
+  }
+  return expiresAt - Date.now() <= bufferMs
+}
+
+function isRefreshRequest(url?: string): boolean {
+  return !!url && url.includes('/api/v1/auth/refresh')
+}
+
+function isAuthRequest(url?: string): boolean {
+  return !!url && url.includes('/api/v1/auth/')
+}
+
+function createBusinessError(data: Result<unknown>, config?: unknown): Error {
+  const error = new Error(data.message || '请求失败')
+  ;(error as Error & {
+    config?: unknown
+    responseCode?: number
+    responseError?: unknown
+    responseTraceId?: string
+  }).config = config
+  ;(error as Error & { responseCode?: number }).responseCode = data.code
+  ;(error as Error & { responseError?: unknown }).responseError = data.error
+  ;(error as Error & { responseTraceId?: string }).responseTraceId = data.traceId
+  return error
 }
 
 function applyAuth(data: LoginResponse) {
   localStorage.setItem('auth_token', data.token)
   if (data.refreshToken) {
     localStorage.setItem('auth_refreshToken', data.refreshToken)
+  } else {
+    localStorage.removeItem('auth_refreshToken')
   }
   localStorage.setItem('auth_userId', data.userId)
   localStorage.setItem('auth_username', data.username)
   localStorage.setItem('auth_roles', data.roles)
   localStorage.setItem('auth_department', data.department)
+  setExpireAt(ACCESS_TOKEN_EXPIRES_AT_KEY, data.expiresIn)
+  setExpireAt(REFRESH_TOKEN_EXPIRES_AT_KEY, data.refreshExpiresIn)
 }
 
 function clearAuth() {
@@ -30,6 +90,8 @@ function clearAuth() {
   localStorage.removeItem('auth_username')
   localStorage.removeItem('auth_roles')
   localStorage.removeItem('auth_department')
+  localStorage.removeItem(ACCESS_TOKEN_EXPIRES_AT_KEY)
+  localStorage.removeItem(REFRESH_TOKEN_EXPIRES_AT_KEY)
 }
 
 async function refreshAccessToken(): Promise<LoginResponse | null> {
@@ -47,6 +109,15 @@ async function refreshAccessToken(): Promise<LoginResponse | null> {
   return payload.data
 }
 
+async function runRefreshFlow(): Promise<LoginResponse | null> {
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken().finally(() => {
+      refreshPromise = null
+    })
+  }
+  return refreshPromise
+}
+
 async function redirectToLogin() {
   clearAuth()
   if (router.currentRoute.value.name !== 'login') {
@@ -59,8 +130,50 @@ async function redirectToLogin() {
   }
 }
 
-client.interceptors.request.use((config) => {
+async function retryWithRefresh(originalRequest?: RetryableRequest): Promise<LoginResponse | null> {
+  if (!originalRequest || originalRequest._retry || isRefreshRequest(originalRequest.url)) {
+    return null
+  }
+  originalRequest._retry = true
+  return runRefreshFlow()
+}
+
+export async function ensureValidAccessToken(): Promise<string | null> {
   const token = localStorage.getItem('auth_token')
+  if (!token) {
+    return null
+  }
+
+  const accessExpiresAt = getExpireAt(ACCESS_TOKEN_EXPIRES_AT_KEY)
+  if (!isExpiringSoon(accessExpiresAt, ACCESS_TOKEN_REFRESH_BUFFER_MS)) {
+    return token
+  }
+
+  const refreshExpiresAt = getExpireAt(REFRESH_TOKEN_EXPIRES_AT_KEY)
+  if (refreshExpiresAt && refreshExpiresAt <= Date.now()) {
+    await redirectToLogin()
+    return null
+  }
+
+  const refreshed = await runRefreshFlow()
+  if (refreshed?.token) {
+    return refreshed.token
+  }
+
+  await redirectToLogin()
+  return null
+}
+
+client.interceptors.request.use(async (config) => {
+  if (isAuthRequest(config.url)) {
+    const token = localStorage.getItem('auth_token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+  }
+
+  const token = await ensureValidAccessToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -72,37 +185,24 @@ client.interceptors.response.use(
     const data = response.data
     if (data && typeof data.code === 'number') {
       if (data.code !== 200) {
-        const error = new Error(data.message || '请求失败')
-        ;(error as Error & { responseCode?: number; responseError?: unknown; responseTraceId?: string }).responseCode = data.code
-        ;(error as Error & { responseCode?: number; responseError?: unknown; responseTraceId?: string }).responseError = data.error
-        ;(error as Error & { responseCode?: number; responseError?: unknown; responseTraceId?: string }).responseTraceId = data.traceId
-        return Promise.reject(error)
+        return Promise.reject(createBusinessError(data, response.config))
       }
       return data.data
     }
     return data
   },
   async (error) => {
-    const originalRequest = error.config
-    if (error.response?.status === 401 && !originalRequest?._retry) {
-      originalRequest._retry = true
-      if (!refreshPromise) {
-        refreshPromise = refreshAccessToken().finally(() => {
-          refreshPromise = null
-        })
-      }
-      const refreshed = await refreshPromise
-      if (refreshed?.token) {
+    const originalRequest = error.config as RetryableRequest | undefined
+    const businessCode = (error as Error & { responseCode?: number }).responseCode
+    const isUnauthorized = error.response?.status === 401 || businessCode === 401
+
+    if (isUnauthorized) {
+      const refreshed = await retryWithRefresh(originalRequest)
+      if (refreshed?.token && originalRequest) {
         originalRequest.headers = originalRequest.headers || {}
         originalRequest.headers.Authorization = `Bearer ${refreshed.token}`
         return client(originalRequest)
       }
-
-      await redirectToLogin()
-      return Promise.reject(error)
-    }
-
-    if (error.response?.status === 401) {
       await redirectToLogin()
     }
 
@@ -133,5 +233,7 @@ export function buildHeaders(extra?: Record<string, string>): Record<string, str
 export const __clientTestUtils = {
   applyAuth,
   clearAuth,
-  redirectToLogin
+  redirectToLogin,
+  getExpireAt,
+  refreshAccessToken
 }

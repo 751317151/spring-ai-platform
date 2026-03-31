@@ -51,11 +51,11 @@ public class AuthController {
     private final AiUserMapper userMapper;
     private final BotPermissionMapper botPermissionMapper;
 
-    @Value("${jwt.access-expiration-ms:${jwt.expiration-ms:900000}}")
-    private long accessExpirationMs = 900_000L;
+    @Value("${jwt.access-expiration-ms:${jwt.expiration-ms:7200000}}")
+    private long accessExpirationMs = 7_200_000L;
 
-    @Value("${jwt.refresh-expiration-ms:604800000}")
-    private long refreshExpirationMs = 604_800_000L;
+    @Value("${jwt.refresh-expiration-ms:2592000000}")
+    private long refreshExpirationMs = 2_592_000_000L;
 
     @PostMapping("/login")
     public Result<TokenResponse> login(@RequestBody LoginRequest request) {

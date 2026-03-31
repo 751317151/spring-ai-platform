@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { getAuthToken } from '@/api/client'
+import { ensureValidAccessToken } from '@/api/client'
 
 export interface UseSSEOptions {
   url: string
@@ -23,7 +23,7 @@ export function useSSE() {
     controller = new AbortController()
 
     const authHeaders: Record<string, string> = {}
-    const token = getAuthToken()
+    const token = await ensureValidAccessToken()
     if (token) {
       authHeaders['Authorization'] = `Bearer ${token}`
     }

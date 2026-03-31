@@ -1,85 +1,44 @@
 <template>
-  <div class="app" :class="{ 'app-collapsed': sidebarCollapsed }">
-    <AppSidebar
-      :collapsed="sidebarCollapsed"
-      :recent-views="recentViews"
-      @toggle-collapse="toggleSidebar"
-    />
-    <div class="main">
-      <AppHeader
-        :collapsed="sidebarCollapsed"
-        :recent-views="recentViews"
-        @toggle-collapse="toggleSidebar"
-      />
-      <div class="content">
-        <div v-if="routePending" class="route-loading-mask" aria-live="polite">
-          <div class="route-loading-card">
-            <div class="route-loading-label">页面加载中</div>
-            <div class="route-loading-title">正在切换到目标页面，请稍候。</div>
-            <SkeletonBlock :count="3" :height="88" variant="grid" :min-width="220" />
-          </div>
-        </div>
-
-        <router-view v-slot="{ Component, route: currentRoute }">
+  <div class="app-shell" :class="{ 'app-shell-collapsed': sidebarCollapsed }">
+    <AppSidebar :collapsed="sidebarCollapsed" @toggle-collapse="toggleSidebar" />
+    <div class="app-main">
+      <AppHeader :collapsed="sidebarCollapsed" @toggle-collapse="toggleSidebar" />
+      <main class="app-content">
+        <router-view v-slot="{ Component }">
           <transition name="page-fade" mode="out-in">
-            <Suspense @pending="handleViewPending" @resolve="handleViewResolved">
-              <component :is="Component" :key="currentRoute.fullPath" />
+            <Suspense>
+              <component :is="Component" />
               <template #fallback>
-                <div class="route-fallback-shell">
-                  <div class="route-fallback-head">
-                    <div class="route-fallback-kicker">页面准备中</div>
-                    <div class="route-fallback-copy">正在挂载视图和数据面板。</div>
-                  </div>
-                  <SkeletonBlock :count="4" :height="92" variant="grid" :min-width="240" />
+                <div class="route-fallback card">
+                  <div class="route-fallback-kicker">页面准备中</div>
+                  <div class="route-fallback-title">正在加载当前工作区</div>
+                  <SkeletonBlock :count="3" :height="84" variant="grid" :min-width="220" />
                 </div>
               </template>
             </Suspense>
           </transition>
         </router-view>
-      </div>
+      </main>
     </div>
   </div>
   <ToastNotification />
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppSidebar from '@/components/common/AppSidebar.vue'
 import AppHeader from '@/components/common/AppHeader.vue'
 import SkeletonBlock from '@/components/common/SkeletonBlock.vue'
 import ToastNotification from '@/components/common/ToastNotification.vue'
 
-interface RecentView {
-  title: string
-  to: string
-}
-
 const route = useRoute()
 const router = useRouter()
 const sidebarCollapsed = ref(localStorage.getItem('layout_sidebar_collapsed') === '1')
-const recentViews = ref<RecentView[]>([])
-const routePending = ref(false)
-
-let routePendingStartedAt = 0
-let routePendingTimer: ReturnType<typeof setTimeout> | null = null
-let routeSettledTimer: ReturnType<typeof setTimeout> | null = null
-
-function loadRecentViews() {
-  try {
-    const raw = localStorage.getItem('layout_recent_views')
-    recentViews.value = raw ? JSON.parse(raw) : []
-  } catch {
-    recentViews.value = []
-  }
-}
-
-function persistRecentViews() {
-  localStorage.setItem('layout_recent_views', JSON.stringify(recentViews.value))
-}
 
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
+  localStorage.setItem('layout_sidebar_collapsed', sidebarCollapsed.value ? '1' : '0')
 }
 
 function isEditableTarget(target: EventTarget | null) {
@@ -90,35 +49,8 @@ function isEditableTarget(target: EventTarget | null) {
   return tag === 'input' || tag === 'textarea' || target.isContentEditable
 }
 
-function dispatchShortcut(name: 'app:new-chat' | 'app:focus-chat-input' | 'app:focus-header-search' | 'app:open-shortcut-help') {
+function dispatchShortcut(name: 'app:new-chat' | 'app:focus-chat-input' | 'app:focus-header-search') {
   window.dispatchEvent(new CustomEvent(name))
-}
-
-function clearRoutePendingTimer() {
-  if (routePendingTimer) {
-    clearTimeout(routePendingTimer)
-    routePendingTimer = null
-  }
-  if (routeSettledTimer) {
-    clearTimeout(routeSettledTimer)
-    routeSettledTimer = null
-  }
-}
-
-function beginRoutePending() {
-  clearRoutePendingTimer()
-  routePendingStartedAt = Date.now()
-  routePending.value = true
-}
-
-function finishRoutePending() {
-  clearRoutePendingTimer()
-  const elapsed = Date.now() - routePendingStartedAt
-  const delay = Math.max(0, 180 - elapsed)
-  routePendingTimer = window.setTimeout(() => {
-    routePending.value = false
-    routePendingTimer = null
-  }, delay)
 }
 
 function handleGlobalShortcuts(event: KeyboardEvent) {
@@ -126,38 +58,9 @@ function handleGlobalShortcuts(event: KeyboardEvent) {
     return
   }
 
-  if (event.altKey) {
-    if (event.key === '1') {
-      event.preventDefault()
-      router.push('/dashboard')
-      return
-    }
-    if (event.key === '2') {
-      event.preventDefault()
-      router.push('/chat')
-      return
-    }
-    if (event.key === '3') {
-      event.preventDefault()
-      router.push('/rag')
-      return
-    }
-    if (event.key === '4') {
-      event.preventDefault()
-      router.push('/monitor')
-      return
-    }
-  }
-
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault()
     dispatchShortcut('app:focus-header-search')
-    return
-  }
-
-  if (event.shiftKey && event.key === '?') {
-    event.preventDefault()
-    dispatchShortcut('app:open-shortcut-help')
     return
   }
 
@@ -170,102 +73,98 @@ function handleGlobalShortcuts(event: KeyboardEvent) {
   if (route.path === '/chat' && event.key === '/') {
     event.preventDefault()
     dispatchShortcut('app:focus-chat-input')
+    return
   }
-}
 
-function handleViewPending() {
-  beginRoutePending()
-}
-
-function handleViewResolved() {
-  finishRoutePending()
-}
-
-function scheduleRouteSettled() {
-  if (routeSettledTimer) {
-    clearTimeout(routeSettledTimer)
-  }
-  routeSettledTimer = window.setTimeout(() => {
-    routeSettledTimer = null
-    finishRoutePending()
-  }, 0)
-}
-
-watch(sidebarCollapsed, (value) => {
-  localStorage.setItem('layout_sidebar_collapsed', value ? '1' : '0')
-}, { immediate: true })
-
-loadRecentViews()
-
-watch(
-  () => route.fullPath,
-  async () => {
-    beginRoutePending()
-
-    const title = typeof route.meta.title === 'string' ? route.meta.title : ''
-    if (!title || route.path === '/login') {
-      await nextTick()
-      scheduleRouteSettled()
+  if (event.altKey) {
+    if (event.key === '1') {
+      event.preventDefault()
+      router.push('/chat')
       return
     }
-
-    recentViews.value = [
-      { title, to: route.fullPath },
-      ...recentViews.value.filter((item) => item.to !== route.fullPath)
-    ].slice(0, 6)
-
-    persistRecentViews()
-
-    await nextTick()
-    scheduleRouteSettled()
-  },
-  { immediate: true }
-)
+    if (event.key === '2') {
+      event.preventDefault()
+      router.push('/rag')
+      return
+    }
+    if (event.key === '3') {
+      event.preventDefault()
+      router.push('/dashboard')
+    }
+  }
+}
 
 onMounted(() => {
   window.addEventListener('keydown', handleGlobalShortcuts)
 })
 
 onUnmounted(() => {
-  clearRoutePendingTimer()
   window.removeEventListener('keydown', handleGlobalShortcuts)
 })
 </script>
 
 <style scoped>
-.route-loading-mask {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  margin-bottom: 16px;
-  pointer-events: none;
-}
-
-.route-loading-card,
-.route-fallback-shell {
+.app-shell {
   display: grid;
-  gap: 14px;
-  padding: 18px;
-  border: 1px solid var(--border);
-  border-radius: 20px;
+  grid-template-columns: 248px minmax(0, 1fr);
+  height: 100vh;
+  min-height: 100vh;
+  overflow: hidden;
   background:
-    radial-gradient(circle at top right, rgba(79, 142, 247, 0.12), transparent 34%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.08), transparent 26%),
+    radial-gradient(circle at bottom right, rgba(16, 185, 129, 0.08), transparent 24%),
+    var(--bg);
 }
 
-.route-loading-label,
+.app-shell-collapsed {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+.app-main {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 18px 20px 22px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.route-fallback {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border-radius: 22px;
+}
+
 .route-fallback-kicker {
   font-size: 11px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text3);
 }
 
-.route-loading-title,
-.route-fallback-copy {
-  font-size: 14px;
-  font-weight: 600;
+.route-fallback-title {
+  font-size: 15px;
+  font-weight: 700;
   color: var(--text);
+}
+
+@media (max-width: 960px) {
+  .app-shell,
+  .app-shell-collapsed {
+    grid-template-columns: 1fr;
+  }
+
+  .app-content {
+    padding: 14px 14px 18px;
+  }
 }
 </style>

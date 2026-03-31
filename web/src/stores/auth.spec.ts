@@ -36,6 +36,8 @@ describe('auth store', () => {
     expect(store.username).toBe('测试用户')
     expect(localStorage.getItem('auth_token')).toBe('token-1')
     expect(localStorage.getItem('auth_roles')).toBe('ROLE_ADMIN')
+    expect(Number(localStorage.getItem('auth_token_expires_at'))).toBeGreaterThan(Date.now())
+    expect(Number(localStorage.getItem('auth_refresh_token_expires_at'))).toBeGreaterThan(Date.now())
   })
 
   it('clears state and storage when logout completes', async () => {
@@ -58,6 +60,8 @@ describe('auth store', () => {
     expect(store.refreshToken).toBeNull()
     expect(store.username).toBe('')
     expect(localStorage.getItem('auth_token')).toBeNull()
+    expect(localStorage.getItem('auth_token_expires_at')).toBeNull()
+    expect(localStorage.getItem('auth_refresh_token_expires_at')).toBeNull()
   })
 
   it('throws readable message when login request fails', async () => {

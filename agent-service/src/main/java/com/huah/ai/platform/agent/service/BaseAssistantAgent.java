@@ -65,7 +65,7 @@ public abstract class BaseAssistantAgent implements AssistantAgent {
         SessionConfigResponse sessionConfig = conversationMemoryService.getSessionConfig(sessionId);
         String runtimeInstruction = sessionRuntimeInstructionBuilder.build(sessionConfig);
         ChatOptions chatOptions = buildChatOptions(sessionConfig);
-        String enrichedMessage = enrichMessage(message, runtimeInstruction);
+        String enrichedMessage = enrichMessage(message, null);
         long preparationLatency = System.currentTimeMillis() - preparationStart;
         AgentExecutionMetricsContext.set(new AgentExecutionMetrics(preparationLatency, 0));
         ToolExecutionContext.set(userId, sessionId, agentType);

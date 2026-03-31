@@ -10,7 +10,7 @@
       </div>
     </div>
 
-    <div v-if="recentVisitedSessions.length" class="session-recent-panel">
+    <div v-if="false && recentVisitedSessions.length" class="session-recent-panel">
       <div class="session-recent-title">最近访问</div>
       <div class="session-recent-list">
         <button
@@ -25,7 +25,7 @@
       </div>
     </div>
 
-    <div v-if="selectedCount" class="session-batch-bar">
+    <div v-if="false && selectedCount" class="session-batch-bar">
       <span class="session-batch-count">已选 {{ selectedCount }} 项</span>
       <div class="session-batch-actions">
         <button class="session-toolbar-btn" :disabled="batchOperating" @click="selectAllVisible">
@@ -41,7 +41,7 @@
       </div>
     </div>
 
-    <div class="session-overview">
+    <div v-if="false" class="session-overview">
       <div class="session-overview-item">
         <strong>{{ filteredActiveSessions.length }}</strong>
         <span>进行中</span>
@@ -60,7 +60,7 @@
       </div>
     </div>
 
-    <div class="session-search-wrap">
+    <div v-if="false" class="session-search-wrap">
       <input
         v-model.trim="keyword"
         class="session-search"
@@ -169,8 +169,6 @@ import { useToast } from '@/composables/useToast'
 
 type FilterValue = 'all' | 'pinned' | 'draft'
 
-const RECENT_VISITED_KEY = 'chat_recent_visited_sessions'
-
 const chatStore = useChatStore()
 const { showToast } = useToast()
 
@@ -211,19 +209,7 @@ const filters = computed(() => [
   { value: 'draft' as const, label: '仅看草稿', count: chatStore.activeSessions.filter((session) => hasDraft(session.sessionId)).length }
 ])
 
-const recentVisitedSessions = computed(() => {
-  try {
-    const raw = localStorage.getItem(RECENT_VISITED_KEY)
-    const ids = raw ? (JSON.parse(raw) as string[]) : []
-    return ids
-      .filter((id) => id !== chatStore.currentSessionId)
-      .map((id) => chatStore.sessionList.find((session) => session.sessionId === id))
-      .filter((session): session is SessionInfo => Boolean(session))
-      .slice(0, 4)
-  } catch {
-    return []
-  }
-})
+const recentVisitedSessions = computed(() => [])
 
 const searchSummary = computed(() => {
   const totalMatches = filteredActiveSessions.value.length + filteredArchivedSessions.value.length
@@ -402,45 +388,27 @@ function buildSubtitle(session: SessionInfo) {
 </script>
 
 <style scoped>
-.session-recent-panel {
-  margin: 0 4px 12px;
-  padding: 12px;
-  border-radius: 14px;
-  border: 1px solid var(--border);
-  background: rgba(79, 142, 247, 0.05);
+
+.session-list {
+  padding-top: 8px;
 }
 
-.session-recent-title {
-  margin-bottom: 8px;
-  font-size: 12px;
-  color: var(--text2);
+.session-list-label {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding-top: 0;
+  padding-bottom: 10px;
+  background: linear-gradient(180deg, var(--surface) 72%, rgba(15, 23, 42, 0));
 }
 
-.session-recent-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.session-group-title,
+.session-archived-title {
+  margin: 10px 4px 8px;
 }
 
-.session-recent-chip {
-  display: grid;
-  gap: 2px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  text-align: left;
-  cursor: pointer;
-}
-
-.session-recent-name {
-  font-size: 12px;
-  color: var(--text);
-}
-
-.session-recent-time {
-  font-size: 11px;
-  color: var(--text3);
+.session-group-count {
+  opacity: 0.72;
 }
 
 .session-batch-bar {

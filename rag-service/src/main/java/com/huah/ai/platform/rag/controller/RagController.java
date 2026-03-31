@@ -152,7 +152,7 @@ public class RagController {
                                                                                 "sources",
                                                                                 sources,
                                                                                 "responseId",
-                                                                                responseId)));
+                                                                                String.valueOf(responseId))));
                                                 emitter.complete();
                                             } catch (IOException e) {
                                                 emitter.completeWithError(e);

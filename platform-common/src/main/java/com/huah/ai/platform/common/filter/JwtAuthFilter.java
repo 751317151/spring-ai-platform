@@ -6,6 +6,9 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -13,10 +16,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
-
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
 
 /**
  * Shared JWT authentication filter.
@@ -34,9 +33,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private final StringRedisTemplate redisTemplate;
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain chain) throws ServletException, IOException {
+    protected void doFilterInternal(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain chain)
+            throws ServletException, IOException {
         String token = extractToken(request);
 
         if (token != null && jwtUtil.validateToken(token)) {
@@ -48,7 +49,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                 String jti = jwtUtil.getJti(token);
                 if (Boolean.TRUE.equals(redisTemplate.hasKey(TOKEN_BLACKLIST_PREFIX + token))
-                        || (jti != null && Boolean.TRUE.equals(redisTemplate.hasKey(TOKEN_JTI_BLACKLIST_PREFIX + jti)))) {
+                        || (jti != null
+                                && Boolean.TRUE.equals(
+                                        redisTemplate.hasKey(TOKEN_JTI_BLACKLIST_PREFIX + jti)))) {
                     SecurityContextHolder.clearContext();
                     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                     response.setContentType("application/json;charset=UTF-8");
@@ -63,12 +66,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 Object userIdClaim = claims.get("userId");
                 String userId = userIdClaim != null ? userIdClaim.toString() : subject;
 
-                List<SimpleGrantedAuthority> authorities = rolesStr != null
-                        ? Arrays.stream(rolesStr.split(","))
-                                .map(String::trim)
-                                .map(SimpleGrantedAuthority::new)
-                                .toList()
-                        : List.of();
+                List<SimpleGrantedAuthority> authorities =
+                        rolesStr != null
+                                ? Arrays.stream(rolesStr.split(","))
+                                        .map(String::trim)
+                                        .map(SimpleGrantedAuthority::new)
+                                        .toList()
+                                : List.of();
 
                 UsernamePasswordAuthenticationToken auth =
                         new UsernamePasswordAuthenticationToken(userId, null, authorities);
@@ -79,7 +83,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 request.setAttribute("X-Roles", rolesStr);
 
                 SecurityContextHolder.getContext().setAuthentication(auth);
-                log.debug("JWT authentication succeeded: userId={}, username={}, roles={}", userId, subject, rolesStr);
+                log.debug(
+                        "JWT authentication succeeded: userId={}, username={}, roles={}",
+                        userId,
+                        subject,
+                        rolesStr);
             } catch (Exception e) {
                 log.warn("JWT parsing failed: {}", e.getMessage());
                 SecurityContextHolder.clearContext();

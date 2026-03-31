@@ -1,6 +1,6 @@
 <template>
-  <div class="query-panel">
-    <div class="query-context-card">
+  <div class="query-panel" :class="{ 'query-panel-minimal': minimal }">
+    <div v-if="!minimal" class="query-context-card">
       <div>
         <div class="query-context-title">当前问答上下文</div>
         <div class="query-context-subtitle">{{ ragStore.currentKbName || '未选择知识库' }}</div>
@@ -15,26 +15,26 @@
     <div class="form-group">
       <div class="query-input-head">
         <label class="form-label">问题</label>
-        <div class="query-input-hint">系统会按知识库保存草稿、TopK 和问答模式，方便继续追问。</div>
+        <div v-if="!minimal" class="query-input-hint">系统会按知识库保存草稿、TopK 和问答模式，方便继续追问。</div>
       </div>
-      <textarea v-model="question" class="form-input query-textarea" rows="3" placeholder="请输入针对当前知识库的问题..."></textarea>
+      <textarea v-model="question" class="form-input query-textarea" :rows="minimal ? 5 : 3" placeholder="请输入针对当前知识库的问题..."></textarea>
     </div>
 
     <div class="query-toolbar">
       <button class="btn btn-primary btn-sm" :disabled="ragStore.isQuerying || !ragStore.currentKb" @click="doQuery(false)">{{ ragStore.isQuerying && !streamMode ? '检索中...' : '检索答案' }}</button>
       <button class="btn btn-ghost btn-sm" :disabled="ragStore.isQuerying || !ragStore.currentKb" @click="doQuery(true)">{{ ragStore.isQuerying && streamMode ? '生成中...' : '流式回答' }}</button>
       <select v-model="topK" class="form-select topk-select"><option :value="3">TopK: 3</option><option :value="5">TopK: 5</option><option :value="10">TopK: 10</option></select>
-      <button class="btn btn-ghost btn-sm" :disabled="!ragStore.currentKb" @click="resetWorkspaceState">重置草稿</button>
+      <button v-if="!minimal" class="btn btn-ghost btn-sm" :disabled="!ragStore.currentKb" @click="resetWorkspaceState">重置草稿</button>
     </div>
 
-    <div v-if="recommendedQuestions.length" class="query-helper-card">
+    <div v-if="!minimal && recommendedQuestions.length" class="query-helper-card">
       <div class="query-helper-header">
         <div><div class="query-helper-title">推荐问题</div><div class="query-helper-subtitle">可以作为当前知识库的快速提问起点。</div></div>
       </div>
       <div class="query-chip-list"><button v-for="item in recommendedQuestions" :key="item" class="query-helper-chip" @click="applyQuestion(item)">{{ item }}</button></div>
     </div>
 
-    <div v-if="recentQuestions.length" class="query-helper-card recent-query-card">
+    <div v-if="!minimal && recentQuestions.length" class="query-helper-card recent-query-card">
       <div class="query-helper-header">
         <div><div class="query-helper-title">最近提问</div><div class="query-helper-subtitle">最近的问题会保存在本地，便于重复追问和复盘。</div></div>
         <button class="btn btn-ghost btn-sm" @click="clearRecentQuestions">清空</button>
@@ -47,15 +47,15 @@
 
     <div class="query-result-shell">
       <div class="query-result-header">
-        <div><div class="query-result-title">回答</div><div class="query-result-subtitle">基于当前知识库生成的问答结果。</div></div>
+        <div><div class="query-result-title">回答</div><div v-if="!minimal" class="query-result-subtitle">基于当前知识库生成的问答结果。</div></div>
         <div class="query-result-side">
-          <div class="query-result-meta">
+          <div v-if="!minimal" class="query-result-meta">
             <span class="query-meta-chip">{{ streamMode ? '流式' : '标准' }}</span>
             <span class="query-meta-chip">TopK {{ topK }}</span>
             <span class="query-meta-chip">{{ ragStore.querySources.length }} 条证据</span>
             <span v-if="ragStore.querySources.length" class="query-meta-chip">最高 {{ topEvidenceScore }}</span>
           </div>
-          <div v-if="ragStore.queryResult" class="query-result-actions">
+          <div v-if="ragStore.queryResult && !minimal" class="query-result-actions">
             <button class="query-action-btn" @click="copyAnswer">复制回答</button>
             <button class="query-action-btn" @click="copyEvidenceSummary">复制证据摘要</button>
             <button class="query-action-btn" @click="copyQuerySnapshot">复制问答快照</button>
@@ -74,7 +74,7 @@
           @action="doQuery(false)"
         />
         <div v-else class="query-answer-card">
-          <div v-if="answerInsights.length" class="answer-insight-row">
+          <div v-if="answerInsights.length && !minimal" class="answer-insight-row">
             <div v-for="item in answerInsights" :key="item.label" class="answer-insight-card"><div class="answer-insight-label">{{ item.label }}</div><div class="answer-insight-value">{{ item.value }}</div></div>
           </div>
           <div class="query-answer-content" v-html="formattedResult"></div>
@@ -87,12 +87,12 @@
       </div>
     </div>
 
-    <div v-if="followUpSuggestions.length" class="query-helper-card follow-up-card">
+    <div v-if="!minimal && followUpSuggestions.length" class="query-helper-card follow-up-card">
       <div class="query-helper-header"><div><div class="query-helper-title">继续追问</div><div class="query-helper-subtitle">基于当前问题和证据，快速补充下一轮更具体的提问。</div></div></div>
       <div class="query-chip-list"><button v-for="item in followUpSuggestions" :key="item" class="query-helper-chip follow-up" @click="applyQuestion(item)">{{ item }}</button></div>
     </div>
 
-    <div v-if="ragStore.queryResult && !ragStore.isQuerying && !ragStore.querySources.length" class="query-no-evidence">
+    <div v-if="!minimal && ragStore.queryResult && !ragStore.isQuerying && !ragStore.querySources.length" class="query-no-evidence">
       <EmptyState icon="RAG" title="本次回答未返回证据" description="回答已生成，但没有返回来源分段。可以先根据下方建议调整提问方式后再试。" variant="compact" align="left" />
       <div class="query-no-evidence-guide">
         <div class="query-no-evidence-guide-title">建议先这样调整问题</div>
@@ -112,21 +112,21 @@
 
     <div v-if="ragStore.querySources.length" class="evidence-panel">
       <div class="evidence-header">
-        <div><div class="evidence-title">证据</div><div class="evidence-subtitle">以下来源分段用于支撑当前回答。</div></div>
-        <div class="evidence-summary"><span class="evidence-count">{{ ragStore.querySources.length }} 条</span><span class="evidence-count">分数范围 {{ evidenceScoreRange }}</span></div>
+        <div><div class="evidence-title">证据</div><div v-if="!minimal" class="evidence-subtitle">以下来源分段用于支撑当前回答。</div></div>
+        <div class="evidence-summary"><span class="evidence-count">{{ ragStore.querySources.length }} 条</span><span v-if="!minimal" class="evidence-count">分数范围 {{ evidenceScoreRange }}</span></div>
       </div>
       <div class="evidence-list">
         <div v-for="(src, idx) in ragStore.querySources" :key="src.chunkId || idx" class="evidence-card">
           <div class="evidence-card-topline"><span class="evidence-topline-label">证据 {{ idx + 1 }}</span><span class="evidence-topline-score">分数 {{ formatScore(src.score) }}</span></div>
           <div class="evidence-meta">
             <div class="evidence-file"><span class="evidence-index">#{{ idx + 1 }}</span><span>{{ src.filename }}</span><span v-if="src.chunkIndex != null" class="evidence-chunk">分段 {{ src.chunkIndex }}</span></div>
-            <div class="evidence-actions"><div class="evidence-score">相关度 {{ formatScore(src.score) }}</div><button class="evidence-mini-btn" @click="focusEvidenceSource(src)">定位</button><button class="evidence-mini-btn" @click="copyEvidence(src)">复制</button></div>
+            <div class="evidence-actions"><div v-if="!minimal" class="evidence-score">相关度 {{ formatScore(src.score) }}</div><button class="evidence-mini-btn" @click="focusEvidenceSource(src)">定位</button><button v-if="!minimal" class="evidence-mini-btn" @click="copyEvidence(src)">复制</button></div>
           </div>
-          <div class="evidence-insight-row">
+          <div v-if="!minimal" class="evidence-insight-row">
             <div class="evidence-insight-card"><div class="evidence-insight-label">来源摘要</div><div class="evidence-insight-value">{{ summarizeSource(src) }}</div></div>
             <div class="evidence-insight-card"><div class="evidence-insight-label">命中原因</div><div class="evidence-insight-value">{{ matchReason(src.score) }}</div></div>
           </div>
-          <div v-if="matchedTerms(src).length" class="evidence-hit-terms">
+          <div v-if="matchedTerms(src).length && !minimal" class="evidence-hit-terms">
             <span class="evidence-hit-label">命中关键词</span>
             <span v-for="term in matchedTerms(src)" :key="term" class="evidence-hit-chip">{{ term }}</span>
           </div>
@@ -136,7 +136,7 @@
             <button class="feedback-btn" :class="{ active: src.feedback === 'up' }" @click="submitEvidenceFeedback(src.chunkId, 'up')">准确</button>
             <button class="feedback-btn" :class="{ active: src.feedback === 'down' }" @click="submitEvidenceFeedback(src.chunkId, 'down')">偏弱</button>
           </div>
-          <details class="evidence-details"><summary>查看完整分段</summary><pre>{{ src.content }}</pre></details>
+          <details v-if="!minimal" class="evidence-details"><summary>查看完整分段</summary><pre>{{ src.content }}</pre></details>
         </div>
       </div>
     </div>
@@ -154,6 +154,7 @@ interface QueryWorkspaceState { question: string; topK: number; streamMode: bool
 type SuggestionType = 'expand-topk' | 'add-keywords' | 'narrow-question'
 
 const emit = defineEmits<{ (e: 'focus-document', payload: { documentId?: string; filename: string; chunkIndex?: number; highlightTerms: string[] }): void }>()
+const { minimal = false } = defineProps<{ minimal?: boolean }>()
 const ragStore = useRagStore()
 const { showToast } = useToast()
 const question = ref('')
@@ -303,9 +304,102 @@ onMounted(() => { try { recentQuestions.value = JSON.parse(window.sessionStorage
 .evidence-details { margin-top: 10px; }
 .evidence-details summary { cursor: pointer; color: var(--brand); font-size: 12px; }
 .evidence-details pre { margin: 10px 0 0; padding: 12px; border-radius: 10px; background: #0f172a; color: #e2e8f0; white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.6; }
+.query-panel-minimal {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: min(72vh, 920px);
+}
+.query-panel-minimal .form-group {
+  margin-bottom: 0;
+  order: 3;
+  position: sticky;
+  bottom: 58px;
+  z-index: 3;
+  padding: 14px 16px 0;
+  margin: 0 -4px;
+  background: linear-gradient(180deg, rgba(20,24,31,0), rgba(20,24,31,0.92) 18%, rgba(20,24,31,0.98));
+  backdrop-filter: blur(12px);
+}
+.query-panel-minimal .query-input-head {
+  margin-bottom: 10px;
+}
+.query-panel-minimal .query-textarea {
+  min-height: 148px;
+  padding: 18px 20px;
+  font-size: 15px;
+  line-height: 1.7;
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+  border-color: rgba(148,163,184,0.22);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.query-panel-minimal .query-toolbar {
+  order: 4;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  padding: 10px 16px 2px;
+  margin: 0 -4px;
+  background: rgba(20,24,31,0.98);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  backdrop-filter: blur(12px);
+}
+.query-panel-minimal .query-result-shell {
+  order: 1;
+  flex: 1;
+  min-height: 0;
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
+  box-shadow: 0 18px 34px rgba(15, 23, 42, 0.08);
+}
+.query-panel-minimal .query-result-header,
+.query-panel-minimal .query-result {
+  padding: 18px 20px;
+}
+.query-panel-minimal .query-result-title,
+.query-panel-minimal .evidence-title {
+  font-size: 16px;
+}
+.query-panel-minimal .query-answer-content {
+  font-size: 14px;
+  line-height: 1.9;
+}
+.query-panel-minimal .query-result-header {
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+}
+.query-panel-minimal .evidence-panel {
+  order: 2;
+  margin-top: 0;
+  padding-top: 14px;
+  padding-bottom: 10px;
+}
+.query-panel-minimal .evidence-list {
+  gap: 12px;
+}
+.query-panel-minimal .evidence-card {
+  padding: 14px;
+  border-radius: 16px;
+}
+.query-panel-minimal .evidence-preview {
+  margin-top: 10px;
+}
+.query-panel-minimal .query-stage-card,
+.query-panel-minimal .query-error-card {
+  order: 1;
+}
+.query-panel-minimal .query-result {
+  overflow: auto;
+}
 @media (max-width: 820px) {
   .query-context-card, .query-input-head, .query-result-header, .query-helper-header, .evidence-header, .evidence-meta, .evidence-card-topline { flex-direction: column; align-items: flex-start; }
   .evidence-insight-row, .answer-insight-row { grid-template-columns: 1fr; }
   .query-result-side { align-items: flex-start; }
+  .query-panel-minimal .query-toolbar { align-items: stretch; }
+  .query-panel-minimal .form-group {
+    bottom: 100px;
+  }
 }
 </style>

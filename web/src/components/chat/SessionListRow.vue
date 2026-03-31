@@ -22,20 +22,8 @@
     />
 
     <template v-else>
-      <label class="session-select" @click.stop>
-        <input
-          :checked="selected"
-          class="session-select-input"
-          type="checkbox"
-          @change="$emit('toggle-select', session.sessionId)"
-        />
-      </label>
-
       <div class="session-main">
         <div class="session-title-row">
-          <span v-if="isPinned" class="session-pin active">置顶</span>
-          <span v-if="active" class="session-current">当前</span>
-          <span v-if="hasDraft" class="session-draft-chip">草稿</span>
           <span class="session-title">
             <template v-for="(segment, index) in titleSegments" :key="`${session.sessionId}-${index}`">
               <mark v-if="segment.highlight" class="session-highlight">{{ segment.text }}</mark>
@@ -46,19 +34,7 @@
 
         <div class="session-subtitle">
           <span>{{ subtitle }}</span>
-          <span v-if="matchedField" class="session-match-hint">{{ matchedField }}</span>
         </div>
-      </div>
-
-      <div class="session-actions">
-        <button class="session-action-btn" @click.stop="$emit('toggle-pin')">
-          {{ isPinned ? '取消置顶' : '置顶' }}
-        </button>
-        <button class="session-action-btn" @click.stop="$emit('start-rename', session)">重命名</button>
-        <button class="session-action-btn" @click.stop="$emit('toggle-archive')">
-          {{ archiveMode ? '恢复' : '归档' }}
-        </button>
-        <button class="session-action-btn danger" @click.stop="$emit('delete')">删除</button>
       </div>
     </template>
   </div>
@@ -93,11 +69,10 @@ defineEmits<{
   (event: 'toggle-select', sessionId: string): void
 }>()
 
-const isPinned = computed(() => props.session.pinned === true || props.session.pinned === 'true')
 const normalizedKeyword = computed(() => props.keyword.trim().toLowerCase())
 
 const titleSegments = computed(() => {
-  const title = props.session.summary || '新会话'
+  const title = props.session.summary || '新对话'
   const search = normalizedKeyword.value
   if (!search) return [{ text: title, highlight: false }]
 
@@ -112,34 +87,13 @@ const titleSegments = computed(() => {
   if (end < title.length) segments.push({ text: title.slice(end), highlight: false })
   return segments
 })
-
-const matchedField = computed(() => {
-  const search = normalizedKeyword.value
-  if (!search) return ''
-  if ((props.session.summary || '').toLowerCase().includes(search)) return '标题匹配'
-  if (props.session.sessionId.toLowerCase().includes(search)) return 'ID 匹配'
-  return ''
-})
 </script>
 
 <style scoped>
 .session-item {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-}
-
-.session-select {
-  display: flex;
-  align-items: center;
-  padding-top: 4px;
-}
-
-.session-select-input {
-  width: 14px;
-  height: 14px;
-  cursor: pointer;
-  accent-color: var(--accent);
+  gap: 0;
 }
 
 .session-main {
@@ -156,15 +110,9 @@ const matchedField = computed(() => {
 
 .session-title {
   min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
   word-break: break-word;
-}
-
-.session-draft-chip {
-  border-radius: 999px;
-  background: rgba(245, 158, 11, 0.12);
-  color: #b45309;
-  padding: 1px 6px;
-  font-size: 11px;
 }
 
 .session-subtitle {
@@ -172,13 +120,8 @@ const matchedField = computed(() => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-}
-
-.session-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text3);
 }
 </style>

@@ -15,7 +15,7 @@ import org.springframework.context.annotation.Configuration;
 public class RagChatConfig {
 
     @Bean
-    public ChatClient.Builder chatClientBuilder(@Qualifier("dashScopeChatModel") ChatModel chatModel) {
+    public ChatClient.Builder chatClientBuilder(@Qualifier("openAiChatModel") ChatModel chatModel) {
         return ChatClient.builder(chatModel);
     }
 
@@ -30,7 +30,7 @@ public class RagChatConfig {
             """;
 
     @Bean
-    public ChatClient chatClient(@Qualifier("dashScopeChatModel") ChatModel model) {
+    public ChatClient chatClient(@Qualifier("openAiChatModel") ChatModel model) {
         return ChatClient
                 .builder(model)
                 .defaultSystem(RAG_SYSTEM_PROMPT)

@@ -12,13 +12,13 @@ const router = createRouter({
     {
       path: '/',
       component: () => import('@/layouts/MainLayout.vue'),
-      redirect: '/dashboard',
+      redirect: '/chat',
       children: [
         {
           path: 'dashboard',
           name: 'dashboard',
           component: () => import('@/views/DashboardView.vue'),
-          meta: { title: '控制台' }
+          meta: { title: '工作台' }
         },
         {
           path: 'chat',
@@ -31,6 +31,12 @@ const router = createRouter({
           name: 'rag',
           component: () => import('@/views/RagView.vue'),
           meta: { title: '知识库' }
+        },
+        {
+          path: 'rag/:kbId',
+          name: 'rag-detail',
+          component: () => import('@/views/RagDetailView.vue'),
+          meta: { title: '知识库详情' }
         },
         {
           path: 'learning',
@@ -88,14 +94,14 @@ router.beforeEach((to, _from, next) => {
 
   if (to.name === 'login' && token) {
     const redirect = typeof to.query.redirect === 'string' ? to.query.redirect : ''
-    next(redirect || { name: 'dashboard' })
+    next(redirect || { name: 'chat' })
     return
   }
 
   if (to.meta?.requiresAdmin) {
     const roles = localStorage.getItem('auth_roles') || ''
     if (!roles.includes('ROLE_ADMIN')) {
-      next({ name: 'dashboard' })
+      next({ name: 'chat' })
       return
     }
   }

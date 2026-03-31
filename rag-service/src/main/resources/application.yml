@@ -14,22 +14,41 @@ spring:
       host: localhost
       port: 6379
   ai:
-    dashscope:
+    openai:
       api-key: ${ALI_QWEN_API_KEY}
+      base-url: ${LLM_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
       chat:
         options:
           model: ${LLM_MODEL:qwen3-vl-flash-2026-01-22}
           temperature: 0.7
           max-tokens: 4096
+#    dashscope:
+#      api-key: ${ALI_QWEN_API_KEY}
+#      chat:
+#        options:
+#          model: ${LLM_MODEL:qwen3-vl-flash-2026-01-22}
+#          temperature: 0.7
+#          max-tokens: 4096
+#      embedding:
+#        options:
+#          model: ${LLM_EMBEDDING_MODEL:qwen3-vl-embedding}
+    ollama:
+      base-url: http://localhost:11434     # Ollama 服务地址
       embedding:
         options:
-          model: ${LLM_EMBEDDING_MODEL:qwen3-vl-embedding}
+          model: bge-m3
+    client:
+      connect-timeout: 60s
+      read-timeout: 120s
+    model:
+      embedding: ollama
     vectorstore:
       pgvector:
         index-type: HNSW
         distance-type: COSINE_DISTANCE
+        dimensions: 1024
         schema-name: public
-        initialize-schema: false
+        initialize-schema: true
   servlet:
     multipart:
       max-file-size: 50MB
