@@ -12,5 +12,5 @@ public class ChatResponse {
     private Integer promptTokens;
     private Integer completionTokens;
     private Double estimatedCost;
-    private RouteDecisionPayload routeDecision;
+    private RouteDecisionResponse routeDecision;
 }

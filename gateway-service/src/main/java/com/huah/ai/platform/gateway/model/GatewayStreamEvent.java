@@ -9,5 +9,5 @@ public class GatewayStreamEvent {
     private String chunk;
     private boolean done;
     private String model;
-    private RouteDecisionPayload routeDecision;
+    private RouteDecisionResponse routeDecision;
 }

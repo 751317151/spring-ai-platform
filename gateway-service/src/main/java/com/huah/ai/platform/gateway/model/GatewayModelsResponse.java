@@ -9,8 +9,9 @@ import java.util.Map;
 @Data
 @Builder
 public class GatewayModelsResponse {
-    private List<GatewayModelView> models;
+    private List<GatewayModelResponse> models;
     private int count;
     private Map<String, List<String>> sceneRoutes;
     private String loadBalanceStrategy;
 }
+

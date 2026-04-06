@@ -3,7 +3,7 @@
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.huah.ai.platform.agent.learning.FollowUpTemplateMapper">
-    <select id="selectByUserId" resultType="com.huah.ai.platform.agent.learning.FollowUpTemplateRecord">
+    <select id="selectByUserId" resultType="com.huah.ai.platform.agent.learning.FollowUpTemplateEntity">
         SELECT * FROM learning_followup_templates
         WHERE user_id = #{userId}
         ORDER BY updated_at DESC

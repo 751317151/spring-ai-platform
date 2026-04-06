@@ -10,13 +10,25 @@ CREATE TABLE IF NOT EXISTS ai_users (
     roles VARCHAR(255),
     enabled BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
     last_login_at TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS ai_roles (
     id BIGINT PRIMARY KEY,
     role_name VARCHAR(64) UNIQUE NOT NULL,
-    description VARCHAR(255)
+    description VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ai_user_roles (
+    id BIGINT PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL REFERENCES ai_users(userid) ON DELETE CASCADE,
+    role_id BIGINT NOT NULL REFERENCES ai_roles(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT uk_ai_user_roles UNIQUE (user_id, role_id)
 );
 
 CREATE TABLE IF NOT EXISTS ai_bot_permissions (
@@ -27,7 +39,38 @@ CREATE TABLE IF NOT EXISTS ai_bot_permissions (
     data_scope VARCHAR(16) DEFAULT 'DEPARTMENT',
     allowed_operations VARCHAR(128),
     daily_token_limit INT DEFAULT 100000,
-    enabled BOOLEAN DEFAULT TRUE
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ai_role_token_limits (
+    id BIGINT PRIMARY KEY,
+    role_id BIGINT NOT NULL REFERENCES ai_roles(id),
+    bot_type VARCHAR(64),
+    daily_token_limit INT NOT NULL,
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ai_user_token_limits (
+    id BIGINT PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL REFERENCES ai_users(userid),
+    bot_type VARCHAR(64),
+    daily_token_limit INT NOT NULL,
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ai_bot_permission_roles (
+    id BIGINT PRIMARY KEY,
+    permission_id BIGINT NOT NULL REFERENCES ai_bot_permissions(id) ON DELETE CASCADE,
+    role_id BIGINT NOT NULL REFERENCES ai_roles(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT uk_ai_bot_permission_roles UNIQUE (permission_id, role_id)
 );
 
 CREATE TABLE IF NOT EXISTS knowledge_bases (
@@ -68,10 +111,12 @@ CREATE TABLE IF NOT EXISTS vector_store (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     content TEXT,
     metadata JSONB,
-    embedding vector(1536)
+    embedding vector(1024),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_vector_store_embedding
+CREATE INDEX IF NOT EXISTS spring_ai_vector_index
     ON vector_store USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
 
@@ -93,7 +138,8 @@ CREATE TABLE IF NOT EXISTS ai_audit_logs (
     client_ip VARCHAR(64),
     session_id VARCHAR(128),
     trace_id VARCHAR(64),
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS ai_response_feedback (
@@ -143,7 +189,8 @@ CREATE TABLE IF NOT EXISTS ai_tool_audit_logs (
     denied_resource VARCHAR(255),
     latency_ms BIGINT,
     trace_id VARCHAR(64),
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS ai_multi_agent_traces (
@@ -186,7 +233,8 @@ CREATE TABLE IF NOT EXISTS ai_multi_agent_trace_steps (
     recovery_action VARCHAR(32),
     source_trace_id VARCHAR(64),
     source_step_order INTEGER,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS learning_favorites (
@@ -199,8 +247,9 @@ CREATE TABLE IF NOT EXISTS learning_favorites (
     session_id VARCHAR(128),
     session_summary VARCHAR(255),
     source_message_index INTEGER,
-    created_at BIGINT NOT NULL,
-    last_collected_at BIGINT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    last_collected_at TIMESTAMP,
     duplicate_count INTEGER DEFAULT 1,
     tags_json TEXT,
     session_config_snapshot_json TEXT
@@ -218,8 +267,8 @@ CREATE TABLE IF NOT EXISTS learning_notes (
     related_session_summary VARCHAR(255),
     related_message_index INTEGER,
     tags_json TEXT,
-    created_at BIGINT NOT NULL,
-    updated_at BIGINT NOT NULL
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS learning_followup_templates (
@@ -228,7 +277,8 @@ CREATE TABLE IF NOT EXISTS learning_followup_templates (
     name VARCHAR(255) NOT NULL,
     content TEXT NOT NULL,
     source_count INTEGER DEFAULT 0,
-    updated_at BIGINT NOT NULL
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_tool_audit_created ON ai_tool_audit_logs (created_at DESC);
@@ -239,6 +289,22 @@ CREATE INDEX IF NOT EXISTS idx_multi_trace_steps_lookup ON ai_multi_agent_trace_
 CREATE INDEX IF NOT EXISTS idx_learning_favorites_user_time ON learning_favorites (user_id, last_collected_at DESC, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_learning_notes_user_time ON learning_notes (user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_learning_templates_user_time ON learning_followup_templates (user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_role_token_limits_role ON ai_role_token_limits (role_id);
+CREATE INDEX IF NOT EXISTS idx_role_token_limits_bot ON ai_role_token_limits (bot_type);
+CREATE INDEX IF NOT EXISTS idx_user_token_limits_user ON ai_user_token_limits (user_id);
+CREATE INDEX IF NOT EXISTS idx_user_token_limits_bot ON ai_user_token_limits (bot_type);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_role_token_limits_global
+    ON ai_role_token_limits (role_id)
+    WHERE bot_type IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uk_role_token_limits_bot
+    ON ai_role_token_limits (role_id, bot_type)
+    WHERE bot_type IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uk_user_token_limits_global
+    ON ai_user_token_limits (user_id)
+    WHERE bot_type IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uk_user_token_limits_bot
+    ON ai_user_token_limits (user_id, bot_type)
+    WHERE bot_type IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS gateway_model_stats (
     model_id VARCHAR(64) PRIMARY KEY,
@@ -248,6 +314,7 @@ CREATE TABLE IF NOT EXISTS gateway_model_stats (
     total_prompt_tokens BIGINT DEFAULT 0,
     total_completion_tokens BIGINT DEFAULT 0,
     total_estimated_cost DOUBLE PRECISION DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -281,6 +348,15 @@ INSERT INTO ai_users (
 )
 ON CONFLICT DO NOTHING;
 
+INSERT INTO ai_user_roles (id, user_id, role_id) VALUES
+    (11001, 'admin', 1001),
+    (11002, 'admin', 1002),
+    (11003, 'admin', 1003),
+    (11004, 'admin', 1004),
+    (11005, 'admin', 1005),
+    (11006, 'admin', 1006)
+ON CONFLICT DO NOTHING;
+
 INSERT INTO ai_bot_permissions (
     id,
     bot_type,
@@ -302,6 +378,32 @@ INSERT INTO ai_bot_permissions (
     (2010, 'data-analysis', 'ROLE_RD,ROLE_FINANCE,ROLE_ADMIN', '研发中心,财务部,系统管理', 'DEPARTMENT', 200000, TRUE),
     (2011, 'code', 'ROLE_RD,ROLE_ADMIN', '研发中心,系统管理', 'DEPARTMENT', 200000, TRUE),
     (2012, 'mcp', 'ROLE_ADMIN', '系统管理', 'DEPARTMENT', 500000, TRUE)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO ai_bot_permission_roles (id, permission_id, role_id) VALUES
+    (21001, 2001, 1001),
+    (21002, 2001, 1002),
+    (21003, 2002, 1001),
+    (21004, 2002, 1003),
+    (21005, 2003, 1001),
+    (21006, 2003, 1004),
+    (21007, 2004, 1001),
+    (21008, 2004, 1005),
+    (21009, 2005, 1001),
+    (21010, 2005, 1006),
+    (21011, 2006, 1001),
+    (21012, 2006, 1006),
+    (21013, 2007, 1001),
+    (21014, 2008, 1001),
+    (21015, 2008, 1006),
+    (21016, 2009, 1001),
+    (21017, 2009, 1006),
+    (21018, 2010, 1001),
+    (21019, 2010, 1002),
+    (21020, 2010, 1005),
+    (21021, 2011, 1001),
+    (21022, 2011, 1002),
+    (21023, 2012, 1001)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO knowledge_bases (

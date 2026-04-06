@@ -7,9 +7,10 @@ import org.apache.ibatis.annotations.Param;
 import java.util.List;
 
 @Mapper
-public interface FollowUpTemplateMapper extends BaseMapper<FollowUpTemplateRecord> {
+public interface FollowUpTemplateMapper extends BaseMapper<FollowUpTemplateEntity> {
 
-    List<FollowUpTemplateRecord> selectByUserId(@Param("userId") String userId);
+    List<FollowUpTemplateEntity> selectByUserId(@Param("userId") String userId);
 
     int deleteByUserIdAndId(@Param("userId") String userId, @Param("id") Long id);
 }
+

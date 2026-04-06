@@ -1,10 +1,10 @@
 package com.huah.ai.platform.monitor.service;
 
-import com.huah.ai.platform.monitor.model.EvidenceFeedbackSampleView;
-import com.huah.ai.platform.monitor.model.FailureSampleView;
-import com.huah.ai.platform.monitor.model.FeedbackSampleView;
-import com.huah.ai.platform.monitor.model.SlowRequestView;
-import com.huah.ai.platform.monitor.model.TopUserView;
+import com.huah.ai.platform.monitor.model.EvidenceFeedbackSampleResponse;
+import com.huah.ai.platform.monitor.model.FailureSampleResponse;
+import com.huah.ai.platform.monitor.model.FeedbackSampleResponse;
+import com.huah.ai.platform.monitor.model.SlowRequestResponse;
+import com.huah.ai.platform.monitor.model.TopUserResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -24,7 +24,7 @@ public class MonitorCsvExportService {
     public String exportSlowRequestsCsv(int limit) {
         StringJoiner joiner = new StringJoiner("\n");
         joiner.add("id,userId,agentType,modelId,traceId,latencyMs,success,createdAt");
-        for (SlowRequestView item : monitorMetricsQueryService.getSlowRequests(limit)) {
+        for (SlowRequestResponse item : monitorMetricsQueryService.getSlowRequests(limit)) {
             joiner.add(String.join(",",
                     csv(item.getId()),
                     csv(item.getUserId()),
@@ -41,7 +41,7 @@ public class MonitorCsvExportService {
     public String exportFailureSamplesCsv(int limit) {
         StringJoiner joiner = new StringJoiner("\n");
         joiner.add("id,userId,agentType,modelId,errorMessage,latencyMs,sessionId,traceId,createdAt");
-        for (FailureSampleView item : monitorMetricsQueryService.getFailureSamples(limit)) {
+        for (FailureSampleResponse item : monitorMetricsQueryService.getFailureSamples(limit)) {
             joiner.add(String.join(",",
                     csv(item.getId()),
                     csv(item.getUserId()),
@@ -59,7 +59,7 @@ public class MonitorCsvExportService {
     public String exportFeedbackCsv(int limit) {
         StringJoiner joiner = new StringJoiner("\n");
         joiner.add("responseId,userId,sourceType,agentType,knowledgeBaseId,feedback,comment,createdAt");
-        for (FeedbackSampleView item : monitorFeedbackQueryService.getRecentFeedback(limit)) {
+        for (FeedbackSampleResponse item : monitorFeedbackQueryService.getRecentFeedback(limit)) {
             joiner.add(String.join(",",
                     csv(item.getResponseId()),
                     csv(item.getUserId()),
@@ -76,7 +76,7 @@ public class MonitorCsvExportService {
     public String exportEvidenceFeedbackCsv(int limit) {
         StringJoiner joiner = new StringJoiner("\n");
         joiner.add("responseId,chunkId,userId,knowledgeBaseId,feedback,comment,createdAt");
-        for (EvidenceFeedbackSampleView item : monitorFeedbackQueryService.getRecentEvidenceFeedback(limit)) {
+        for (EvidenceFeedbackSampleResponse item : monitorFeedbackQueryService.getRecentEvidenceFeedback(limit)) {
             joiner.add(String.join(",",
                     csv(item.getResponseId()),
                     csv(item.getChunkId()),
@@ -92,7 +92,7 @@ public class MonitorCsvExportService {
     public String exportTopUsersCsv() {
         StringJoiner joiner = new StringJoiner("\n");
         joiner.add("userId,agentType,calls,avgLatency");
-        for (TopUserView item : monitorMetricsQueryService.getTopUsers()) {
+        for (TopUserResponse item : monitorMetricsQueryService.getTopUsers()) {
             joiner.add(String.join(",",
                     csv(item.getUserId()),
                     csv(item.getAgentType()),
@@ -113,3 +113,4 @@ public class MonitorCsvExportService {
         return "\"" + value.replace("\"", "\"\"") + "\"";
     }
 }
+

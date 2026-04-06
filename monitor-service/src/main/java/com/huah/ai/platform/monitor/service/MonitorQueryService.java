@@ -1,24 +1,24 @@
 package com.huah.ai.platform.monitor.service;
 
 import com.huah.ai.platform.monitor.alert.AlertEvaluationService;
-import com.huah.ai.platform.monitor.alert.AlertEventView;
+import com.huah.ai.platform.monitor.alert.AlertEventResponse;
 import com.huah.ai.platform.monitor.alert.AlertmanagerAlertService;
-import com.huah.ai.platform.monitor.model.AgentStatView;
-import com.huah.ai.platform.monitor.model.AlertsView;
-import com.huah.ai.platform.monitor.model.AlertWorkflowHistoryView;
-import com.huah.ai.platform.monitor.model.AuditLogView;
-import com.huah.ai.platform.monitor.model.EvidenceFeedbackSampleView;
-import com.huah.ai.platform.monitor.model.FailureSampleView;
-import com.huah.ai.platform.monitor.model.FeedbackOverviewView;
-import com.huah.ai.platform.monitor.model.FeedbackSampleView;
-import com.huah.ai.platform.monitor.model.HourlyStatView;
-import com.huah.ai.platform.monitor.model.ModelStatView;
-import com.huah.ai.platform.monitor.model.MonitorOverviewView;
-import com.huah.ai.platform.monitor.model.SlowRequestView;
-import com.huah.ai.platform.monitor.model.TokenUsageView;
-import com.huah.ai.platform.monitor.model.TopUserView;
-import com.huah.ai.platform.monitor.model.ToolAuditView;
-import com.huah.ai.platform.monitor.model.TraceDetailView;
+import com.huah.ai.platform.monitor.model.AgentStatResponse;
+import com.huah.ai.platform.monitor.model.AlertsResponse;
+import com.huah.ai.platform.monitor.model.AlertWorkflowHistoryResponse;
+import com.huah.ai.platform.monitor.model.AuditLogResponse;
+import com.huah.ai.platform.monitor.model.EvidenceFeedbackSampleResponse;
+import com.huah.ai.platform.monitor.model.FailureSampleResponse;
+import com.huah.ai.platform.monitor.model.FeedbackOverviewResponse;
+import com.huah.ai.platform.monitor.model.FeedbackSampleResponse;
+import com.huah.ai.platform.monitor.model.HourlyStatResponse;
+import com.huah.ai.platform.monitor.model.ModelStatResponse;
+import com.huah.ai.platform.monitor.model.MonitorOverviewResponse;
+import com.huah.ai.platform.monitor.model.SlowRequestResponse;
+import com.huah.ai.platform.monitor.model.TokenUsageResponse;
+import com.huah.ai.platform.monitor.model.TopUserResponse;
+import com.huah.ai.platform.monitor.model.ToolAuditResponse;
+import com.huah.ai.platform.monitor.model.TraceDetailResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -40,85 +40,85 @@ public class MonitorQueryService {
     private final AlertmanagerAlertService alertmanagerAlertService;
     private final AlertWorkflowService alertWorkflowService;
 
-    public MonitorOverviewView getOverview() {
+    public MonitorOverviewResponse getOverview() {
         return monitorMetricsQueryService.getOverview();
     }
 
-    public List<AgentStatView> getAgentStats() {
+    public List<AgentStatResponse> getAgentStats() {
         return monitorMetricsQueryService.getAgentStats();
     }
 
-    public List<ModelStatView> getModelStats() {
+    public List<ModelStatResponse> getModelStats() {
         return monitorMetricsQueryService.getModelStats();
     }
 
-    public TokenUsageView getTokenUsage(String userId) {
+    public TokenUsageResponse getTokenUsage(String userId) {
         return monitorMetricsQueryService.getTokenUsage(userId);
     }
 
-    public List<AuditLogView> getAuditLogs(int limit, String userId) {
+    public List<AuditLogResponse> getAuditLogs(int limit, String userId) {
         return monitorTraceQueryService.getAuditLogs(limit, userId);
     }
 
-    public List<TopUserView> getTopUsers() {
+    public List<TopUserResponse> getTopUsers() {
         return monitorMetricsQueryService.getTopUsers();
     }
 
-    public List<SlowRequestView> getSlowRequests(int limit) {
+    public List<SlowRequestResponse> getSlowRequests(int limit) {
         return monitorMetricsQueryService.getSlowRequests(limit);
     }
 
-    public List<FailureSampleView> getFailureSamples(int limit) {
+    public List<FailureSampleResponse> getFailureSamples(int limit) {
         return monitorMetricsQueryService.getFailureSamples(limit);
     }
 
-    public List<ToolAuditView> getToolAudits(int limit, String userId, String agentType, String toolName) {
+    public List<ToolAuditResponse> getToolAudits(int limit, String userId, String agentType, String toolName) {
         return monitorTraceQueryService.getToolAudits(limit, userId, agentType, toolName);
     }
 
-    public Optional<TraceDetailView> getTraceDetail(String traceId) {
+    public Optional<TraceDetailResponse> getTraceDetail(String traceId) {
         return monitorTraceQueryService.getTraceDetail(traceId);
     }
 
-    public FeedbackOverviewView getFeedbackOverview() {
+    public FeedbackOverviewResponse getFeedbackOverview() {
         return monitorFeedbackQueryService.getFeedbackOverview();
     }
 
-    public List<FeedbackSampleView> getRecentFeedback(int limit) {
+    public List<FeedbackSampleResponse> getRecentFeedback(int limit) {
         return monitorFeedbackQueryService.getRecentFeedback(limit);
     }
 
-    public List<EvidenceFeedbackSampleView> getRecentEvidenceFeedback(int limit) {
+    public List<EvidenceFeedbackSampleResponse> getRecentEvidenceFeedback(int limit) {
         return monitorFeedbackQueryService.getRecentEvidenceFeedback(limit);
     }
 
-    public List<HourlyStatView> getHourlyStats() {
+    public List<HourlyStatResponse> getHourlyStats() {
         return monitorMetricsQueryService.getHourlyStats();
     }
 
-    public AlertsView getAlerts() {
-        List<AlertEventView> alerts = alertmanagerAlertService.fetchActiveAlerts();
+    public AlertsResponse getAlerts() {
+        List<AlertEventResponse> alerts = alertmanagerAlertService.fetchActiveAlerts();
         if (alerts.isEmpty()) {
             alerts = alertEvaluationService.evaluate(monitorMetricsQueryService.buildAlertSnapshot());
         }
         Map<String, AlertWorkflowService.AlertWorkflowRecord> workflowMap = alertWorkflowService.getWorkflowMap(
                 alerts.stream()
-                        .map(AlertEventView::getFingerprint)
+                        .map(AlertEventResponse::getFingerprint)
                         .filter(value -> value != null && !value.isBlank())
                         .toList()
         );
-        List<AlertEventView> merged = alerts.stream()
+        List<AlertEventResponse> merged = alerts.stream()
                 .map(item -> mergeWorkflow(item, workflowMap.get(item.getFingerprint())))
                 .toList();
-        return AlertsView.builder()
+        return AlertsResponse.builder()
                 .activeAlerts(merged.stream().filter(a -> !"INFO".equals(a.getLevel())).count())
                 .alerts(merged)
                 .build();
     }
 
-    public List<AlertWorkflowHistoryView> getAlertWorkflowHistory(String fingerprint, int limit) {
+    public List<AlertWorkflowHistoryResponse> getAlertWorkflowHistory(String fingerprint, int limit) {
         return alertWorkflowService.getWorkflowHistory(fingerprint, limit).stream()
-                .map(item -> AlertWorkflowHistoryView.builder()
+                .map(item -> AlertWorkflowHistoryResponse.builder()
                         .fingerprint(item.getFingerprint())
                         .workflowStatus(item.getWorkflowStatus())
                         .workflowNote(item.getWorkflowNote())
@@ -152,11 +152,11 @@ public class MonitorQueryService {
         return monitorCsvExportService.exportTopUsersCsv();
     }
 
-    private AlertEventView mergeWorkflow(AlertEventView item, AlertWorkflowService.AlertWorkflowRecord workflow) {
+    private AlertEventResponse mergeWorkflow(AlertEventResponse item, AlertWorkflowService.AlertWorkflowRecord workflow) {
         if (workflow == null) {
             return item;
         }
-        return AlertEventView.builder()
+        return AlertEventResponse.builder()
                 .level(item.getLevel())
                 .type(item.getType())
                 .message(item.getMessage())
@@ -180,3 +180,4 @@ public class MonitorQueryService {
         return OffsetDateTime.parse(value).toLocalDateTime();
     }
 }
+

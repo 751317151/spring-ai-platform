@@ -1,8 +1,8 @@
 package com.huah.ai.platform.agent.service;
 
-import com.huah.ai.platform.agent.audit.AiAuditLog;
+import com.huah.ai.platform.agent.audit.AiAuditLogEntity;
 import com.huah.ai.platform.agent.audit.AiAuditLogMapper;
-import com.huah.ai.platform.agent.audit.AiToolAuditLog;
+import com.huah.ai.platform.agent.audit.AiToolAuditLogEntity;
 import com.huah.ai.platform.agent.audit.AiToolAuditLogMapper;
 import com.huah.ai.platform.agent.dto.AgentWorkbenchChangeItem;
 import com.huah.ai.platform.agent.dto.AgentWorkbenchCompareInsight;
@@ -102,12 +102,12 @@ public class AgentWorkbenchService {
         LocalDateTime last7dSince = now.minusDays(7);
         LocalDateTime last4wSince = now.minusDays(28);
 
-        List<AiAuditLog> last24hAuditLogs = auditLogMapper.selectByAgentTypeAfter(agentType, last24hSince);
-        List<AiAuditLog> last7dAuditLogs = auditLogMapper.selectByAgentTypeAfter(agentType, last7dSince);
-        List<AiAuditLog> last4wAuditLogs = auditLogMapper.selectByAgentTypeAfter(agentType, last4wSince);
-        List<AiToolAuditLog> last24hToolAudits = toolAuditLogMapper.selectRecentByAgentTypeAfter(agentType, last24hSince, DEFAULT_TOOL_AUDIT_LIMIT);
-        List<AiToolAuditLog> last7dToolAudits = toolAuditLogMapper.selectRecentByAgentTypeAfter(agentType, last7dSince, DEFAULT_TOOL_AUDIT_LIMIT * 2);
-        List<AiToolAuditLog> last4wToolAudits = toolAuditLogMapper.selectRecentByAgentTypeAfter(agentType, last4wSince, DEFAULT_TOOL_AUDIT_LIMIT * 4);
+        List<AiAuditLogEntity> last24hAuditLogs = auditLogMapper.selectByAgentTypeAfter(agentType, last24hSince);
+        List<AiAuditLogEntity> last7dAuditLogs = auditLogMapper.selectByAgentTypeAfter(agentType, last7dSince);
+        List<AiAuditLogEntity> last4wAuditLogs = auditLogMapper.selectByAgentTypeAfter(agentType, last4wSince);
+        List<AiToolAuditLogEntity> last24hToolAudits = toolAuditLogMapper.selectRecentByAgentTypeAfter(agentType, last24hSince, DEFAULT_TOOL_AUDIT_LIMIT);
+        List<AiToolAuditLogEntity> last7dToolAudits = toolAuditLogMapper.selectRecentByAgentTypeAfter(agentType, last7dSince, DEFAULT_TOOL_AUDIT_LIMIT * 2);
+        List<AiToolAuditLogEntity> last4wToolAudits = toolAuditLogMapper.selectRecentByAgentTypeAfter(agentType, last4wSince, DEFAULT_TOOL_AUDIT_LIMIT * 4);
         List<MultiAgentExecutionTrace> traces = "multi".equals(agentType)
                 ? multiAgentExecutionTraceMapper.selectRecentAfter(last24hSince, DEFAULT_TRACE_LIMIT)
                 : List.of();
@@ -119,7 +119,7 @@ public class AgentWorkbenchService {
         long toolCallCount = last24hToolAudits.size();
         long toolFailureCount = countFailedToolAudits(last24hToolAudits);
         long avgToolLatencyMs = averageToolLatency(last24hToolAudits);
-        AiToolAuditLog slowestTool = last24hToolAudits.stream()
+        AiToolAuditLogEntity slowestTool = last24hToolAudits.stream()
                 .max(Comparator.comparingLong(item -> item.getLatencyMs() == null ? 0L : item.getLatencyMs()))
                 .orElse(null);
 
@@ -542,10 +542,10 @@ public class AgentWorkbenchService {
         return left > right ? leftAgentType : rightAgentType;
     }
 
-    private List<AgentWorkbenchFailureItem> buildRecentFailures(List<AiAuditLog> auditLogs) {
+    private List<AgentWorkbenchFailureItem> buildRecentFailures(List<AiAuditLogEntity> auditLogs) {
         return auditLogs.stream()
                 .filter(item -> Boolean.FALSE.equals(item.getSuccess()))
-                .sorted(Comparator.comparing(AiAuditLog::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .sorted(Comparator.comparing(AiAuditLogEntity::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .limit(DEFAULT_FAILURE_LIMIT)
                 .map(item -> AgentWorkbenchFailureItem.builder()
                         .traceId(item.getTraceId())
@@ -559,23 +559,23 @@ public class AgentWorkbenchService {
                 .toList();
     }
 
-    private List<AgentWorkbenchTrendPoint> buildHourlyTrend(List<AiAuditLog> auditLogs,
-                                                            List<AiToolAuditLog> toolAudits,
+    private List<AgentWorkbenchTrendPoint> buildHourlyTrend(List<AiAuditLogEntity> auditLogs,
+                                                            List<AiToolAuditLogEntity> toolAudits,
                                                             LocalDateTime now) {
-        Map<String, List<AiAuditLog>> auditByHour = new LinkedHashMap<>();
-        Map<String, List<AiToolAuditLog>> toolByHour = new LinkedHashMap<>();
+        Map<String, List<AiAuditLogEntity>> auditByHour = new LinkedHashMap<>();
+        Map<String, List<AiToolAuditLogEntity>> toolByHour = new LinkedHashMap<>();
         for (int i = 23; i >= 0; i--) {
             String label = now.minusHours(i).withMinute(0).withSecond(0).withNano(0).format(HOUR_LABEL);
             auditByHour.put(label, new ArrayList<>());
             toolByHour.put(label, new ArrayList<>());
         }
-        for (AiAuditLog log : auditLogs) {
+        for (AiAuditLogEntity log : auditLogs) {
             if (log.getCreatedAt() != null) {
                 String label = log.getCreatedAt().withMinute(0).withSecond(0).withNano(0).format(HOUR_LABEL);
                 auditByHour.computeIfAbsent(label, key -> new ArrayList<>()).add(log);
             }
         }
-        for (AiToolAuditLog log : toolAudits) {
+        for (AiToolAuditLogEntity log : toolAudits) {
             if (log.getCreatedAt() != null) {
                 String label = log.getCreatedAt().withMinute(0).withSecond(0).withNano(0).format(HOUR_LABEL);
                 toolByHour.computeIfAbsent(label, key -> new ArrayList<>()).add(log);
@@ -586,23 +586,23 @@ public class AgentWorkbenchService {
                 .toList();
     }
 
-    private List<AgentWorkbenchTrendPoint> buildDailyTrend(List<AiAuditLog> auditLogs,
-                                                           List<AiToolAuditLog> toolAudits,
+    private List<AgentWorkbenchTrendPoint> buildDailyTrend(List<AiAuditLogEntity> auditLogs,
+                                                           List<AiToolAuditLogEntity> toolAudits,
                                                            LocalDateTime now) {
-        Map<String, List<AiAuditLog>> auditByDay = new LinkedHashMap<>();
-        Map<String, List<AiToolAuditLog>> toolByDay = new LinkedHashMap<>();
+        Map<String, List<AiAuditLogEntity>> auditByDay = new LinkedHashMap<>();
+        Map<String, List<AiToolAuditLogEntity>> toolByDay = new LinkedHashMap<>();
         for (int i = 6; i >= 0; i--) {
             String label = now.toLocalDate().minusDays(i).format(DAY_LABEL);
             auditByDay.put(label, new ArrayList<>());
             toolByDay.put(label, new ArrayList<>());
         }
-        for (AiAuditLog log : auditLogs) {
+        for (AiAuditLogEntity log : auditLogs) {
             if (log.getCreatedAt() != null) {
                 String label = log.getCreatedAt().toLocalDate().format(DAY_LABEL);
                 auditByDay.computeIfAbsent(label, key -> new ArrayList<>()).add(log);
             }
         }
-        for (AiToolAuditLog log : toolAudits) {
+        for (AiToolAuditLogEntity log : toolAudits) {
             if (log.getCreatedAt() != null) {
                 String label = log.getCreatedAt().toLocalDate().format(DAY_LABEL);
                 toolByDay.computeIfAbsent(label, key -> new ArrayList<>()).add(log);
@@ -613,24 +613,24 @@ public class AgentWorkbenchService {
                 .toList();
     }
 
-    private List<AgentWorkbenchTrendPoint> buildWeeklyTrend(List<AiAuditLog> auditLogs,
-                                                            List<AiToolAuditLog> toolAudits,
+    private List<AgentWorkbenchTrendPoint> buildWeeklyTrend(List<AiAuditLogEntity> auditLogs,
+                                                            List<AiToolAuditLogEntity> toolAudits,
                                                             LocalDateTime now) {
-        Map<String, List<AiAuditLog>> auditByWeek = new LinkedHashMap<>();
-        Map<String, List<AiToolAuditLog>> toolByWeek = new LinkedHashMap<>();
+        Map<String, List<AiAuditLogEntity>> auditByWeek = new LinkedHashMap<>();
+        Map<String, List<AiToolAuditLogEntity>> toolByWeek = new LinkedHashMap<>();
         for (int i = 3; i >= 0; i--) {
             LocalDate weekStart = now.toLocalDate().minusWeeks(i).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
             String label = weekLabel(weekStart);
             auditByWeek.put(label, new ArrayList<>());
             toolByWeek.put(label, new ArrayList<>());
         }
-        for (AiAuditLog log : auditLogs) {
+        for (AiAuditLogEntity log : auditLogs) {
             if (log.getCreatedAt() != null) {
                 String label = weekLabel(log.getCreatedAt().toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)));
                 auditByWeek.computeIfAbsent(label, key -> new ArrayList<>()).add(log);
             }
         }
-        for (AiToolAuditLog log : toolAudits) {
+        for (AiToolAuditLogEntity log : toolAudits) {
             if (log.getCreatedAt() != null) {
                 String label = weekLabel(log.getCreatedAt().toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)));
                 toolByWeek.computeIfAbsent(label, key -> new ArrayList<>()).add(log);
@@ -641,7 +641,7 @@ public class AgentWorkbenchService {
                 .toList();
     }
 
-    private AgentWorkbenchTrendPoint toTrendPoint(String label, List<AiAuditLog> auditLogs, List<AiToolAuditLog> toolAudits) {
+    private AgentWorkbenchTrendPoint toTrendPoint(String label, List<AiAuditLogEntity> auditLogs, List<AiToolAuditLogEntity> toolAudits) {
         return AgentWorkbenchTrendPoint.builder()
                 .label(label)
                 .totalCalls(auditLogs.size())
@@ -651,17 +651,17 @@ public class AgentWorkbenchService {
                 .build();
     }
 
-    private List<AgentWorkbenchToolRankItem> buildToolRanking(List<AiToolAuditLog> toolAudits) {
-        Map<String, List<AiToolAuditLog>> grouped = new LinkedHashMap<>();
-        for (AiToolAuditLog log : toolAudits) {
+    private List<AgentWorkbenchToolRankItem> buildToolRanking(List<AiToolAuditLogEntity> toolAudits) {
+        Map<String, List<AiToolAuditLogEntity>> grouped = new LinkedHashMap<>();
+        for (AiToolAuditLogEntity log : toolAudits) {
             String key = nullToEmpty(firstNonBlank(log.getToolName(), log.getToolClass()));
             grouped.computeIfAbsent(key, ignored -> new ArrayList<>()).add(log);
         }
         return grouped.entrySet().stream()
                 .map(entry -> {
-                    List<AiToolAuditLog> logs = entry.getValue();
-                    AiToolAuditLog latest = logs.stream()
-                            .max(Comparator.comparing(AiToolAuditLog::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
+                    List<AiToolAuditLogEntity> logs = entry.getValue();
+                    AiToolAuditLogEntity latest = logs.stream()
+                            .max(Comparator.comparing(AiToolAuditLogEntity::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
                             .orElse(null);
                     return AgentWorkbenchToolRankItem.builder()
                             .toolName(entry.getKey())
@@ -678,21 +678,21 @@ public class AgentWorkbenchService {
                 .toList();
     }
 
-    private List<AgentWorkbenchErrorTypeItem> buildErrorTypes(List<AiAuditLog> auditLogs, List<AiToolAuditLog> toolAudits) {
+    private List<AgentWorkbenchErrorTypeItem> buildErrorTypes(List<AiAuditLogEntity> auditLogs, List<AiToolAuditLogEntity> toolAudits) {
         Map<String, Long> counts = new LinkedHashMap<>();
         counts.put("PERMISSION_DENIED", 0L);
         counts.put("MODEL_ERROR", 0L);
         counts.put("TOOL_ERROR", 0L);
         counts.put("DEPENDENCY_ERROR", 0L);
 
-        for (AiAuditLog log : auditLogs) {
+        for (AiAuditLogEntity log : auditLogs) {
             if (!Boolean.FALSE.equals(log.getSuccess())) {
                 continue;
             }
             String type = classifyAuditError(log.getErrorMessage());
             counts.put(type, counts.getOrDefault(type, 0L) + 1);
         }
-        for (AiToolAuditLog log : toolAudits) {
+        for (AiToolAuditLogEntity log : toolAudits) {
             if (!Boolean.FALSE.equals(log.getSuccess())) {
                 continue;
             }
@@ -738,10 +738,10 @@ public class AgentWorkbenchService {
                 .build();
     }
 
-    private List<AgentWorkbenchChangeItem> buildRecentChanges(List<AiAuditLog> last24hAuditLogs,
-                                                              List<AiAuditLog> last7dAuditLogs,
-                                                              List<AiToolAuditLog> last24hToolAudits,
-                                                              List<AiToolAuditLog> last7dToolAudits) {
+    private List<AgentWorkbenchChangeItem> buildRecentChanges(List<AiAuditLogEntity> last24hAuditLogs,
+                                                              List<AiAuditLogEntity> last7dAuditLogs,
+                                                              List<AiToolAuditLogEntity> last24hToolAudits,
+                                                              List<AiToolAuditLogEntity> last7dToolAudits) {
         List<AgentWorkbenchChangeItem> items = new ArrayList<>();
         double dailyBaselineCalls = last7dAuditLogs.isEmpty() ? 0d : (double) last7dAuditLogs.size() / DAYS_PER_WEEK;
         if (last24hAuditLogs.size() >= Math.max(COMPARE_CALL_GAP_THRESHOLD, dailyBaselineCalls * TRAFFIC_GROWTH_THRESHOLD)) {
@@ -846,21 +846,21 @@ public class AgentWorkbenchService {
         };
     }
 
-    private long countFailedAuditLogs(List<AiAuditLog> logs) {
+    private long countFailedAuditLogs(List<AiAuditLogEntity> logs) {
         return logs.stream().filter(item -> Boolean.FALSE.equals(item.getSuccess())).count();
     }
 
-    private long countFailedToolAudits(List<AiToolAuditLog> logs) {
+    private long countFailedToolAudits(List<AiToolAuditLogEntity> logs) {
         return logs.stream().filter(item -> Boolean.FALSE.equals(item.getSuccess())).count();
     }
 
-    private long averageAuditLatency(List<AiAuditLog> logs) {
+    private long averageAuditLatency(List<AiAuditLogEntity> logs) {
         return logs.isEmpty()
                 ? 0L
                 : Math.round(logs.stream().mapToLong(item -> item.getLatencyMs() == null ? 0L : item.getLatencyMs()).average().orElse(0d));
     }
 
-    private long averageToolLatency(List<AiToolAuditLog> logs) {
+    private long averageToolLatency(List<AiToolAuditLogEntity> logs) {
         return logs.isEmpty()
                 ? 0L
                 : Math.round(logs.stream().mapToLong(item -> item.getLatencyMs() == null ? 0L : item.getLatencyMs()).average().orElse(0d));

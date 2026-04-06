@@ -3,7 +3,7 @@
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.huah.ai.platform.agent.audit.AiToolAuditLogMapper">
-    <select id="selectRecent" resultType="com.huah.ai.platform.agent.audit.AiToolAuditLog">
+    <select id="selectRecent" resultType="com.huah.ai.platform.agent.audit.AiToolAuditLogEntity">
         SELECT * FROM ai_tool_audit_logs
         WHERE 1 = 1
         <if test="userId != null and userId != ''">
@@ -21,7 +21,7 @@
         ORDER BY created_at DESC
         LIMIT #{limit}
     </select>
-    <select id="selectRecentByAgentTypeAfter" resultType="com.huah.ai.platform.agent.audit.AiToolAuditLog">
+    <select id="selectRecentByAgentTypeAfter" resultType="com.huah.ai.platform.agent.audit.AiToolAuditLogEntity">
         SELECT * FROM ai_tool_audit_logs
         WHERE agent_type = #{agentType}
           AND created_at &gt;= #{after}
@@ -36,14 +36,14 @@
         WHERE agent_type = #{agentType}
           AND created_at &lt; #{before}
     </select>
-    <select id="selectArchiveCandidates" resultType="com.huah.ai.platform.agent.audit.AiToolAuditLog">
+    <select id="selectArchiveCandidates" resultType="com.huah.ai.platform.agent.audit.AiToolAuditLogEntity">
         SELECT * FROM ai_tool_audit_logs
         WHERE agent_type = #{agentType}
           AND created_at &lt; #{before}
         ORDER BY created_at ASC
         LIMIT #{limit}
     </select>
-    <select id="selectArchiveCandidatesBatch" resultType="com.huah.ai.platform.agent.audit.AiToolAuditLog">
+    <select id="selectArchiveCandidatesBatch" resultType="com.huah.ai.platform.agent.audit.AiToolAuditLogEntity">
         SELECT * FROM ai_tool_audit_logs
         WHERE agent_type = #{agentType}
           AND created_at &lt; #{before}

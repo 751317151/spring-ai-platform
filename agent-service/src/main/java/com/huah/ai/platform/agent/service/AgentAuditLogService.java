@@ -2,11 +2,11 @@ package com.huah.ai.platform.agent.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.huah.ai.platform.agent.audit.AiAuditLog;
+import com.huah.ai.platform.agent.audit.AiAuditLogEntity;
 import com.huah.ai.platform.agent.audit.AiAuditLogMapper;
-import com.huah.ai.platform.agent.audit.AiToolAuditLog;
+import com.huah.ai.platform.agent.audit.AiToolAuditLogEntity;
 import com.huah.ai.platform.agent.audit.AiToolAuditLogMapper;
-import com.huah.ai.platform.agent.audit.TracePhaseRecord;
+import com.huah.ai.platform.agent.audit.TracePhaseSnapshot;
 import com.huah.ai.platform.common.trace.TraceIdContext;
 import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import lombok.RequiredArgsConstructor;
@@ -49,7 +49,7 @@ public class AgentAuditLogService {
         Long logId = snowflakeIdGenerator.nextLongId();
         try {
             String traceId = TraceIdContext.currentTraceId();
-            auditLogMapper.insert(AiAuditLog.builder()
+            auditLogMapper.insert(AiAuditLogEntity.builder()
                     .id(logId)
                     .userId(userId)
                     .sessionId(sessionId)
@@ -89,7 +89,7 @@ public class AgentAuditLogService {
             generationLatencyMs += totalLatencyMs - assigned;
         }
 
-        List<TracePhaseRecord> phases = new ArrayList<>();
+        List<TracePhaseSnapshot> phases = new ArrayList<>();
         phases.add(buildPhaseRecord("auth", PHASE_AUTH_LABEL, authLatencyMs, totalLatencyMs, PHASE_AUTH_DESCRIPTION));
         phases.add(buildPhaseRecord(
                 "preparation", PHASE_PREPARATION_LABEL, preparationLatencyMs, totalLatencyMs, PHASE_PREPARATION_DESCRIPTION));
@@ -107,10 +107,11 @@ public class AgentAuditLogService {
         }
     }
 
-    private TracePhaseRecord buildPhaseRecord(String key, String label, long latencyMs, long totalLatencyMs, String description) {
+    private TracePhaseSnapshot buildPhaseRecord(
+            String key, String label, long latencyMs, long totalLatencyMs, String description) {
         long normalizedLatency = Math.max(latencyMs, 0);
         double share = totalLatencyMs <= 0 ? 0d : Math.round((normalizedLatency * 10000d / totalLatencyMs)) / 100d;
-        return TracePhaseRecord.builder()
+        return TracePhaseSnapshot.builder()
                 .key(key)
                 .label(label)
                 .latencyMs(normalizedLatency)
@@ -125,7 +126,7 @@ public class AgentAuditLogService {
             return 0L;
         }
         try {
-            return toolAuditLogMapper.selectList(new QueryWrapper<AiToolAuditLog>().eq("trace_id", traceId))
+            return toolAuditLogMapper.selectList(new QueryWrapper<AiToolAuditLogEntity>().eq("trace_id", traceId))
                     .stream()
                     .mapToLong(item -> Math.max(item.getLatencyMs() == null ? 0L : item.getLatencyMs(), 0L))
                     .sum();
@@ -142,3 +143,4 @@ public class AgentAuditLogService {
         return value.substring(0, MAX_AUDIT_TEXT_LENGTH);
     }
 }
+

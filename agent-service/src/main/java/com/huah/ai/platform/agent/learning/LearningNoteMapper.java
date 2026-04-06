@@ -7,9 +7,10 @@ import org.apache.ibatis.annotations.Param;
 import java.util.List;
 
 @Mapper
-public interface LearningNoteMapper extends BaseMapper<LearningNoteRecord> {
+public interface LearningNoteMapper extends BaseMapper<LearningNoteEntity> {
 
-    List<LearningNoteRecord> selectByUserId(@Param("userId") String userId);
+    List<LearningNoteEntity> selectByUserId(@Param("userId") String userId);
 
     int deleteByUserIdAndId(@Param("userId") String userId, @Param("id") Long id);
 }
+

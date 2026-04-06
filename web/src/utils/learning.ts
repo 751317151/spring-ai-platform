@@ -8,6 +8,25 @@ export interface SaveFavoriteMessageResult {
   record: FavoriteMessageRecord
 }
 
+function nowIso() {
+  return new Date().toISOString()
+}
+
+function toTimeMillis(value?: string | number | null) {
+  if (value === null || value === undefined || value === '') {
+    return 0
+  }
+  if (typeof value === 'number') {
+    return value
+  }
+  const numeric = Number(value)
+  if (!Number.isNaN(numeric) && numeric > 0) {
+    return numeric
+  }
+  const parsed = Date.parse(value)
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
 function safeParse<T>(raw: string | null, fallback: T): T {
   if (!raw) {
     return fallback
@@ -74,11 +93,14 @@ function deriveFavoriteTags(record: FavoriteMessageRecord) {
 }
 
 function normalizeFavoriteRecord(record: FavoriteMessageRecord): FavoriteMessageRecord {
+  const createdAt = record.createdAt || nowIso()
   return {
     ...record,
+    createdAt,
+    updatedAt: record.updatedAt || createdAt,
     tags: mergeTags(deriveFavoriteTags(record), record.tags),
     duplicateCount: Math.max(1, record.duplicateCount || 1),
-    lastCollectedAt: record.lastCollectedAt || record.createdAt
+    lastCollectedAt: record.lastCollectedAt || createdAt
   }
 }
 
@@ -89,7 +111,7 @@ function favoriteSignature(record: FavoriteMessageRecord) {
 export function listFavoriteMessages(): FavoriteMessageRecord[] {
   return safeParse<FavoriteMessageRecord[]>(localStorage.getItem(FAVORITES_KEY), [])
     .map(normalizeFavoriteRecord)
-    .sort((left, right) => (right.lastCollectedAt || right.createdAt) - (left.lastCollectedAt || left.createdAt))
+    .sort((left, right) => toTimeMillis(right.lastCollectedAt || right.createdAt) - toTimeMillis(left.lastCollectedAt || left.createdAt))
 }
 
 export function getFavoriteMessage(id: string): FavoriteMessageRecord | null {
@@ -99,7 +121,7 @@ export function getFavoriteMessage(id: string): FavoriteMessageRecord | null {
 export function saveFavoriteMessage(record: FavoriteMessageRecord): SaveFavoriteMessageResult {
   const normalized = normalizeFavoriteRecord({
     ...record,
-    createdAt: record.createdAt || Date.now()
+    createdAt: record.createdAt || nowIso()
   })
   const favorites = listFavoriteMessages()
   const byId = favorites.find((item) => item.id === normalized.id)
@@ -109,7 +131,7 @@ export function saveFavoriteMessage(record: FavoriteMessageRecord): SaveFavorite
       ...normalized,
       tags: mergeTags(byId.tags, normalized.tags),
       duplicateCount: Math.max(byId.duplicateCount || 1, normalized.duplicateCount || 1),
-      lastCollectedAt: Date.now()
+      lastCollectedAt: nowIso()
     })
     const next = [updated, ...favorites.filter((item) => item.id !== normalized.id)].slice(0, 300)
     persist(FAVORITES_KEY, next)
@@ -128,7 +150,7 @@ export function saveFavoriteMessage(record: FavoriteMessageRecord): SaveFavorite
       sessionConfigSnapshot: duplicate.sessionConfigSnapshot || normalized.sessionConfigSnapshot || null,
       tags: mergeTags(duplicate.tags, normalized.tags),
       duplicateCount: (duplicate.duplicateCount || 1) + 1,
-      lastCollectedAt: Date.now()
+      lastCollectedAt: nowIso()
     })
     const next = [merged, ...favorites.filter((item) => item.id !== duplicate.id)].slice(0, 300)
     persist(FAVORITES_KEY, next)
@@ -176,7 +198,7 @@ function normalizeLearningNote(note: LearningNoteRecord): LearningNoteRecord {
 export function listLearningNotes(): LearningNoteRecord[] {
   return safeParse<LearningNoteRecord[]>(localStorage.getItem(NOTES_KEY), [])
     .map(normalizeLearningNote)
-    .sort((left, right) => right.updatedAt - left.updatedAt)
+    .sort((left, right) => toTimeMillis(right.updatedAt) - toTimeMillis(left.updatedAt))
 }
 
 export function saveLearningNote(note: LearningNoteRecord) {

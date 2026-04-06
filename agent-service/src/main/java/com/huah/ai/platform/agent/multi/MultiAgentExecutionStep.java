@@ -1,6 +1,8 @@
 package com.huah.ai.platform.agent.multi;
 
+import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AllArgsConstructor;
@@ -37,5 +39,10 @@ public class MultiAgentExecutionStep {
     private Integer sourceStepOrder;
 
     @Builder.Default
+    @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    @Builder.Default
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private LocalDateTime updatedAt = LocalDateTime.now();
 }

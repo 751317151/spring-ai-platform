@@ -7,9 +7,10 @@ import org.apache.ibatis.annotations.Param;
 import java.util.List;
 
 @Mapper
-public interface LearningFavoriteMapper extends BaseMapper<LearningFavoriteRecord> {
+public interface LearningFavoriteMapper extends BaseMapper<LearningFavoriteEntity> {
 
-    List<LearningFavoriteRecord> selectByUserId(@Param("userId") String userId);
+    List<LearningFavoriteEntity> selectByUserId(@Param("userId") String userId);
 
     int deleteByUserIdAndId(@Param("userId") String userId, @Param("id") Long id);
 }
+

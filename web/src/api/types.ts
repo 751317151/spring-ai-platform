@@ -45,6 +45,60 @@ export interface AiUser {
   lastLoginAt?: string
 }
 
+export interface RoleOption {
+  id: string
+  roleName: string
+  description?: string
+}
+
+export interface RoleUpsertRequest {
+  roleName?: string
+  description?: string
+}
+
+export interface RoleUsage {
+  roleId: string
+  roleName: string
+  userCount: number
+  permissionCount: number
+  userReferences: string[]
+  permissionReferences: string[]
+}
+
+export interface RoleTokenLimit {
+  id: string
+  roleId: string
+  roleName: string
+  roleDescription?: string
+  botType?: string
+  dailyTokenLimit: number
+  enabled: boolean
+}
+
+export interface RoleTokenLimitUpsertRequest {
+  roleId?: string
+  botType?: string
+  dailyTokenLimit?: number
+  enabled?: boolean
+}
+
+export interface UserTokenLimit {
+  id: string
+  userId: string
+  username?: string
+  department?: string
+  botType?: string
+  dailyTokenLimit: number
+  enabled: boolean
+}
+
+export interface UserTokenLimitUpsertRequest {
+  userId?: string
+  botType?: string
+  dailyTokenLimit?: number
+  enabled?: boolean
+}
+
 export interface BotPermission {
   id: string
   botType: string
@@ -92,8 +146,9 @@ export interface FavoriteMessageRecord {
   sessionId?: string
   sessionSummary?: string
   sourceMessageIndex?: number | null
-  createdAt: number
-  lastCollectedAt?: number
+  createdAt: string | number
+  updatedAt?: string | number
+  lastCollectedAt?: string | number
   duplicateCount?: number
   tags?: string[]
   sessionConfigSnapshot?: SessionConfig | null
@@ -110,8 +165,8 @@ export interface LearningNoteRecord {
   relatedSessionSummary?: string | null
   relatedMessageIndex?: number | null
   tags?: string[]
-  createdAt: number
-  updatedAt: number
+  createdAt: string | number
+  updatedAt: string | number
 }
 
 export interface FollowUpTemplateRecord {
@@ -119,7 +174,8 @@ export interface FollowUpTemplateRecord {
   name: string
   content: string
   sourceCount: number
-  updatedAt: number
+  createdAt?: string | number
+  updatedAt: string | number
 }
 
 export interface SessionSearchResult {
@@ -153,7 +209,7 @@ export interface SessionConfig {
   maxContextMessages?: number | null
   knowledgeEnabled?: boolean | null
   systemPromptTemplate?: string | null
-  updatedAt?: number | null
+  updatedAt?: string | number | null
 }
 
 export interface SendMessageOptions {

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.huah.ai.platform.auth.mapper.AiUserTokenLimitMapper">
+    <sql id="UserTokenLimitColumns">
+        utl.id,
+        utl.user_id,
+        utl.bot_type,
+        utl.daily_token_limit,
+        utl.enabled,
+        u.username,
+        u.department
+    </sql>
+
+    <sql id="UserTokenLimitJoin">
+        FROM ai_user_token_limits utl
+        INNER JOIN ai_users u ON u.userid = utl.user_id
+    </sql>
+
+    <select id="selectAllViews" resultType="com.huah.ai.platform.auth.model.AiUserTokenLimitEntity">
+        SELECT
+        <include refid="UserTokenLimitColumns"/>
+        <include refid="UserTokenLimitJoin"/>
+        ORDER BY utl.user_id ASC, utl.bot_type ASC NULLS FIRST, utl.id ASC
+    </select>
+
+    <select id="selectViewById" resultType="com.huah.ai.platform.auth.model.AiUserTokenLimitEntity">
+        SELECT
+        <include refid="UserTokenLimitColumns"/>
+        <include refid="UserTokenLimitJoin"/>
+        WHERE utl.id = #{id}
+    </select>
+
+    <select id="selectDuplicate" resultType="com.huah.ai.platform.auth.model.AiUserTokenLimitEntity">
+        SELECT *
+        FROM ai_user_token_limits
+        WHERE user_id = #{userId}
+          <if test="excludeId != null">
+              AND id &lt;&gt; #{excludeId}
+          </if>
+          <choose>
+              <when test="botType != null and botType != ''">
+                  AND bot_type = #{botType}
+              </when>
+              <otherwise>
+                  AND bot_type IS NULL
+              </otherwise>
+          </choose>
+        LIMIT 1
+    </select>
+
+    <delete id="deleteByUserId">
+        DELETE FROM ai_user_token_limits
+        WHERE user_id = #{userId}
+    </delete>
+</mapper>

@@ -1,9 +1,12 @@
 package com.huah.ai.platform.agent.controller;
 
 import com.huah.ai.platform.agent.learning.LearningCenterService;
-import com.huah.ai.platform.agent.learning.dto.FollowUpTemplatePayload;
-import com.huah.ai.platform.agent.learning.dto.LearningFavoritePayload;
-import com.huah.ai.platform.agent.learning.dto.LearningNotePayload;
+import com.huah.ai.platform.agent.learning.dto.FollowUpTemplateRequest;
+import com.huah.ai.platform.agent.learning.dto.FollowUpTemplateResponse;
+import com.huah.ai.platform.agent.learning.dto.LearningFavoriteRequest;
+import com.huah.ai.platform.agent.learning.dto.LearningFavoriteResponse;
+import com.huah.ai.platform.agent.learning.dto.LearningNoteRequest;
+import com.huah.ai.platform.agent.learning.dto.LearningNoteResponse;
 import com.huah.ai.platform.common.dto.Result;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -29,13 +32,13 @@ public class LearningCenterController {
     private final AgentRequestContextResolver requestContextResolver;
 
     @GetMapping("/favorites")
-    public Result<List<LearningFavoritePayload>> listFavorites(HttpServletRequest request) {
+    public Result<List<LearningFavoriteResponse>> listFavorites(HttpServletRequest request) {
         return Result.ok(learningCenterService.listFavorites(currentUserId(request)));
     }
 
     @PostMapping("/favorites")
-    public Result<String> saveFavorite(@RequestBody LearningFavoritePayload payload, HttpServletRequest request) {
-        learningCenterService.saveFavorite(currentUserId(request), payload);
+    public Result<String> saveFavorite(@RequestBody LearningFavoriteRequest requestBody, HttpServletRequest request) {
+        learningCenterService.saveFavorite(currentUserId(request), requestBody);
         return Result.ok(MESSAGE_SAVED);
     }
 
@@ -46,13 +49,13 @@ public class LearningCenterController {
     }
 
     @GetMapping("/notes")
-    public Result<List<LearningNotePayload>> listNotes(HttpServletRequest request) {
+    public Result<List<LearningNoteResponse>> listNotes(HttpServletRequest request) {
         return Result.ok(learningCenterService.listNotes(currentUserId(request)));
     }
 
     @PostMapping("/notes")
-    public Result<String> saveNote(@RequestBody LearningNotePayload payload, HttpServletRequest request) {
-        learningCenterService.saveNote(currentUserId(request), payload);
+    public Result<String> saveNote(@RequestBody LearningNoteRequest requestBody, HttpServletRequest request) {
+        learningCenterService.saveNote(currentUserId(request), requestBody);
         return Result.ok(MESSAGE_SAVED);
     }
 
@@ -63,13 +66,13 @@ public class LearningCenterController {
     }
 
     @GetMapping("/templates")
-    public Result<List<FollowUpTemplatePayload>> listTemplates(HttpServletRequest request) {
+    public Result<List<FollowUpTemplateResponse>> listTemplates(HttpServletRequest request) {
         return Result.ok(learningCenterService.listTemplates(currentUserId(request)));
     }
 
     @PostMapping("/templates")
-    public Result<String> saveTemplate(@RequestBody FollowUpTemplatePayload payload, HttpServletRequest request) {
-        learningCenterService.saveTemplate(currentUserId(request), payload);
+    public Result<String> saveTemplate(@RequestBody FollowUpTemplateRequest requestBody, HttpServletRequest request) {
+        learningCenterService.saveTemplate(currentUserId(request), requestBody);
         return Result.ok(MESSAGE_SAVED);
     }
 

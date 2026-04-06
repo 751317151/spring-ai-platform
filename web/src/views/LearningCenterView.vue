@@ -480,6 +480,25 @@ interface LocalLearningSearchItem {
   relatedSessionSummary?: string | null
 }
 
+function nowIso() {
+  return new Date().toISOString()
+}
+
+function toTimeMillis(value?: string | number | null) {
+  if (value === null || value === undefined || value === '') {
+    return 0
+  }
+  if (typeof value === 'number') {
+    return value
+  }
+  const numeric = Number(value)
+  if (!Number.isNaN(numeric) && numeric > 0) {
+    return numeric
+  }
+  const parsed = Date.parse(value)
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
 interface FollowUpDraftItem {
   id: string
   title: string
@@ -633,10 +652,11 @@ const visibleLocalSearchResults = computed<LocalLearningSearchItem[]>(() => {
     .map((item) => ({
       ...item,
       updatedAt: item.type === 'favorite'
-        ? favorites.value.find((entry) => entry.id === item.id)?.lastCollectedAt
-          || favorites.value.find((entry) => entry.id === item.id)?.createdAt
-          || 0
-        : notes.value.find((entry) => entry.id === item.id)?.updatedAt || 0,
+        ? toTimeMillis(
+          favorites.value.find((entry) => entry.id === item.id)?.lastCollectedAt
+            || favorites.value.find((entry) => entry.id === item.id)?.createdAt
+        )
+        : toTimeMillis(notes.value.find((entry) => entry.id === item.id)?.updatedAt),
       searchScore: countKeywordMatches([
         item.title,
         item.preview,
@@ -756,7 +776,7 @@ async function syncTemplatesFromServer() {
       ...localTemplates.filter((item) => !remoteIds.has(item.id)),
       ...templates
     ]
-      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .sort((left, right) => toTimeMillis(right.updatedAt) - toTimeMillis(left.updatedAt))
       .slice(0, 20)
     followUpTemplates.value = merged
     persistFollowUpTemplates(merged)
@@ -768,12 +788,12 @@ async function syncTemplatesFromServer() {
   }
 }
 
-function matchRange(timestamp: number, range: RangeValue) {
+function matchRange(timestamp: string | number | null | undefined, range: RangeValue) {
   if (range === 'all') {
     return true
   }
   const dayCount = range === '7d' ? 7 : range === '30d' ? 30 : 90
-  return Date.now() - timestamp <= dayCount * 24 * 60 * 60 * 1000
+  return Date.now() - toTimeMillis(timestamp) <= dayCount * 24 * 60 * 60 * 1000
 }
 
 function matchTagQuery(query: string, tags?: string[], ...texts: Array<string | undefined>) {
@@ -798,8 +818,12 @@ function countKeywordMatches(values: Array<string | undefined | null>, keyword: 
   return target.split(keyword).length - 1
 }
 
-function formatTime(value: number) {
-  return new Date(value).toLocaleString('zh-CN', {
+function formatTime(value?: string | number | null) {
+  const timestamp = toTimeMillis(value)
+  if (!timestamp) {
+    return '-'
+  }
+  return new Date(timestamp).toLocaleString('zh-CN', {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -909,9 +933,9 @@ function createEmptyNote() {
 }
 
 function saveNote() {
-  const now = Date.now()
+  const now = nowIso()
   const record: LearningNoteRecord = {
-    id: selectedNoteId.value || `note-${now}`,
+    id: selectedNoteId.value || `note-${Date.now()}`,
     title: noteForm.title,
     content: noteForm.content.trim(),
     sourceType: noteForm.sourceType,
@@ -1162,9 +1186,9 @@ function saveFollowUpDraftAsNote() {
     return
   }
   const primary = followUpDraftItems.value[0]
-  const now = Date.now()
+  const now = nowIso()
   const record: LearningNoteRecord = {
-    id: `note-${now}`,
+    id: `note-${Date.now()}`,
     title: buildFollowUpDraftNoteTitle(),
     content,
     sourceType: 'manual',
@@ -1191,13 +1215,14 @@ function saveFollowUpTemplate() {
     return
   }
 
-  const now = Date.now()
+  const now = nowIso()
   const existing = followUpTemplates.value.find((item) => item.name === name)
   const record: FollowUpTemplateRecord = {
-    id: existing?.id || `template-${now}`,
+    id: existing?.id || `template-${Date.now()}`,
     name,
     content,
     sourceCount: followUpDraftItems.value.length,
+    createdAt: existing?.createdAt || now,
     updatedAt: now
   }
   const next = [record, ...followUpTemplates.value.filter((item) => item.name !== name)].slice(0, 20)

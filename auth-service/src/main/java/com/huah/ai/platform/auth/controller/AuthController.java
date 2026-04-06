@@ -6,10 +6,18 @@ import com.huah.ai.platform.auth.dto.BotPermissionUpsertRequest;
 import com.huah.ai.platform.auth.dto.LoginRequest;
 import com.huah.ai.platform.auth.dto.LogoutRequest;
 import com.huah.ai.platform.auth.dto.RefreshTokenRequest;
+import com.huah.ai.platform.auth.dto.RoleOptionResponse;
+import com.huah.ai.platform.auth.dto.RoleTokenLimitResponse;
+import com.huah.ai.platform.auth.dto.RoleTokenLimitUpsertRequest;
+import com.huah.ai.platform.auth.dto.RoleUsageResponse;
+import com.huah.ai.platform.auth.dto.RoleUpsertRequest;
 import com.huah.ai.platform.auth.dto.TokenResponse;
 import com.huah.ai.platform.auth.dto.TokenValidationResponse;
+import com.huah.ai.platform.auth.dto.UserTokenLimitResponse;
+import com.huah.ai.platform.auth.dto.UserTokenLimitUpsertRequest;
 import com.huah.ai.platform.auth.dto.UserUpsertRequest;
 import com.huah.ai.platform.auth.service.AuthAdminService;
+import com.huah.ai.platform.auth.service.AuthQuotaAdminService;
 import com.huah.ai.platform.auth.service.AuthTokenService;
 import com.huah.ai.platform.common.dto.Result;
 import jakarta.servlet.http.HttpServletRequest;
@@ -35,6 +43,7 @@ public class AuthController {
 
     private final AuthTokenService authTokenService;
     private final AuthAdminService authAdminService;
+    private final AuthQuotaAdminService authQuotaAdminService;
 
     @PostMapping("/login")
     public Result<TokenResponse> login(@RequestBody LoginRequest request) {
@@ -74,6 +83,38 @@ public class AuthController {
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<List<AuthUserResponse>> listUsers() {
         return authAdminService.listUsers();
+    }
+
+    @GetMapping("/roles")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<List<RoleOptionResponse>> listRoles() {
+        return authAdminService.listRoles();
+    }
+
+    @GetMapping("/roles/{id}/usage")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<RoleUsageResponse> getRoleUsage(@PathVariable(name = "id") Long id) {
+        return authAdminService.getRoleUsage(id);
+    }
+
+    @PostMapping("/roles")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<RoleOptionResponse> createRole(@RequestBody RoleUpsertRequest request) {
+        return authAdminService.createRole(request);
+    }
+
+    @PutMapping("/roles/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<RoleOptionResponse> updateRole(
+            @PathVariable(name = "id") Long id,
+            @RequestBody RoleUpsertRequest request) {
+        return authAdminService.updateRole(id, request);
+    }
+
+    @DeleteMapping("/roles/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<Void> deleteRole(@PathVariable(name = "id") Long id) {
+        return authAdminService.deleteRole(id);
     }
 
     @GetMapping("/users/{id}")
@@ -130,5 +171,57 @@ public class AuthController {
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<Void> deletePermission(@PathVariable(name = "id") Long id) {
         return authAdminService.deletePermission(id);
+    }
+
+    @GetMapping("/role-token-limits")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<List<RoleTokenLimitResponse>> listRoleTokenLimits() {
+        return authQuotaAdminService.listRoleTokenLimits();
+    }
+
+    @PostMapping("/role-token-limits")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<RoleTokenLimitResponse> createRoleTokenLimit(@RequestBody RoleTokenLimitUpsertRequest request) {
+        return authQuotaAdminService.createRoleTokenLimit(request);
+    }
+
+    @PutMapping("/role-token-limits/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<RoleTokenLimitResponse> updateRoleTokenLimit(
+            @PathVariable(name = "id") Long id,
+            @RequestBody RoleTokenLimitUpsertRequest request) {
+        return authQuotaAdminService.updateRoleTokenLimit(id, request);
+    }
+
+    @DeleteMapping("/role-token-limits/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<Void> deleteRoleTokenLimit(@PathVariable(name = "id") Long id) {
+        return authQuotaAdminService.deleteRoleTokenLimit(id);
+    }
+
+    @GetMapping("/user-token-limits")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<List<UserTokenLimitResponse>> listUserTokenLimits() {
+        return authQuotaAdminService.listUserTokenLimits();
+    }
+
+    @PostMapping("/user-token-limits")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<UserTokenLimitResponse> createUserTokenLimit(@RequestBody UserTokenLimitUpsertRequest request) {
+        return authQuotaAdminService.createUserTokenLimit(request);
+    }
+
+    @PutMapping("/user-token-limits/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<UserTokenLimitResponse> updateUserTokenLimit(
+            @PathVariable(name = "id") Long id,
+            @RequestBody UserTokenLimitUpsertRequest request) {
+        return authQuotaAdminService.updateUserTokenLimit(id, request);
+    }
+
+    @DeleteMapping("/user-token-limits/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public Result<Void> deleteUserTokenLimit(@PathVariable(name = "id") Long id) {
+        return authQuotaAdminService.deleteUserTokenLimit(id);
     }
 }

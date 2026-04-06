@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils'
+import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import UserView from './UserView.vue'
@@ -6,14 +6,12 @@ import { useUserStore } from '@/stores/user'
 
 const confirm = vi.fn()
 const showToast = vi.fn()
-const { getTokenUsage, getAuditLogs } = vi.hoisted(() => ({
-  getTokenUsage: vi.fn(),
-  getAuditLogs: vi.fn()
+const { getRoleUsage } = vi.hoisted(() => ({
+  getRoleUsage: vi.fn()
 }))
 
-vi.mock('@/api/monitor', () => ({
-  getTokenUsage,
-  getAuditLogs
+vi.mock('@/api/auth', () => ({
+  getRoleUsage
 }))
 
 vi.mock('@/composables/useConfirm', () => ({
@@ -26,6 +24,14 @@ vi.mock('@/composables/useToast', () => ({
   useToast: () => ({
     showToast
   })
+}))
+
+vi.mock('@/components/user/RoleModal.vue', () => ({
+  default: {
+    name: 'RoleModal',
+    template: '<div class="role-modal-stub" />',
+    props: ['role']
+  }
 }))
 
 vi.mock('@/components/user/UserModal.vue', () => ({
@@ -50,110 +56,96 @@ describe('UserView', () => {
     confirm.mockReset()
     confirm.mockResolvedValue(true)
     showToast.mockReset()
-    getTokenUsage.mockReset()
-    getAuditLogs.mockReset()
-    Object.defineProperty(window.navigator, 'clipboard', {
-      value: { writeText: vi.fn().mockResolvedValue(undefined) },
-      configurable: true
-    })
+    getRoleUsage.mockReset()
   })
 
-  it('filters users and handles batch delete', async () => {
+  it('switches between role, user and permission workspaces', async () => {
     const store = useUserStore()
+    store.loadAll = vi.fn().mockResolvedValue(undefined) as never
+    store.roles = [
+      { id: '1001', roleName: 'ROLE_ADMIN', description: '系统管理员' },
+      { id: '1002', roleName: 'ROLE_SUPPORT', description: '支持角色' }
+    ] as never
     store.users = [
-      { userId: 'u-1', username: 'alice', employeeId: 'E001', department: '研发部', roles: 'ROLE_ADMIN', enabled: true, lastLoginAt: '2026-03-25T08:00:00Z' },
-      { userId: 'u-2', username: 'bob', employeeId: 'E002', department: '销售部', roles: 'ROLE_USER', enabled: false, lastLoginAt: '2026-03-25T07:00:00Z' }
+      { userId: 'admin', username: '管理员', department: '系统管理', roles: 'ROLE_ADMIN', enabled: true }
     ] as never
     store.permissions = [
-      { id: 'p-1', botType: 'assistant', allowedRoles: 'ROLE_ADMIN', allowedDepartments: '研发部', dataScope: 'ALL', allowedOperations: 'chat', dailyTokenLimit: 1000, enabled: true },
-      { id: 'p-2', botType: 'sales', allowedRoles: 'ROLE_USER', allowedDepartments: '销售部', dataScope: 'SELF', allowedOperations: 'query', dailyTokenLimit: 500, enabled: true }
+      {
+        id: '2001',
+        botType: 'multi',
+        allowedRoles: 'ROLE_ADMIN',
+        allowedDepartments: '系统管理',
+        dataScope: 'ALL',
+        allowedOperations: 'READ,WRITE',
+        dailyTokenLimit: 1000,
+        enabled: true
+      }
     ] as never
-    store.loadAll = vi.fn().mockResolvedValue(undefined) as never
-    store.deleteUser = vi.fn().mockResolvedValue(true) as never
 
     const wrapper = mount(UserView)
 
-    expect(wrapper.text()).toContain('用户与权限')
-    expect(wrapper.text()).toContain('助手权限规则')
+    expect(wrapper.text()).toContain('角色目录')
+    expect(wrapper.text()).toContain('ROLE_SUPPORT')
 
-    await wrapper.get('input[placeholder="搜索用户ID、用户名、工号、部门或角色"]').setValue('alice')
-    expect(wrapper.text()).toContain('alice')
-    expect(wrapper.text()).not.toContain('bob')
+    await wrapper.findAll('.section-tab')[1].trigger('click')
+    expect(wrapper.text()).toContain('用户与角色')
+    expect(wrapper.text()).toContain('管理员')
 
-    await wrapper.get('input[placeholder="搜索用户ID、用户名、工号、部门或角色"]').setValue('')
-    const rowCheckbox = wrapper.get('tbody .check-col input')
-    await rowCheckbox.setValue(true)
+    await wrapper.findAll('.section-tab')[2].trigger('click')
+    expect(wrapper.text()).toContain('角色与 AI 助手权限')
+    expect(wrapper.text()).toContain('multi')
+  })
 
-    expect(wrapper.text()).toContain('已选择 1 个用户')
+  it('opens role usage drawer and blocks referenced role deletion', async () => {
+    const store = useUserStore()
+    store.loadAll = vi.fn().mockResolvedValue(undefined) as never
+    store.roles = [{ id: '1001', roleName: 'ROLE_ADMIN', description: '系统管理员' }] as never
+    store.users = [] as never
+    store.permissions = [] as never
+    store.deleteRole = vi.fn().mockResolvedValue(true) as never
+    getRoleUsage.mockResolvedValue({
+      roleId: '1001',
+      roleName: 'ROLE_ADMIN',
+      userCount: 1,
+      permissionCount: 1,
+      userReferences: ['admin(管理员)'],
+      permissionReferences: ['multi (#2007)']
+    })
 
-    const bulkDelete = wrapper.findAll('.bulk-actions .btn').find((item) => item.text().includes('批量删除'))
-    await bulkDelete!.trigger('click')
+    const wrapper = mount(UserView)
+    await wrapper.findAll('button').find((item) => item.text() === '详情')?.trigger('click')
+
+    expect(wrapper.text()).toContain('角色引用详情')
+    expect(wrapper.text()).toContain('admin(管理员)')
+
+    await wrapper.findAll('button').find((item) => item.text() === '删除')?.trigger('click')
+
+    expect(confirm).not.toHaveBeenCalled()
+    expect(store.deleteRole).not.toHaveBeenCalled()
+    expect(showToast).toHaveBeenCalledWith('角色 ROLE_ADMIN 仍被引用，请先解除关联后再删除')
+  })
+
+  it('deletes unreferenced role after confirmation', async () => {
+    const store = useUserStore()
+    store.loadAll = vi.fn().mockResolvedValue(undefined) as never
+    store.roles = [{ id: '1002', roleName: 'ROLE_SUPPORT', description: '支持角色' }] as never
+    store.users = [] as never
+    store.permissions = [] as never
+    store.deleteRole = vi.fn().mockResolvedValue(true) as never
+    getRoleUsage.mockResolvedValue({
+      roleId: '1002',
+      roleName: 'ROLE_SUPPORT',
+      userCount: 0,
+      permissionCount: 0,
+      userReferences: [],
+      permissionReferences: []
+    })
+
+    const wrapper = mount(UserView)
+    await wrapper.findAll('button').find((item) => item.text() === '删除')?.trigger('click')
 
     expect(confirm).toHaveBeenCalled()
-    expect(store.deleteUser).toHaveBeenCalledWith('u-1')
-    expect(showToast).toHaveBeenCalledWith('已删除 1 个用户')
-
-    const riskyFilter = wrapper.findAll('button').find((item) => item.text() === '仅看高风险')
-    await riskyFilter?.trigger('click')
-    expect(wrapper.text()).toContain('当前仅展示高风险规则')
-
-    const riskShortcut = wrapper.findAll('.risk-item').find((item) => item.text().includes('ROLE_ADMIN'))
-    await riskShortcut?.trigger('click')
-    expect((wrapper.get('input[placeholder="搜索助手、角色、部门或操作"]').element as HTMLInputElement).value).toBe('ROLE_ADMIN')
-
-    const copyButton = wrapper.findAll('button').find((item) => item.text() === '复制概览')
-    await copyButton?.trigger('click')
-    expect(window.navigator.clipboard.writeText).toHaveBeenCalled()
-    expect(String(vi.mocked(window.navigator.clipboard.writeText).mock.calls[0]?.[0])).toContain('用户与权限概览')
-  })
-
-  it('supports inspected user summary and same-department filter', async () => {
-    const store = useUserStore()
-    store.users = [
-      { userId: 'u-1', username: 'alice', employeeId: 'E001', department: '研发部', roles: 'ROLE_ADMIN', enabled: true, lastLoginAt: '2026-03-25T08:00:00Z' }
-    ] as never
-    store.permissions = [] as never
-    store.loadAll = vi.fn().mockResolvedValue(undefined) as never
-    getTokenUsage.mockResolvedValue({ userId: 'u-1', date: '2026-03-25', tokensUsed: 1234 })
-    getAuditLogs.mockResolvedValue([
-      { id: 'log-1', user_id: 'u-1', agent_type: 'assistant', model_id: 'gpt', success: true, latency_ms: 200, created_at: '2026-03-25T08:30:00Z' }
-    ])
-
-    const wrapper = mount(UserView)
-    const inspectButton = wrapper.findAll('button').find((item) => item.text() === '概览')
-    await inspectButton?.trigger('click')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('用户使用概览')
-
-    const copySummaryButton = wrapper.findAll('button').find((item) => item.text() === '复制用户摘要')
-    await copySummaryButton?.trigger('click')
-    expect(window.navigator.clipboard.writeText).toHaveBeenCalled()
-    expect(String(vi.mocked(window.navigator.clipboard.writeText).mock.calls[0]?.[0])).toContain('用户使用摘要')
-
-    const departmentButton = wrapper.findAll('button').find((item) => item.text() === '筛选同部门用户')
-    await departmentButton?.trigger('click')
-    expect((wrapper.get('input[placeholder="搜索用户ID、用户名、工号、部门或角色"]').element as HTMLInputElement).value).toBe('研发部')
-  })
-
-  it('shows recent action banner after user follow-up actions', async () => {
-    const store = useUserStore()
-    store.users = [
-      { userId: 'u-1', username: 'alice', employeeId: 'E001', department: '研发部', roles: 'ROLE_ADMIN', enabled: true, lastLoginAt: '2026-03-25T08:00:00Z' }
-    ] as never
-    store.permissions = [] as never
-    store.loadAll = vi.fn().mockResolvedValue(undefined) as never
-    getTokenUsage.mockResolvedValue({ userId: 'u-1', date: '2026-03-25', tokensUsed: 1234 })
-    getAuditLogs.mockResolvedValue([])
-
-    const wrapper = mount(UserView)
-    const inspectButton = wrapper.findAll('button').find((item) => item.text() === '概览')
-    await inspectButton?.trigger('click')
-    await flushPromises()
-
-    const departmentButton = wrapper.findAll('button').find((item) => item.text() === '筛选同部门用户')
-    await departmentButton?.trigger('click')
-
-    expect(wrapper.text()).toContain('最近操作')
+    expect(store.deleteRole).toHaveBeenCalledWith('1002')
+    expect(showToast).toHaveBeenCalledWith('角色 ROLE_SUPPORT 已删除')
   })
 })

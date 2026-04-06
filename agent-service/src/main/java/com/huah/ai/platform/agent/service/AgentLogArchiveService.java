@@ -1,9 +1,9 @@
 package com.huah.ai.platform.agent.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.huah.ai.platform.agent.audit.AiAuditLog;
+import com.huah.ai.platform.agent.audit.AiAuditLogEntity;
 import com.huah.ai.platform.agent.audit.AiAuditLogMapper;
-import com.huah.ai.platform.agent.audit.AiToolAuditLog;
+import com.huah.ai.platform.agent.audit.AiToolAuditLogEntity;
 import com.huah.ai.platform.agent.audit.AiToolAuditLogMapper;
 import com.huah.ai.platform.agent.config.AgentLifecycleProperties;
 import com.huah.ai.platform.agent.dto.AgentLogArchiveArtifact;
@@ -447,7 +447,7 @@ public class AgentLogArchiveService {
         return samples;
     }
 
-    private AgentLogArchiveSample toAuditSample(AiAuditLog log) {
+    private AgentLogArchiveSample toAuditSample(AiAuditLogEntity log) {
         return AgentLogArchiveSample.builder()
                 .type("audit")
                 .id(log.getId() == null ? null : String.valueOf(log.getId()))
@@ -458,7 +458,7 @@ public class AgentLogArchiveService {
                 .build();
     }
 
-    private AgentLogArchiveSample toToolAuditSample(AiToolAuditLog log) {
+    private AgentLogArchiveSample toToolAuditSample(AiToolAuditLogEntity log) {
         return AgentLogArchiveSample.builder()
                 .type("tool-audit")
                 .id(log.getId() == null ? null : String.valueOf(log.getId()))
@@ -535,3 +535,4 @@ public class AgentLogArchiveService {
         return Paths.get(lifecycleProperties.getArchive().getManifestDir());
     }
 }
+

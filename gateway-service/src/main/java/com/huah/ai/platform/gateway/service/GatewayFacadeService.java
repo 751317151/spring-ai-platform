@@ -3,13 +3,13 @@ package com.huah.ai.platform.gateway.service;
 import com.huah.ai.platform.gateway.config.ModelRegistryConfig;
 import com.huah.ai.platform.gateway.model.ChatRequest;
 import com.huah.ai.platform.gateway.model.ChatResponse;
-import com.huah.ai.platform.gateway.model.GatewayCandidateModelView;
+import com.huah.ai.platform.gateway.model.GatewayCandidateModelResponse;
 import com.huah.ai.platform.gateway.model.GatewayModelsResponse;
-import com.huah.ai.platform.gateway.model.GatewayModelView;
+import com.huah.ai.platform.gateway.model.GatewayModelResponse;
 import com.huah.ai.platform.gateway.model.GatewayRouteDecisionResponse;
 import com.huah.ai.platform.gateway.model.GatewayStreamEvent;
 import com.huah.ai.platform.gateway.model.GatewayUsage;
-import com.huah.ai.platform.gateway.model.RouteDecisionPayload;
+import com.huah.ai.platform.gateway.model.RouteDecisionResponse;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -78,7 +78,7 @@ public class GatewayFacadeService {
                     .completionTokens(usage.getCompletionTokens())
                     .estimatedCost(calculateEstimatedCost(
                             routeDecision, usage.getPromptTokens(), usage.getCompletionTokens()))
-                    .routeDecision(RouteDecisionPayload.from(routeDecision))
+                    .routeDecision(RouteDecisionResponse.from(routeDecision))
                     .build();
         } catch (Exception ex) {
             gatewayService.recordCall(usedModelId, System.currentTimeMillis() - start, false, 0, 0);
@@ -110,7 +110,7 @@ public class GatewayFacadeService {
     }
 
     public GatewayModelsResponse listModels() {
-        List<GatewayModelView> models = new ArrayList<>();
+        List<GatewayModelResponse> models = new ArrayList<>();
         List<ModelRegistryConfig.ModelDefinition> registry = registryConfig.getRegistry();
         if (registry != null) {
             Map<String, ModelGatewayService.ModelStats> statsMap = gatewayService.getAllStats();
@@ -203,14 +203,14 @@ public class GatewayFacadeService {
     }
 
     private GatewayRouteDecisionResponse buildRouteDecisionPreview(ModelGatewayService.RouteDecision decision) {
-        List<GatewayCandidateModelView> candidateModels = new ArrayList<>();
+        List<GatewayCandidateModelResponse> candidateModels = new ArrayList<>();
         Map<String, ModelGatewayService.ModelStats> statsMap = gatewayService.getAllStats();
         Map<String, ModelGatewayService.ModelHealth> healthMap = gatewayService.getAllHealth();
         for (String candidateId : defaultList(decision.getCandidateModelIds())) {
             ModelRegistryConfig.ModelDefinition definition = gatewayService.getModelDefinition(candidateId);
             ModelGatewayService.ModelStats stats = statsMap.get(candidateId);
             ModelGatewayService.ModelHealth health = healthMap.get(candidateId);
-            candidateModels.add(GatewayCandidateModelView.builder()
+            candidateModels.add(GatewayCandidateModelResponse.builder()
                     .id(candidateId)
                     .name(definition != null ? definition.getName() : candidateId)
                     .provider(definition != null ? definition.getProvider() : PROVIDER_UNKNOWN)
@@ -261,15 +261,15 @@ public class GatewayFacadeService {
                 .chunk(chunk)
                 .done(done)
                 .model(modelId)
-                .routeDecision(routeDecision != null ? RouteDecisionPayload.from(routeDecision) : null)
+                .routeDecision(routeDecision != null ? RouteDecisionResponse.from(routeDecision) : null)
                 .build();
     }
 
-    private GatewayModelView buildModelView(
+    private GatewayModelResponse buildModelView(
             ModelRegistryConfig.ModelDefinition definition,
             ModelGatewayService.ModelStats stats,
             ModelGatewayService.ModelHealth health) {
-        return GatewayModelView.builder()
+        return GatewayModelResponse.builder()
                 .id(definition.getId())
                 .name(definition.getName())
                 .provider(definition.getProvider())
@@ -321,3 +321,4 @@ public class GatewayFacadeService {
         return values == null ? List.of() : values;
     }
 }
+

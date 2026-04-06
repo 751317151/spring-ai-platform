@@ -8,15 +8,15 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Mapper
-public interface AiToolAuditLogMapper extends BaseMapper<AiToolAuditLog> {
+public interface AiToolAuditLogMapper extends BaseMapper<AiToolAuditLogEntity> {
 
-    List<AiToolAuditLog> selectRecent(@Param("userId") String userId,
+    List<AiToolAuditLogEntity> selectRecent(@Param("userId") String userId,
                                       @Param("agentType") String agentType,
                                       @Param("toolName") String toolName,
                                       @Param("traceId") String traceId,
                                       @Param("limit") int limit);
 
-    List<AiToolAuditLog> selectRecentByAgentTypeAfter(@Param("agentType") String agentType,
+    List<AiToolAuditLogEntity> selectRecentByAgentTypeAfter(@Param("agentType") String agentType,
                                                       @Param("after") LocalDateTime after,
                                                       @Param("limit") int limit);
 
@@ -25,11 +25,11 @@ public interface AiToolAuditLogMapper extends BaseMapper<AiToolAuditLog> {
     long countByAgentTypeBefore(@Param("agentType") String agentType,
                                 @Param("before") LocalDateTime before);
 
-    List<AiToolAuditLog> selectArchiveCandidates(@Param("agentType") String agentType,
+    List<AiToolAuditLogEntity> selectArchiveCandidates(@Param("agentType") String agentType,
                                                  @Param("before") LocalDateTime before,
                                                  @Param("limit") int limit);
 
-    List<AiToolAuditLog> selectArchiveCandidatesBatch(@Param("agentType") String agentType,
+    List<AiToolAuditLogEntity> selectArchiveCandidatesBatch(@Param("agentType") String agentType,
                                                       @Param("before") LocalDateTime before,
                                                       @Param("limit") int limit,
                                                       @Param("offset") long offset);
@@ -37,3 +37,4 @@ public interface AiToolAuditLogMapper extends BaseMapper<AiToolAuditLog> {
     int deleteByAgentTypeBefore(@Param("agentType") String agentType,
                                 @Param("before") LocalDateTime before);
 }
+

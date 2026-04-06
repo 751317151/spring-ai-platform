@@ -71,7 +71,7 @@ public class ToolAuditAspect {
         Method method = ((MethodSignature) pjp.getSignature()).getMethod();
 
         try {
-            toolAuditLogMapper.insert(AiToolAuditLog.builder()
+            toolAuditLogMapper.insert(AiToolAuditLogEntity.builder()
                     .id(snowflakeIdGenerator.nextLongId())
                     .userId(context != null ? context.getUserId() : null)
                     .sessionId(context != null ? context.getSessionId() : "unknown")
@@ -144,3 +144,4 @@ public class ToolAuditAspect {
                 : text.substring(0, MAX_SUMMARY_LENGTH) + "...";
     }
 }
+

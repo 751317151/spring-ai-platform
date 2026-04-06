@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.huah.ai.platform.auth.mapper.AiUserRoleMapper">
+    <delete id="deleteByUserId">
+        DELETE FROM ai_user_roles
+        WHERE user_id = #{userId}
+    </delete>
+
+    <select id="selectRoleNamesByUserId" resultType="java.lang.String">
+        SELECT r.role_name
+        FROM ai_user_roles ur
+        INNER JOIN ai_roles r ON r.id = ur.role_id
+        WHERE ur.user_id = #{userId}
+        ORDER BY r.role_name ASC
+    </select>
+
+    <select id="countUsersByRoleId" resultType="int">
+        SELECT COUNT(DISTINCT user_id)
+        FROM ai_user_roles
+        WHERE role_id = #{roleId}
+    </select>
+
+    <select id="selectUserReferencesByRoleId" resultType="java.lang.String">
+        SELECT CONCAT(u.userid, '(', u.username, ')')
+        FROM ai_user_roles ur
+        INNER JOIN ai_users u ON u.userid = ur.user_id
+        WHERE ur.role_id = #{roleId}
+        ORDER BY u.userid ASC
+        LIMIT 10
+    </select>
+</mapper>

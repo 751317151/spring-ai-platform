@@ -128,8 +128,9 @@ public class FeedbackSchemaInitializer {
                         session_id VARCHAR(128),
                         session_summary VARCHAR(255),
                         source_message_index INTEGER,
-                        created_at BIGINT NOT NULL,
-                        last_collected_at BIGINT,
+                        created_at TIMESTAMP DEFAULT NOW(),
+                        updated_at TIMESTAMP DEFAULT NOW(),
+                        last_collected_at TIMESTAMP,
                         duplicate_count INTEGER DEFAULT 1,
                         tags_json TEXT,
                         session_config_snapshot_json TEXT
@@ -149,22 +150,104 @@ public class FeedbackSchemaInitializer {
                         related_session_summary VARCHAR(255),
                         related_message_index INTEGER,
                         tags_json TEXT,
-                        created_at BIGINT NOT NULL,
-                        updated_at BIGINT NOT NULL
+                        created_at TIMESTAMP DEFAULT NOW(),
+                        updated_at TIMESTAMP DEFAULT NOW()
                     )
                     """);
             statement.execute("CREATE INDEX IF NOT EXISTS idx_learning_notes_user_time ON learning_notes (user_id, updated_at DESC)");
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS learning_followup_templates (
                         id BIGINT PRIMARY KEY,
-                        user_id BIGINT NOT NULL,
+                        user_id VARCHAR(64) NOT NULL,
                         name VARCHAR(255) NOT NULL,
                         content TEXT NOT NULL,
                         source_count INTEGER DEFAULT 0,
-                        updated_at BIGINT NOT NULL
+                        created_at TIMESTAMP DEFAULT NOW(),
+                        updated_at TIMESTAMP DEFAULT NOW()
                     )
                     """);
             statement.execute("CREATE INDEX IF NOT EXISTS idx_learning_templates_user_time ON learning_followup_templates (user_id, updated_at DESC)");
+            statement.execute("ALTER TABLE learning_favorites ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()");
+            statement.execute("ALTER TABLE learning_followup_templates ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()");
+            statement.execute("ALTER TABLE learning_followup_templates ALTER COLUMN user_id TYPE VARCHAR(64)");
+            statement.execute("""
+                    DO $$
+                    BEGIN
+                        IF EXISTS (
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'learning_favorites'
+                              AND column_name = 'created_at'
+                              AND data_type IN ('bigint', 'integer')
+                        ) THEN
+                            EXECUTE 'ALTER TABLE learning_favorites ALTER COLUMN created_at TYPE TIMESTAMP USING to_timestamp(created_at / 1000.0)';
+                        END IF;
+                        IF EXISTS (
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'learning_favorites'
+                              AND column_name = 'updated_at'
+                              AND data_type IN ('bigint', 'integer')
+                        ) THEN
+                            EXECUTE 'ALTER TABLE learning_favorites ALTER COLUMN updated_at TYPE TIMESTAMP USING to_timestamp(updated_at / 1000.0)';
+                        END IF;
+                        IF EXISTS (
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'learning_favorites'
+                              AND column_name = 'last_collected_at'
+                              AND data_type IN ('bigint', 'integer')
+                        ) THEN
+                            EXECUTE 'ALTER TABLE learning_favorites ALTER COLUMN last_collected_at TYPE TIMESTAMP USING CASE WHEN last_collected_at IS NULL THEN NULL ELSE to_timestamp(last_collected_at / 1000.0) END';
+                        END IF;
+                    END $$;
+                    """);
+            statement.execute("""
+                    DO $$
+                    BEGIN
+                        IF EXISTS (
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'learning_notes'
+                              AND column_name = 'created_at'
+                              AND data_type IN ('bigint', 'integer')
+                        ) THEN
+                            EXECUTE 'ALTER TABLE learning_notes ALTER COLUMN created_at TYPE TIMESTAMP USING to_timestamp(created_at / 1000.0)';
+                        END IF;
+                        IF EXISTS (
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'learning_notes'
+                              AND column_name = 'updated_at'
+                              AND data_type IN ('bigint', 'integer')
+                        ) THEN
+                            EXECUTE 'ALTER TABLE learning_notes ALTER COLUMN updated_at TYPE TIMESTAMP USING to_timestamp(updated_at / 1000.0)';
+                        END IF;
+                    END $$;
+                    """);
+            statement.execute("""
+                    DO $$
+                    BEGIN
+                        IF EXISTS (
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'learning_followup_templates'
+                              AND column_name = 'created_at'
+                              AND data_type IN ('bigint', 'integer')
+                        ) THEN
+                            EXECUTE 'ALTER TABLE learning_followup_templates ALTER COLUMN created_at TYPE TIMESTAMP USING to_timestamp(created_at / 1000.0)';
+                        END IF;
+                        IF EXISTS (
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'learning_followup_templates'
+                              AND column_name = 'updated_at'
+                              AND data_type IN ('bigint', 'integer')
+                        ) THEN
+                            EXECUTE 'ALTER TABLE learning_followup_templates ALTER COLUMN updated_at TYPE TIMESTAMP USING to_timestamp(updated_at / 1000.0)';
+                        END IF;
+                    END $$;
+                    """);
         } catch (Exception e) {
             log.warn("initialize ai_response_feedback table failed: {}", e.getMessage());
         }

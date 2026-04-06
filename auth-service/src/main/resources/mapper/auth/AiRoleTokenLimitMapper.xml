@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.huah.ai.platform.auth.mapper.AiRoleTokenLimitMapper">
+    <sql id="RoleTokenLimitColumns">
+        rtl.id,
+        rtl.role_id,
+        rtl.bot_type,
+        rtl.daily_token_limit,
+        rtl.enabled,
+        r.role_name,
+        r.description AS role_description
+    </sql>
+
+    <sql id="RoleTokenLimitJoin">
+        FROM ai_role_token_limits rtl
+        INNER JOIN ai_roles r ON r.id = rtl.role_id
+    </sql>
+
+    <select id="selectAllViews" resultType="com.huah.ai.platform.auth.model.AiRoleTokenLimitEntity">
+        SELECT
+        <include refid="RoleTokenLimitColumns"/>
+        <include refid="RoleTokenLimitJoin"/>
+        ORDER BY r.role_name ASC, rtl.bot_type ASC NULLS FIRST, rtl.id ASC
+    </select>
+
+    <select id="selectViewById" resultType="com.huah.ai.platform.auth.model.AiRoleTokenLimitEntity">
+        SELECT
+        <include refid="RoleTokenLimitColumns"/>
+        <include refid="RoleTokenLimitJoin"/>
+        WHERE rtl.id = #{id}
+    </select>
+
+    <select id="selectDuplicate" resultType="com.huah.ai.platform.auth.model.AiRoleTokenLimitEntity">
+        SELECT *
+        FROM ai_role_token_limits
+        WHERE role_id = #{roleId}
+          <if test="excludeId != null">
+              AND id &lt;&gt; #{excludeId}
+          </if>
+          <choose>
+              <when test="botType != null and botType != ''">
+                  AND bot_type = #{botType}
+              </when>
+              <otherwise>
+                  AND bot_type IS NULL
+              </otherwise>
+          </choose>
+        LIMIT 1
+    </select>
+
+    <select id="countByRoleId" resultType="int">
+        SELECT COUNT(1)
+        FROM ai_role_token_limits
+        WHERE role_id = #{roleId}
+    </select>
+
+    <delete id="deleteByRoleId">
+        DELETE FROM ai_role_token_limits
+        WHERE role_id = #{roleId}
+    </delete>
+</mapper>

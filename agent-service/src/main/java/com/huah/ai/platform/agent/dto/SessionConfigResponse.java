@@ -3,6 +3,8 @@ package com.huah.ai.platform.agent.dto;
 import lombok.Builder;
 import lombok.Data;
 
+import java.time.LocalDateTime;
+
 @Data
 @Builder
 public class SessionConfigResponse {
@@ -11,5 +13,5 @@ public class SessionConfigResponse {
     private Integer maxContextMessages;
     private Boolean knowledgeEnabled;
     private String systemPromptTemplate;
-    private Long updatedAt;
+    private LocalDateTime updatedAt;
 }

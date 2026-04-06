@@ -1,8 +1,8 @@
 package com.huah.ai.platform.monitor.service;
 
-import com.huah.ai.platform.monitor.model.EvidenceFeedbackSampleView;
-import com.huah.ai.platform.monitor.model.FeedbackOverviewView;
-import com.huah.ai.platform.monitor.model.FeedbackSampleView;
+import com.huah.ai.platform.monitor.model.EvidenceFeedbackSampleResponse;
+import com.huah.ai.platform.monitor.model.FeedbackOverviewResponse;
+import com.huah.ai.platform.monitor.model.FeedbackSampleResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -21,7 +21,7 @@ public class MonitorFeedbackQueryService {
 
     private final JdbcTemplate jdbcTemplate;
 
-    public FeedbackOverviewView getFeedbackOverview() {
+    public FeedbackOverviewResponse getFeedbackOverview() {
         try {
             String today = LocalDate.now().toString();
             var stats = jdbcTemplate.queryForMap(
@@ -34,7 +34,7 @@ public class MonitorFeedbackQueryService {
             long total = ((Number) stats.get("total")).longValue();
             long positive = ((Number) stats.get("positive")).longValue();
             long negative = ((Number) stats.get("negative")).longValue();
-            return FeedbackOverviewView.builder()
+            return FeedbackOverviewResponse.builder()
                     .totalCount(total)
                     .positiveCount(positive)
                     .negativeCount(negative)
@@ -42,7 +42,7 @@ public class MonitorFeedbackQueryService {
                     .build();
         } catch (RuntimeException e) {
             log.warn("Failed to load feedback overview: {}", e.getMessage());
-            return FeedbackOverviewView.builder()
+            return FeedbackOverviewResponse.builder()
                     .totalCount(0)
                     .positiveCount(0)
                     .negativeCount(0)
@@ -51,14 +51,14 @@ public class MonitorFeedbackQueryService {
         }
     }
 
-    public List<FeedbackSampleView> getRecentFeedback(int limit) {
+    public List<FeedbackSampleResponse> getRecentFeedback(int limit) {
         try {
             return jdbcTemplate.query(
                     "SELECT f.response_id, a.user_id, f.source_type, a.agent_type, f.knowledge_base_id, f.feedback, f.comment, f.created_at " +
                             "FROM ai_response_feedback f " +
                             "LEFT JOIN ai_audit_logs a ON a.id = f.response_id " +
                             "ORDER BY f.created_at DESC LIMIT ?",
-                    (rs, rowNum) -> FeedbackSampleView.builder()
+                    (rs, rowNum) -> FeedbackSampleResponse.builder()
                             .responseId(rs.getString("response_id"))
                             .userId(rs.getString("user_id"))
                             .sourceType(rs.getString("source_type"))
@@ -76,14 +76,14 @@ public class MonitorFeedbackQueryService {
         }
     }
 
-    public List<EvidenceFeedbackSampleView> getRecentEvidenceFeedback(int limit) {
+    public List<EvidenceFeedbackSampleResponse> getRecentEvidenceFeedback(int limit) {
         try {
             return jdbcTemplate.query(
                     "SELECT e.response_id, e.chunk_id, a.user_id, e.knowledge_base_id, e.feedback, e.comment, e.created_at " +
                             "FROM ai_evidence_feedback e " +
                             "LEFT JOIN ai_audit_logs a ON a.id = e.response_id " +
                             "ORDER BY e.created_at DESC LIMIT ?",
-                    (rs, rowNum) -> EvidenceFeedbackSampleView.builder()
+                    (rs, rowNum) -> EvidenceFeedbackSampleResponse.builder()
                             .responseId(rs.getString("response_id"))
                             .chunkId(rs.getString("chunk_id"))
                             .userId(rs.getString("user_id"))
@@ -104,3 +104,4 @@ public class MonitorFeedbackQueryService {
         return timestamp != null ? timestamp.toLocalDateTime() : null;
     }
 }
+

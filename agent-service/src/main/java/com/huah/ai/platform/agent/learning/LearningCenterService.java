@@ -4,14 +4,18 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.huah.ai.platform.agent.dto.SessionConfigRequest;
-import com.huah.ai.platform.agent.learning.dto.FollowUpTemplatePayload;
-import com.huah.ai.platform.agent.learning.dto.LearningFavoritePayload;
-import com.huah.ai.platform.agent.learning.dto.LearningNotePayload;
+import com.huah.ai.platform.agent.learning.dto.FollowUpTemplateRequest;
+import com.huah.ai.platform.agent.learning.dto.FollowUpTemplateResponse;
+import com.huah.ai.platform.agent.learning.dto.LearningFavoriteRequest;
+import com.huah.ai.platform.agent.learning.dto.LearningFavoriteResponse;
+import com.huah.ai.platform.agent.learning.dto.LearningNoteRequest;
+import com.huah.ai.platform.agent.learning.dto.LearningNoteResponse;
 import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 
@@ -30,31 +34,33 @@ public class LearningCenterService {
     private final ObjectMapper objectMapper;
     private final SnowflakeIdGenerator snowflakeIdGenerator;
 
-    public List<LearningFavoritePayload> listFavorites(String userId) {
+    public List<LearningFavoriteResponse> listFavorites(String userId) {
         return favoriteMapper.selectByUserId(userId).stream()
                 .limit(FAVORITE_LIMIT)
-                .map(this::toFavoritePayload)
+                .map(this::toFavoriteResponse)
                 .toList();
     }
 
-    public void saveFavorite(String userId, LearningFavoritePayload payload) {
-        LearningFavoriteRecord record = LearningFavoriteRecord.builder()
-                .id(payload.getId())
+    public void saveFavorite(String userId, LearningFavoriteRequest request) {
+        LocalDateTime now = LocalDateTime.now();
+        LearningFavoriteEntity entity = LearningFavoriteEntity.builder()
+                .id(request.getId())
                 .userId(userId)
-                .responseId(payload.getResponseId())
-                .role(payload.getRole())
-                .content(payload.getContent())
-                .agentType(payload.getAgentType())
-                .sessionId(payload.getSessionId())
-                .sessionSummary(payload.getSessionSummary())
-                .sourceMessageIndex(payload.getSourceMessageIndex())
-                .createdAt(payload.getCreatedAt())
-                .lastCollectedAt(payload.getLastCollectedAt())
-                .duplicateCount(payload.getDuplicateCount())
-                .tagsJson(writeJson(payload.getTags()))
-                .sessionConfigSnapshotJson(writeJson(payload.getSessionConfigSnapshot()))
+                .responseId(request.getResponseId())
+                .role(request.getRole())
+                .content(request.getContent())
+                .agentType(request.getAgentType())
+                .sessionId(request.getSessionId())
+                .sessionSummary(request.getSessionSummary())
+                .sourceMessageIndex(request.getSourceMessageIndex())
+                .createdAt(now)
+                .updatedAt(now)
+                .lastCollectedAt(request.getLastCollectedAt() != null ? request.getLastCollectedAt() : now)
+                .duplicateCount(request.getDuplicateCount())
+                .tagsJson(writeJson(request.getTags()))
+                .sessionConfigSnapshotJson(writeJson(request.getSessionConfigSnapshot()))
                 .build();
-        upsertFavorite(record);
+        upsertFavorite(entity);
         trimFavorites(userId);
     }
 
@@ -62,30 +68,31 @@ public class LearningCenterService {
         favoriteMapper.deleteByUserIdAndId(userId, parseRequiredLong(id));
     }
 
-    public List<LearningNotePayload> listNotes(String userId) {
+    public List<LearningNoteResponse> listNotes(String userId) {
         return noteMapper.selectByUserId(userId).stream()
                 .limit(NOTE_LIMIT)
-                .map(this::toNotePayload)
+                .map(this::toNoteResponse)
                 .toList();
     }
 
-    public void saveNote(String userId, LearningNotePayload payload) {
-        LearningNoteRecord record = LearningNoteRecord.builder()
-                .id(payload.getId())
+    public void saveNote(String userId, LearningNoteRequest request) {
+        LocalDateTime now = LocalDateTime.now();
+        LearningNoteEntity entity = LearningNoteEntity.builder()
+                .id(request.getId())
                 .userId(userId)
-                .title(payload.getTitle())
-                .content(payload.getContent())
-                .sourceType(payload.getSourceType())
-                .relatedFavoriteId(payload.getRelatedFavoriteId())
-                .relatedSessionId(payload.getRelatedSessionId())
-                .relatedAgentType(payload.getRelatedAgentType())
-                .relatedSessionSummary(payload.getRelatedSessionSummary())
-                .relatedMessageIndex(payload.getRelatedMessageIndex())
-                .tagsJson(writeJson(payload.getTags()))
-                .createdAt(payload.getCreatedAt())
-                .updatedAt(payload.getUpdatedAt())
+                .title(request.getTitle())
+                .content(request.getContent())
+                .sourceType(request.getSourceType())
+                .relatedFavoriteId(request.getRelatedFavoriteId())
+                .relatedSessionId(request.getRelatedSessionId())
+                .relatedAgentType(request.getRelatedAgentType())
+                .relatedSessionSummary(request.getRelatedSessionSummary())
+                .relatedMessageIndex(request.getRelatedMessageIndex())
+                .tagsJson(writeJson(request.getTags()))
+                .createdAt(now)
+                .updatedAt(now)
                 .build();
-        upsertNote(record);
+        upsertNote(entity);
         trimNotes(userId);
     }
 
@@ -93,23 +100,25 @@ public class LearningCenterService {
         noteMapper.deleteByUserIdAndId(userId, parseRequiredLong(id));
     }
 
-    public List<FollowUpTemplatePayload> listTemplates(String userId) {
+    public List<FollowUpTemplateResponse> listTemplates(String userId) {
         return templateMapper.selectByUserId(userId).stream()
                 .limit(TEMPLATE_LIMIT)
-                .map(this::toTemplatePayload)
+                .map(this::toTemplateResponse)
                 .toList();
     }
 
-    public void saveTemplate(String userId, FollowUpTemplatePayload payload) {
-        FollowUpTemplateRecord record = FollowUpTemplateRecord.builder()
-                .id(payload.getId())
+    public void saveTemplate(String userId, FollowUpTemplateRequest request) {
+        LocalDateTime now = LocalDateTime.now();
+        FollowUpTemplateEntity entity = FollowUpTemplateEntity.builder()
+                .id(request.getId())
                 .userId(userId)
-                .name(payload.getName())
-                .content(payload.getContent())
-                .sourceCount(payload.getSourceCount())
-                .updatedAt(payload.getUpdatedAt())
+                .name(request.getName())
+                .content(request.getContent())
+                .sourceCount(request.getSourceCount())
+                .createdAt(now)
+                .updatedAt(now)
                 .build();
-        upsertTemplate(record);
+        upsertTemplate(entity);
         trimTemplates(userId);
     }
 
@@ -117,106 +126,111 @@ public class LearningCenterService {
         templateMapper.deleteByUserIdAndId(userId, parseRequiredLong(id));
     }
 
-    private void upsertFavorite(LearningFavoriteRecord record) {
-        ensureId(record);
-        LearningFavoriteRecord existing = favoriteMapper.selectOne(new QueryWrapper<LearningFavoriteRecord>()
-                .eq("user_id", record.getUserId())
-                .eq("id", record.getId())
+    private void upsertFavorite(LearningFavoriteEntity entity) {
+        ensureId(entity);
+        LearningFavoriteEntity existing = favoriteMapper.selectOne(new QueryWrapper<LearningFavoriteEntity>()
+                .eq("user_id", entity.getUserId())
+                .eq("id", entity.getId())
                 .last("LIMIT 1"));
         if (existing == null) {
-            favoriteMapper.insert(record);
+            favoriteMapper.insert(entity);
             return;
         }
-        record.setUserId(existing.getUserId());
-        favoriteMapper.updateById(record);
+        entity.setUserId(existing.getUserId());
+        entity.setCreatedAt(existing.getCreatedAt());
+        favoriteMapper.updateById(entity);
     }
 
-    private void upsertNote(LearningNoteRecord record) {
-        ensureId(record);
-        LearningNoteRecord existing = noteMapper.selectOne(new QueryWrapper<LearningNoteRecord>()
-                .eq("user_id", record.getUserId())
-                .eq("id", record.getId())
+    private void upsertNote(LearningNoteEntity entity) {
+        ensureId(entity);
+        LearningNoteEntity existing = noteMapper.selectOne(new QueryWrapper<LearningNoteEntity>()
+                .eq("user_id", entity.getUserId())
+                .eq("id", entity.getId())
                 .last("LIMIT 1"));
         if (existing == null) {
-            noteMapper.insert(record);
+            noteMapper.insert(entity);
             return;
         }
-        record.setUserId(existing.getUserId());
-        noteMapper.updateById(record);
+        entity.setUserId(existing.getUserId());
+        entity.setCreatedAt(existing.getCreatedAt());
+        noteMapper.updateById(entity);
     }
 
-    private void upsertTemplate(FollowUpTemplateRecord record) {
-        ensureId(record);
-        FollowUpTemplateRecord existing = templateMapper.selectOne(new QueryWrapper<FollowUpTemplateRecord>()
-                .eq("user_id", record.getUserId())
-                .eq("id", record.getId())
+    private void upsertTemplate(FollowUpTemplateEntity entity) {
+        ensureId(entity);
+        FollowUpTemplateEntity existing = templateMapper.selectOne(new QueryWrapper<FollowUpTemplateEntity>()
+                .eq("user_id", entity.getUserId())
+                .eq("id", entity.getId())
                 .last("LIMIT 1"));
         if (existing == null) {
-            templateMapper.insert(record);
+            templateMapper.insert(entity);
             return;
         }
-        record.setUserId(existing.getUserId());
-        templateMapper.updateById(record);
+        entity.setUserId(existing.getUserId());
+        entity.setCreatedAt(existing.getCreatedAt());
+        templateMapper.updateById(entity);
     }
 
     private void trimFavorites(String userId) {
-        List<LearningFavoriteRecord> records = favoriteMapper.selectByUserId(userId);
+        List<LearningFavoriteEntity> records = favoriteMapper.selectByUserId(userId);
         records.stream().skip(FAVORITE_LIMIT).forEach(item -> favoriteMapper.deleteById(item.getId()));
     }
 
     private void trimNotes(String userId) {
-        List<LearningNoteRecord> records = noteMapper.selectByUserId(userId);
+        List<LearningNoteEntity> records = noteMapper.selectByUserId(userId);
         records.stream().skip(NOTE_LIMIT).forEach(item -> noteMapper.deleteById(item.getId()));
     }
 
     private void trimTemplates(String userId) {
-        List<FollowUpTemplateRecord> records = templateMapper.selectByUserId(userId);
+        List<FollowUpTemplateEntity> records = templateMapper.selectByUserId(userId);
         records.stream().skip(TEMPLATE_LIMIT).forEach(item -> templateMapper.deleteById(item.getId()));
     }
 
-    private LearningFavoritePayload toFavoritePayload(LearningFavoriteRecord record) {
-        LearningFavoritePayload payload = new LearningFavoritePayload();
-        payload.setId(record.getId());
-        payload.setResponseId(record.getResponseId());
-        payload.setRole(record.getRole());
-        payload.setContent(record.getContent());
-        payload.setAgentType(record.getAgentType());
-        payload.setSessionId(record.getSessionId());
-        payload.setSessionSummary(record.getSessionSummary());
-        payload.setSourceMessageIndex(record.getSourceMessageIndex());
-        payload.setCreatedAt(record.getCreatedAt());
-        payload.setLastCollectedAt(record.getLastCollectedAt());
-        payload.setDuplicateCount(record.getDuplicateCount());
-        payload.setTags(readList(record.getTagsJson()));
-        payload.setSessionConfigSnapshot(readSessionConfig(record.getSessionConfigSnapshotJson()));
-        return payload;
+    private LearningFavoriteResponse toFavoriteResponse(LearningFavoriteEntity entity) {
+        LearningFavoriteResponse response = new LearningFavoriteResponse();
+        response.setId(entity.getId());
+        response.setResponseId(entity.getResponseId());
+        response.setRole(entity.getRole());
+        response.setContent(entity.getContent());
+        response.setAgentType(entity.getAgentType());
+        response.setSessionId(entity.getSessionId());
+        response.setSessionSummary(entity.getSessionSummary());
+        response.setSourceMessageIndex(entity.getSourceMessageIndex());
+        response.setCreatedAt(entity.getCreatedAt());
+        response.setUpdatedAt(entity.getUpdatedAt());
+        response.setLastCollectedAt(entity.getLastCollectedAt());
+        response.setDuplicateCount(entity.getDuplicateCount());
+        response.setTags(readList(entity.getTagsJson()));
+        response.setSessionConfigSnapshot(readSessionConfig(entity.getSessionConfigSnapshotJson()));
+        return response;
     }
 
-    private LearningNotePayload toNotePayload(LearningNoteRecord record) {
-        LearningNotePayload payload = new LearningNotePayload();
-        payload.setId(record.getId());
-        payload.setTitle(record.getTitle());
-        payload.setContent(record.getContent());
-        payload.setSourceType(record.getSourceType());
-        payload.setRelatedFavoriteId(record.getRelatedFavoriteId());
-        payload.setRelatedSessionId(record.getRelatedSessionId());
-        payload.setRelatedAgentType(record.getRelatedAgentType());
-        payload.setRelatedSessionSummary(record.getRelatedSessionSummary());
-        payload.setRelatedMessageIndex(record.getRelatedMessageIndex());
-        payload.setTags(readList(record.getTagsJson()));
-        payload.setCreatedAt(record.getCreatedAt());
-        payload.setUpdatedAt(record.getUpdatedAt());
-        return payload;
+    private LearningNoteResponse toNoteResponse(LearningNoteEntity entity) {
+        LearningNoteResponse response = new LearningNoteResponse();
+        response.setId(entity.getId());
+        response.setTitle(entity.getTitle());
+        response.setContent(entity.getContent());
+        response.setSourceType(entity.getSourceType());
+        response.setRelatedFavoriteId(entity.getRelatedFavoriteId());
+        response.setRelatedSessionId(entity.getRelatedSessionId());
+        response.setRelatedAgentType(entity.getRelatedAgentType());
+        response.setRelatedSessionSummary(entity.getRelatedSessionSummary());
+        response.setRelatedMessageIndex(entity.getRelatedMessageIndex());
+        response.setTags(readList(entity.getTagsJson()));
+        response.setCreatedAt(entity.getCreatedAt());
+        response.setUpdatedAt(entity.getUpdatedAt());
+        return response;
     }
 
-    private FollowUpTemplatePayload toTemplatePayload(FollowUpTemplateRecord record) {
-        FollowUpTemplatePayload payload = new FollowUpTemplatePayload();
-        payload.setId(record.getId());
-        payload.setName(record.getName());
-        payload.setContent(record.getContent());
-        payload.setSourceCount(record.getSourceCount());
-        payload.setUpdatedAt(record.getUpdatedAt());
-        return payload;
+    private FollowUpTemplateResponse toTemplateResponse(FollowUpTemplateEntity entity) {
+        FollowUpTemplateResponse response = new FollowUpTemplateResponse();
+        response.setId(entity.getId());
+        response.setName(entity.getName());
+        response.setContent(entity.getContent());
+        response.setSourceCount(entity.getSourceCount());
+        response.setCreatedAt(entity.getCreatedAt());
+        response.setUpdatedAt(entity.getUpdatedAt());
+        return response;
     }
 
     private String writeJson(Object value) {
@@ -231,21 +245,21 @@ public class LearningCenterService {
         }
     }
 
-    private void ensureId(LearningFavoriteRecord record) {
-        if (record.getId() == null) {
-            record.setId(snowflakeIdGenerator.nextLongId());
+    private void ensureId(LearningFavoriteEntity entity) {
+        if (entity.getId() == null) {
+            entity.setId(snowflakeIdGenerator.nextLongId());
         }
     }
 
-    private void ensureId(LearningNoteRecord record) {
-        if (record.getId() == null) {
-            record.setId(snowflakeIdGenerator.nextLongId());
+    private void ensureId(LearningNoteEntity entity) {
+        if (entity.getId() == null) {
+            entity.setId(snowflakeIdGenerator.nextLongId());
         }
     }
 
-    private void ensureId(FollowUpTemplateRecord record) {
-        if (record.getId() == null) {
-            record.setId(snowflakeIdGenerator.nextLongId());
+    private void ensureId(FollowUpTemplateEntity entity) {
+        if (entity.getId() == null) {
+            entity.setId(snowflakeIdGenerator.nextLongId());
         }
     }
 
@@ -277,4 +291,5 @@ public class LearningCenterService {
     private Long parseRequiredLong(String value) {
         return Long.parseLong(value);
     }
+
 }

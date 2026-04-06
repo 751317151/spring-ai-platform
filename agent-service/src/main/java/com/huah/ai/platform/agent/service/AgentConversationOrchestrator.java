@@ -84,6 +84,7 @@ public class AgentConversationOrchestrator {
                     truncate(result.getContent(), 500));
             accessChecker.recordActualTokens(
                     userId,
+                    agentType,
                     result.getPromptTokens() + result.getCompletionTokens(),
                     AgentApiConstants.PRE_DEDUCT_TOKENS);
             return AgentChatResponse.builder()
@@ -177,7 +178,7 @@ public class AgentConversationOrchestrator {
                 recordFailureMetrics(agentType, latency, false);
                 log.error("[Stream] execution failed agent={}, userId={}, latency={}ms, error={}",
                         agentType, userId, latency, e.getMessage(), e);
-                accessChecker.recordActualTokens(userId, 0, AgentApiConstants.PRE_DEDUCT_TOKENS);
+                accessChecker.recordActualTokens(userId, agentType, 0, AgentApiConstants.PRE_DEDUCT_TOKENS);
                 if (!AgentApiConstants.AGENT_TYPE_MULTI.equals(agentType)) {
                     memoryService.rollbackLastUserMessage(sessionId);
                 }
@@ -239,6 +240,7 @@ public class AgentConversationOrchestrator {
                 truncate(response, 500));
         accessChecker.recordActualTokens(
                 userId,
+                agentType,
                 promptTokens + completionTokens,
                 AgentApiConstants.PRE_DEDUCT_TOKENS);
         Long responseId = agentAuditLogService.saveAuditLog(
@@ -282,7 +284,7 @@ public class AgentConversationOrchestrator {
                 truncate(fullResponse.toString(), 200),
                 error.getMessage(),
                 error);
-        accessChecker.recordActualTokens(userId, 0, AgentApiConstants.PRE_DEDUCT_TOKENS);
+        accessChecker.recordActualTokens(userId, agentType, 0, AgentApiConstants.PRE_DEDUCT_TOKENS);
         agentAuditLogService.saveAuditLog(
                 userId,
                 sessionId,
@@ -366,6 +368,7 @@ public class AgentConversationOrchestrator {
                 multiResult.getCompletionTokens());
         accessChecker.recordActualTokens(
                 userId,
+                AgentApiConstants.AGENT_TYPE_MULTI,
                 multiResult.getPromptTokens() + multiResult.getCompletionTokens(),
                 AgentApiConstants.PRE_DEDUCT_TOKENS);
         sendDone(emitter, responseId, multiResult.getTraceId());
@@ -403,7 +406,7 @@ public class AgentConversationOrchestrator {
     private void handleChatFailure(String agentType, String userId, String sessionId, long startTime, boolean includeMultiAlias) {
         long latency = System.currentTimeMillis() - startTime;
         recordFailureMetrics(agentType, latency, includeMultiAlias);
-        accessChecker.recordActualTokens(userId, 0, AgentApiConstants.PRE_DEDUCT_TOKENS);
+        accessChecker.recordActualTokens(userId, agentType, 0, AgentApiConstants.PRE_DEDUCT_TOKENS);
         memoryService.rollbackLastUserMessage(sessionId);
     }
 

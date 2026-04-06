@@ -68,7 +68,7 @@ public class MultiAgentTraceService {
                                                 MultiAgentExecutionListener listener) {
         MultiAgentExecutionTrace sourceTrace = traceMapper.selectByTraceIdAndUserId(sourceTraceId, userId);
         if (sourceTrace == null) {
-            throw new IllegalArgumentException("鏈壘鍒板彲鎭㈠鐨勫鏅鸿兘浣撹建杩?");
+            throw new IllegalArgumentException("未找到需要恢复的多智能体执行轨迹");
         }
         List<MultiAgentExecutionStep> sourceSteps = stepMapper.selectByTraceId(sourceTraceId);
         if (sourceSteps.isEmpty()) {
@@ -82,7 +82,7 @@ public class MultiAgentTraceService {
 
         String normalizedAction = normalizeAction(action);
         if (!Boolean.TRUE.equals(targetStep.getRecoverable())) {
-            throw new IllegalArgumentException("涓嶆敮鎸佹仮澶?");
+            throw new IllegalArgumentException("该步骤不支持恢复");
         }
 
         RecoveryExecutionResult recovery = executeRecoveryTrace(
@@ -128,7 +128,7 @@ public class MultiAgentTraceService {
             planResult = stageRunner.runPlanner(traceId, task, internalId, listener);
             steps.add(toStep(traceId, 1, "planner", "Planner", summarize(task), planResult, true, null, planResult.getLatencyMs()));
 
-            String executionInput = summarize("浠诲姟:\n" + task + "\n\n瑙勫垝:\n" + planResult.getContent());
+            String executionInput = summarize("任务:\n" + task + "\n\n规划:\n" + planResult.getContent());
             executeResult = stageRunner.runExecutor(traceId, userId, task, planResult.getContent(), internalId, executionInput, listener);
             steps.add(toStep(traceId, 2, "executor", "Executor", executionInput, executeResult, true, null, executeResult.getLatencyMs()));
 
@@ -226,7 +226,7 @@ public class MultiAgentTraceService {
                 }
 
                 if ("executor".equals(sourceStep.getStage())) {
-                    String executionInput = summarize("浠诲姟:\n" + task + "\n\n瑙勫垝:\n" + defaultString(planContent));
+                    String executionInput = summarize("任务:\n" + task + "\n\n规划:\n" + defaultString(planContent));
                     MultiAgentOrchestrator.StepResult executeResult = stageRunner.runExecutor(
                             recoveryTraceId, userId, task, planContent, internalId, executionInput, listener);
                     recoverySteps.add(toRecoveryStep(recoveryTraceId, sourceTrace.getTraceId(), sourceStep.getStepOrder(), action,

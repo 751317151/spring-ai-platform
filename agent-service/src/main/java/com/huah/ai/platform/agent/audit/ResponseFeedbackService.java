@@ -22,7 +22,7 @@ public class ResponseFeedbackService {
         }
 
         String normalizedFeedback = normalizeFeedback(feedback);
-        AiAuditLog log = auditLogMapper.selectById(responseId);
+        AiAuditLogEntity log = auditLogMapper.selectById(responseId);
         if (log == null) {
             throw new BizException("未找到对应回答记录");
         }
@@ -30,10 +30,10 @@ public class ResponseFeedbackService {
             throw new BizException("无权提交该回答反馈");
         }
 
-        AiResponseFeedback existing = feedbackMapper.selectByResponseId(responseId);
+        AiResponseFeedbackEntity existing = feedbackMapper.selectByResponseId(responseId);
         LocalDateTime now = LocalDateTime.now();
         if (existing == null) {
-            feedbackMapper.insert(AiResponseFeedback.builder()
+            feedbackMapper.insert(AiResponseFeedbackEntity.builder()
                     .id(snowflakeIdGenerator.nextLongId())
                     .responseId(responseId)
                     .sourceType("agent")

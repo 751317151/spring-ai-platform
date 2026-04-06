@@ -17,12 +17,12 @@ public class AlertEvaluationService {
     private final AlertRuleProperties ruleProperties;
     private final MeterRegistry meterRegistry;
 
-    public List<AlertEventView> evaluate(AlertMetricsSnapshot snapshot) {
-        List<AlertEventView> alerts = new ArrayList<>();
+    public List<AlertEventResponse> evaluate(AlertMetricsSnapshot snapshot) {
+        List<AlertEventResponse> alerts = new ArrayList<>();
 
         for (AlertRuleProperties.Rule rule : ruleProperties.getRules()) {
             Optional<String> message = evaluateRule(rule, snapshot);
-            message.ifPresent(value -> alerts.add(AlertEventView.builder()
+            message.ifPresent(value -> alerts.add(AlertEventResponse.builder()
                     .level(rule.getLevel())
                     .type(rule.getType())
                     .message(value)
@@ -35,7 +35,7 @@ public class AlertEvaluationService {
         }
 
         if (alerts.isEmpty()) {
-            alerts.add(AlertEventView.builder()
+            alerts.add(AlertEventResponse.builder()
                     .level("INFO")
                     .type("系统正常")
                     .message(snapshot.getTotalCount() > 0

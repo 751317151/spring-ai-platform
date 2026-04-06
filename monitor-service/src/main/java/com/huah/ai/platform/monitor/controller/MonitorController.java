@@ -1,23 +1,23 @@
 package com.huah.ai.platform.monitor.controller;
 
 import com.huah.ai.platform.common.dto.Result;
-import com.huah.ai.platform.monitor.model.AgentStatView;
-import com.huah.ai.platform.monitor.model.AlertsView;
-import com.huah.ai.platform.monitor.model.AlertWorkflowHistoryView;
-import com.huah.ai.platform.monitor.model.AuditLogView;
-import com.huah.ai.platform.monitor.model.FailureSampleView;
-import com.huah.ai.platform.monitor.model.EvidenceFeedbackSampleView;
-import com.huah.ai.platform.monitor.model.FeedbackOverviewView;
-import com.huah.ai.platform.monitor.model.FeedbackSampleView;
-import com.huah.ai.platform.monitor.model.HourlyStatView;
-import com.huah.ai.platform.monitor.model.ModelStatView;
-import com.huah.ai.platform.monitor.model.MonitorOverviewView;
+import com.huah.ai.platform.monitor.model.AgentStatResponse;
+import com.huah.ai.platform.monitor.model.AlertsResponse;
+import com.huah.ai.platform.monitor.model.AlertWorkflowHistoryResponse;
+import com.huah.ai.platform.monitor.model.AuditLogResponse;
+import com.huah.ai.platform.monitor.model.FailureSampleResponse;
+import com.huah.ai.platform.monitor.model.EvidenceFeedbackSampleResponse;
+import com.huah.ai.platform.monitor.model.FeedbackOverviewResponse;
+import com.huah.ai.platform.monitor.model.FeedbackSampleResponse;
+import com.huah.ai.platform.monitor.model.HourlyStatResponse;
+import com.huah.ai.platform.monitor.model.ModelStatResponse;
+import com.huah.ai.platform.monitor.model.MonitorOverviewResponse;
 import com.huah.ai.platform.monitor.model.AlertWorkflowUpdateRequest;
-import com.huah.ai.platform.monitor.model.SlowRequestView;
-import com.huah.ai.platform.monitor.model.TraceDetailView;
-import com.huah.ai.platform.monitor.model.TokenUsageView;
-import com.huah.ai.platform.monitor.model.TopUserView;
-import com.huah.ai.platform.monitor.model.ToolAuditView;
+import com.huah.ai.platform.monitor.model.SlowRequestResponse;
+import com.huah.ai.platform.monitor.model.TraceDetailResponse;
+import com.huah.ai.platform.monitor.model.TokenUsageResponse;
+import com.huah.ai.platform.monitor.model.TopUserResponse;
+import com.huah.ai.platform.monitor.model.ToolAuditResponse;
 import com.huah.ai.platform.monitor.service.MonitorQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -43,49 +43,49 @@ public class MonitorController {
     private final MonitorQueryService monitorQueryService;
 
     @GetMapping("/overview")
-    public Result<MonitorOverviewView> overview() {
+    public Result<MonitorOverviewResponse> overview() {
         return Result.ok(monitorQueryService.getOverview());
     }
 
     @GetMapping("/by-agent")
-    public Result<List<AgentStatView>> byAgent() {
+    public Result<List<AgentStatResponse>> byAgent() {
         return Result.ok(monitorQueryService.getAgentStats());
     }
 
     @GetMapping("/by-model")
-    public Result<List<ModelStatView>> byModel() {
+    public Result<List<ModelStatResponse>> byModel() {
         return Result.ok(monitorQueryService.getModelStats());
     }
 
     @GetMapping("/token-usage/{userId}")
-    public Result<TokenUsageView> tokenUsage(@PathVariable(name = "userId") String userId) {
+    public Result<TokenUsageResponse> tokenUsage(@PathVariable(name = "userId") String userId) {
         return Result.ok(monitorQueryService.getTokenUsage(userId));
     }
 
     @GetMapping("/audit-logs")
-    public Result<List<AuditLogView>> auditLogs(
+    public Result<List<AuditLogResponse>> auditLogs(
             @RequestParam(name = "limit", defaultValue = "20") int limit,
             @RequestParam(name = "userId", required = false) String userId) {
         return Result.ok(monitorQueryService.getAuditLogs(limit, userId));
     }
 
     @GetMapping("/token-top-users")
-    public Result<List<TopUserView>> tokenTopUsers() {
+    public Result<List<TopUserResponse>> tokenTopUsers() {
         return Result.ok(monitorQueryService.getTopUsers());
     }
 
     @GetMapping("/slow-requests")
-    public Result<List<SlowRequestView>> slowRequests(@RequestParam(name = "limit", defaultValue = "10") int limit) {
+    public Result<List<SlowRequestResponse>> slowRequests(@RequestParam(name = "limit", defaultValue = "10") int limit) {
         return Result.ok(monitorQueryService.getSlowRequests(limit));
     }
 
     @GetMapping("/failure-samples")
-    public Result<List<FailureSampleView>> failureSamples(@RequestParam(name = "limit", defaultValue = "10") int limit) {
+    public Result<List<FailureSampleResponse>> failureSamples(@RequestParam(name = "limit", defaultValue = "10") int limit) {
         return Result.ok(monitorQueryService.getFailureSamples(limit));
     }
 
     @GetMapping("/tool-audits")
-    public Result<List<ToolAuditView>> toolAudits(
+    public Result<List<ToolAuditResponse>> toolAudits(
             @RequestParam(name = "limit", defaultValue = "20") int limit,
             @RequestParam(name = "userId", required = false) String userId,
             @RequestParam(name = "agentType", required = false) String agentType,
@@ -94,34 +94,34 @@ public class MonitorController {
     }
 
     @GetMapping("/trace/{traceId}")
-    public Result<TraceDetailView> traceDetail(@PathVariable(name = "traceId") String traceId) {
+    public Result<TraceDetailResponse> traceDetail(@PathVariable(name = "traceId") String traceId) {
         return monitorQueryService.getTraceDetail(traceId)
                 .map(Result::ok)
                 .orElseGet(() -> Result.fail("未找到对应的 Trace 详情"));
     }
 
     @GetMapping("/feedback/overview")
-    public Result<FeedbackOverviewView> feedbackOverview() {
+    public Result<FeedbackOverviewResponse> feedbackOverview() {
         return Result.ok(monitorQueryService.getFeedbackOverview());
     }
 
     @GetMapping("/feedback/recent")
-    public Result<List<FeedbackSampleView>> recentFeedback(@RequestParam(name = "limit", defaultValue = "10") int limit) {
+    public Result<List<FeedbackSampleResponse>> recentFeedback(@RequestParam(name = "limit", defaultValue = "10") int limit) {
         return Result.ok(monitorQueryService.getRecentFeedback(limit));
     }
 
     @GetMapping("/feedback/evidence")
-    public Result<List<EvidenceFeedbackSampleView>> recentEvidenceFeedback(@RequestParam(name = "limit", defaultValue = "10") int limit) {
+    public Result<List<EvidenceFeedbackSampleResponse>> recentEvidenceFeedback(@RequestParam(name = "limit", defaultValue = "10") int limit) {
         return Result.ok(monitorQueryService.getRecentEvidenceFeedback(limit));
     }
 
     @GetMapping("/hourly-stats")
-    public Result<List<HourlyStatView>> hourlyStats() {
+    public Result<List<HourlyStatResponse>> hourlyStats() {
         return Result.ok(monitorQueryService.getHourlyStats());
     }
 
     @GetMapping("/alerts")
-    public Result<AlertsView> alerts() {
+    public Result<AlertsResponse> alerts() {
         return Result.ok(monitorQueryService.getAlerts());
     }
 
@@ -134,7 +134,7 @@ public class MonitorController {
     }
 
     @GetMapping("/alerts/{fingerprint}/history")
-    public Result<List<AlertWorkflowHistoryView>> alertWorkflowHistory(
+    public Result<List<AlertWorkflowHistoryResponse>> alertWorkflowHistory(
             @PathVariable(name = "fingerprint") String fingerprint,
             @RequestParam(name = "limit", defaultValue = "10") int limit) {
         return Result.ok(monitorQueryService.getAlertWorkflowHistory(fingerprint, limit));

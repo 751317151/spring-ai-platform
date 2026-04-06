@@ -3,12 +3,12 @@
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.huah.ai.platform.agent.audit.AiAuditLogMapper">
-    <select id="selectByUserIdOrderByCreatedAtDesc" resultType="com.huah.ai.platform.agent.audit.AiAuditLog">
+    <select id="selectByUserIdOrderByCreatedAtDesc" resultType="com.huah.ai.platform.agent.audit.AiAuditLogEntity">
         SELECT * FROM ai_audit_logs
         WHERE user_id = #{userId}
         ORDER BY created_at DESC
     </select>
-    <select id="selectByAgentTypeAfter" resultType="com.huah.ai.platform.agent.audit.AiAuditLog">
+    <select id="selectByAgentTypeAfter" resultType="com.huah.ai.platform.agent.audit.AiAuditLogEntity">
         SELECT * FROM ai_audit_logs
         WHERE agent_type = #{agentType}
           AND created_at &gt; #{after}
@@ -41,14 +41,14 @@
         WHERE agent_type = #{agentType}
           AND created_at &lt; #{before}
     </select>
-    <select id="selectArchiveCandidates" resultType="com.huah.ai.platform.agent.audit.AiAuditLog">
+    <select id="selectArchiveCandidates" resultType="com.huah.ai.platform.agent.audit.AiAuditLogEntity">
         SELECT * FROM ai_audit_logs
         WHERE agent_type = #{agentType}
           AND created_at &lt; #{before}
         ORDER BY created_at ASC
         LIMIT #{limit}
     </select>
-    <select id="selectArchiveCandidatesBatch" resultType="com.huah.ai.platform.agent.audit.AiAuditLog">
+    <select id="selectArchiveCandidatesBatch" resultType="com.huah.ai.platform.agent.audit.AiAuditLogEntity">
         SELECT * FROM ai_audit_logs
         WHERE agent_type = #{agentType}
           AND created_at &lt; #{before}

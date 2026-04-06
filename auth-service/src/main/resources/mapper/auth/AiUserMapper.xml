@@ -3,20 +3,77 @@
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.huah.ai.platform.auth.mapper.AiUserMapper">
+    <sql id="UserColumns">
+        u.userid AS user_id,
+        u.username,
+        u.password_hash,
+        u.department,
+        u.employee_id,
+        u.enabled,
+        u.created_at,
+        u.last_login_at,
+        COALESCE(string_agg(DISTINCT r.role_name, ',' ORDER BY r.role_name), '') AS roles
+    </sql>
+
+    <sql id="UserJoin">
+        FROM ai_users u
+        LEFT JOIN ai_user_roles ur ON ur.user_id = u.userid
+        LEFT JOIN ai_roles r ON r.id = ur.role_id
+    </sql>
+
     <select id="selectByUserId" resultType="com.huah.ai.platform.auth.model.AiUserEntity">
-        SELECT * FROM ai_users WHERE userid = #{userId}
+        SELECT
+        <include refid="UserColumns"/>
+        <include refid="UserJoin"/>
+        WHERE u.userid = #{userId}
+        GROUP BY u.userid, u.username, u.password_hash, u.department, u.employee_id,
+        u.enabled, u.created_at, u.last_login_at
     </select>
+
     <select id="selectByUserIdAndEnabled" resultType="com.huah.ai.platform.auth.model.AiUserEntity">
-        SELECT * FROM ai_users
-        WHERE userid = #{userId}
-          AND enabled = true
+        SELECT
+        <include refid="UserColumns"/>
+        <include refid="UserJoin"/>
+        WHERE u.userid = #{userId}
+          AND u.enabled = true
+        GROUP BY u.userid, u.username, u.password_hash, u.department, u.employee_id,
+        u.enabled, u.created_at, u.last_login_at
     </select>
+
     <select id="selectByUsername" resultType="com.huah.ai.platform.auth.model.AiUserEntity">
-        SELECT * FROM ai_users WHERE username = #{username}
+        SELECT
+        <include refid="UserColumns"/>
+        <include refid="UserJoin"/>
+        WHERE u.username = #{username}
+        GROUP BY u.userid, u.username, u.password_hash, u.department, u.employee_id,
+        u.enabled, u.created_at, u.last_login_at
     </select>
+
     <select id="selectByUsernameAndEnabled" resultType="com.huah.ai.platform.auth.model.AiUserEntity">
-        SELECT * FROM ai_users
-        WHERE username = #{username}
-          AND enabled = true
+        SELECT
+        <include refid="UserColumns"/>
+        <include refid="UserJoin"/>
+        WHERE u.username = #{username}
+          AND u.enabled = true
+        GROUP BY u.userid, u.username, u.password_hash, u.department, u.employee_id,
+        u.enabled, u.created_at, u.last_login_at
+    </select>
+
+    <select id="selectViewById" resultType="com.huah.ai.platform.auth.model.AiUserEntity">
+        SELECT
+        <include refid="UserColumns"/>
+        <include refid="UserJoin"/>
+        WHERE u.userid = #{userId}
+        GROUP BY u.userid, u.username, u.password_hash, u.department, u.employee_id,
+        u.enabled, u.created_at, u.last_login_at
+    </select>
+
+    <select id="selectAllViews" resultType="com.huah.ai.platform.auth.model.AiUserEntity">
+        SELECT
+        <include refid="UserColumns"/>
+        <include refid="UserJoin"/>
+        GROUP BY u.userid, u.username, u.password_hash, u.department, u.employee_id,
+        u.enabled, u.created_at, u.last_login_at
+        ORDER BY u.created_at DESC, u.userid ASC
     </select>
 </mapper>

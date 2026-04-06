@@ -1,14 +1,14 @@
 package com.huah.ai.platform.monitor.service;
 
 import com.huah.ai.platform.monitor.alert.AlertMetricsSnapshot;
-import com.huah.ai.platform.monitor.model.AgentStatView;
-import com.huah.ai.platform.monitor.model.FailureSampleView;
-import com.huah.ai.platform.monitor.model.HourlyStatView;
-import com.huah.ai.platform.monitor.model.ModelStatView;
-import com.huah.ai.platform.monitor.model.MonitorOverviewView;
-import com.huah.ai.platform.monitor.model.SlowRequestView;
-import com.huah.ai.platform.monitor.model.TokenUsageView;
-import com.huah.ai.platform.monitor.model.TopUserView;
+import com.huah.ai.platform.monitor.model.AgentStatResponse;
+import com.huah.ai.platform.monitor.model.FailureSampleResponse;
+import com.huah.ai.platform.monitor.model.HourlyStatResponse;
+import com.huah.ai.platform.monitor.model.ModelStatResponse;
+import com.huah.ai.platform.monitor.model.MonitorOverviewResponse;
+import com.huah.ai.platform.monitor.model.SlowRequestResponse;
+import com.huah.ai.platform.monitor.model.TokenUsageResponse;
+import com.huah.ai.platform.monitor.model.TopUserResponse;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +31,7 @@ public class MonitorMetricsQueryService {
     private final StringRedisTemplate redisTemplate;
     private final JdbcTemplate jdbcTemplate;
 
-    public MonitorOverviewView getOverview() {
+    public MonitorOverviewResponse getOverview() {
         try {
             String today = LocalDate.now().toString();
             var todayStats = jdbcTemplate.queryForMap(
@@ -51,7 +51,7 @@ public class MonitorMetricsQueryService {
             long promptTokens = ((Number) todayStats.get("prompt_tokens")).longValue();
             long completionTokens = ((Number) todayStats.get("completion_tokens")).longValue();
 
-            return MonitorOverviewView.builder()
+            return MonitorOverviewResponse.builder()
                     .totalRequests(total)
                     .errorRequests(errors)
                     .successRate(total > 0 ? (double) (total - errors) / total : 1.0)
@@ -65,7 +65,7 @@ public class MonitorMetricsQueryService {
                     .build();
         } catch (RuntimeException e) {
             log.warn("Failed to load monitor overview: {}", e.getMessage());
-            return MonitorOverviewView.builder()
+            return MonitorOverviewResponse.builder()
                     .totalRequests(0)
                     .errorRequests(0)
                     .successRate(1.0)
@@ -80,7 +80,7 @@ public class MonitorMetricsQueryService {
         }
     }
 
-    public List<AgentStatView> getAgentStats() {
+    public List<AgentStatResponse> getAgentStats() {
         try {
             String today = LocalDate.now().toString();
             return jdbcTemplate.query(
@@ -89,7 +89,7 @@ public class MonitorMetricsQueryService {
                             "COUNT(*) FILTER (WHERE success = false) as errors " +
                             "FROM ai_audit_logs WHERE created_at >= ?::date " +
                             "GROUP BY agent_type ORDER BY count DESC",
-                    (rs, rowNum) -> AgentStatView.builder()
+                    (rs, rowNum) -> AgentStatResponse.builder()
                             .agentType(rs.getString("agent_type"))
                             .count(rs.getLong("count"))
                             .avgLatency(rs.getLong("avg_latency"))
@@ -103,7 +103,7 @@ public class MonitorMetricsQueryService {
         }
     }
 
-    public List<ModelStatView> getModelStats() {
+    public List<ModelStatResponse> getModelStats() {
         try {
             String today = LocalDate.now().toString();
             return jdbcTemplate.query(
@@ -112,7 +112,7 @@ public class MonitorMetricsQueryService {
                             "COUNT(*) FILTER (WHERE success = false) as errors " +
                             "FROM ai_audit_logs WHERE created_at >= ?::date " +
                             "GROUP BY COALESCE(model_id, 'unknown') ORDER BY count DESC",
-                    (rs, rowNum) -> ModelStatView.builder()
+                    (rs, rowNum) -> ModelStatResponse.builder()
                             .modelId(rs.getString("model_id"))
                             .count(rs.getLong("count"))
                             .avgLatency(rs.getLong("avg_latency"))
@@ -126,25 +126,25 @@ public class MonitorMetricsQueryService {
         }
     }
 
-    public TokenUsageView getTokenUsage(String userId) {
+    public TokenUsageResponse getTokenUsage(String userId) {
         String today = LocalDate.now().toString();
         String key = "ai:token:daily:" + userId + ":" + today;
         String usage = redisTemplate.opsForValue().get(key);
-        return TokenUsageView.builder()
+        return TokenUsageResponse.builder()
                 .userId(userId)
                 .date(today)
                 .tokensUsed(usage != null ? Long.parseLong(usage) : 0L)
                 .build();
     }
 
-    public List<TopUserView> getTopUsers() {
+    public List<TopUserResponse> getTopUsers() {
         try {
             String sql = "SELECT user_id, agent_type, COUNT(*) as calls, " +
                     "AVG(latency_ms) as avg_latency " +
                     "FROM ai_audit_logs WHERE created_at > ? " +
                     "GROUP BY user_id, agent_type ORDER BY calls DESC LIMIT 10";
             return jdbcTemplate.query(sql,
-                    (rs, rowNum) -> TopUserView.builder()
+                    (rs, rowNum) -> TopUserResponse.builder()
                             .userId(rs.getString("user_id"))
                             .agentType(rs.getString("agent_type"))
                             .calls(rs.getLong("calls"))
@@ -157,12 +157,12 @@ public class MonitorMetricsQueryService {
         }
     }
 
-    public List<SlowRequestView> getSlowRequests(int limit) {
+    public List<SlowRequestResponse> getSlowRequests(int limit) {
         try {
             return jdbcTemplate.query(
                     "SELECT id, user_id, agent_type, model_id, trace_id, latency_ms, success, created_at " +
                             "FROM ai_audit_logs ORDER BY latency_ms DESC, created_at DESC LIMIT ?",
-                    (rs, rowNum) -> SlowRequestView.builder()
+                    (rs, rowNum) -> SlowRequestResponse.builder()
                             .id(rs.getString("id"))
                             .userId(rs.getString("user_id"))
                             .agentType(rs.getString("agent_type"))
@@ -180,12 +180,12 @@ public class MonitorMetricsQueryService {
         }
     }
 
-    public List<FailureSampleView> getFailureSamples(int limit) {
+    public List<FailureSampleResponse> getFailureSamples(int limit) {
         try {
             return jdbcTemplate.query(
                     "SELECT id, user_id, agent_type, model_id, error_message, latency_ms, session_id, trace_id, created_at " +
                             "FROM ai_audit_logs WHERE success = false ORDER BY created_at DESC LIMIT ?",
-                    (rs, rowNum) -> FailureSampleView.builder()
+                    (rs, rowNum) -> FailureSampleResponse.builder()
                             .id(rs.getString("id"))
                             .userId(rs.getString("user_id"))
                             .agentType(rs.getString("agent_type"))
@@ -204,7 +204,7 @@ public class MonitorMetricsQueryService {
         }
     }
 
-    public List<HourlyStatView> getHourlyStats() {
+    public List<HourlyStatResponse> getHourlyStats() {
         try {
             String today = LocalDate.now().toString();
             return jdbcTemplate.query(
@@ -216,7 +216,7 @@ public class MonitorMetricsQueryService {
                             "COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms), 0) as p95 " +
                             "FROM ai_audit_logs WHERE created_at >= ?::date " +
                             "GROUP BY EXTRACT(HOUR FROM created_at) ORDER BY hour",
-                    (rs, rowNum) -> HourlyStatView.builder()
+                    (rs, rowNum) -> HourlyStatResponse.builder()
                             .hour(rs.getInt("hour"))
                             .total(rs.getLong("total"))
                             .errors(rs.getLong("errors"))
@@ -280,3 +280,4 @@ public class MonitorMetricsQueryService {
         return gauge != null ? gauge.value() : 0;
     }
 }
+

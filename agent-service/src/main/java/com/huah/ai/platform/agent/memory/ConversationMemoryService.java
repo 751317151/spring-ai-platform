@@ -15,6 +15,9 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -44,6 +47,7 @@ public class ConversationMemoryService {
     private static final int RECENT_MESSAGES_TO_KEEP = 12;
     private static final int MAX_SUMMARY_ENTRY_LENGTH = 120;
     private static final int MAX_SUMMARY_LENGTH = 1200;
+    private static final ZoneId DEFAULT_ZONE_ID = ZoneId.systemDefault();
 
     private final StringRedisTemplate redisTemplate;
     private final ChatMemoryRepository chatMemoryRepository;
@@ -214,7 +218,7 @@ public class ConversationMemoryService {
                 .maxContextMessages(asNullableInteger(metadata.get(MAX_CONTEXT_MESSAGES_KEY)))
                 .knowledgeEnabled(asNullableBoolean(metadata.get(KNOWLEDGE_ENABLED_KEY)))
                 .systemPromptTemplate(asNullableString(metadata.get(SYSTEM_PROMPT_TEMPLATE_KEY)))
-                .updatedAt(asNullableLong(metadata.get(UPDATED_AT_KEY)))
+                .updatedAt(asNullableDateTime(metadata.get(UPDATED_AT_KEY)))
                 .build();
     }
 
@@ -427,6 +431,27 @@ public class ConversationMemoryService {
         try {
             return Long.parseLong(value.toString());
         } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private LocalDateTime asNullableDateTime(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = value.toString();
+        if (text.isBlank()) {
+            return null;
+        }
+        try {
+            long epochMillis = Long.parseLong(text);
+            return LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), DEFAULT_ZONE_ID);
+        } catch (NumberFormatException ignored) {
+            // Fall through to ISO parsing for forward compatibility.
+        }
+        try {
+            return LocalDateTime.parse(text);
+        } catch (Exception ignored) {
             return null;
         }
     }

@@ -9,11 +9,11 @@ import java.util.List;
 import java.util.Map;
 
 @Mapper
-public interface AiAuditLogMapper extends BaseMapper<AiAuditLog> {
+public interface AiAuditLogMapper extends BaseMapper<AiAuditLogEntity> {
 
-    List<AiAuditLog> selectByUserIdOrderByCreatedAtDesc(@Param("userId") String userId);
+    List<AiAuditLogEntity> selectByUserIdOrderByCreatedAtDesc(@Param("userId") String userId);
 
-    List<AiAuditLog> selectByAgentTypeAfter(@Param("agentType") String agentType, @Param("after") LocalDateTime after);
+    List<AiAuditLogEntity> selectByAgentTypeAfter(@Param("agentType") String agentType, @Param("after") LocalDateTime after);
 
     List<Map<String, Object>> statsGroupByAgent(@Param("since") LocalDateTime since);
 
@@ -25,14 +25,15 @@ public interface AiAuditLogMapper extends BaseMapper<AiAuditLog> {
 
     long countByAgentTypeBefore(@Param("agentType") String agentType, @Param("before") LocalDateTime before);
 
-    List<AiAuditLog> selectArchiveCandidates(@Param("agentType") String agentType,
+    List<AiAuditLogEntity> selectArchiveCandidates(@Param("agentType") String agentType,
                                              @Param("before") LocalDateTime before,
                                              @Param("limit") int limit);
 
-    List<AiAuditLog> selectArchiveCandidatesBatch(@Param("agentType") String agentType,
+    List<AiAuditLogEntity> selectArchiveCandidatesBatch(@Param("agentType") String agentType,
                                                   @Param("before") LocalDateTime before,
                                                   @Param("limit") int limit,
                                                   @Param("offset") long offset);
 
     int deleteByAgentTypeBefore(@Param("agentType") String agentType, @Param("before") LocalDateTime before);
 }
+

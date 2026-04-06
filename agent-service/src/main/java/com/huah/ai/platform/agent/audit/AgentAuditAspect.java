@@ -13,12 +13,13 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 
 import java.time.LocalDateTime;
+
 /**
- * AI 调用审计 AOP 拦截器
+ * AI 对话审计切面。
  *
- * 切点：所有 agent service 的 .chat() 方法
- * 记录：调用方、入参摘要、响应摘要、延迟、是否成功、精确 token 用量
- * 同时向 Micrometer 注册实时指标供 Prometheus 抓取
+ * 切点：所有 agent service 的 `.chat()` 方法。
+ * 记录：调用方、入参与响应摘要、耗时、成功状态、Token 用量。
+ * 指标：同步写入 Micrometer，供 Prometheus 等监控系统采集。
  */
 @Slf4j
 @Aspect
@@ -37,9 +38,9 @@ public class AgentAuditAspect {
         }
         long start = System.currentTimeMillis();
         Object[] args = pjp.getArgs();
-        String userId    = args.length > 0 ? (String) args[0] : "unknown";
+        String userId = args.length > 0 ? (String) args[0] : "unknown";
         String sessionId = args.length > 1 ? (String) args[1] : "unknown";
-        String userMsg   = args.length > 2 ? truncate((String) args[2], 500) : "";
+        String userMsg = args.length > 2 ? truncate((String) args[2], 500) : "";
         String agentType = pjp.getTarget().getClass().getSimpleName();
 
         boolean success = true;
@@ -60,13 +61,11 @@ public class AgentAuditAspect {
             int promptTokens = chatResult != null ? chatResult.getPromptTokens() : 0;
             int completionTokens = chatResult != null ? chatResult.getCompletionTokens() : 0;
 
-            // 记录 Prometheus 指标
             metricsCollector.recordRequest(null, agentType, latency, success, promptTokens, completionTokens);
 
-            // 写入审计日志
             try {
                 String responseText = chatResult != null ? chatResult.getContent() : null;
-                auditLogMapper.insert(AiAuditLog.builder()
+                auditLogMapper.insert(AiAuditLogEntity.builder()
                         .id(snowflakeIdGenerator.nextLongId())
                         .userId(userId)
                         .sessionId(sessionId)
@@ -82,13 +81,15 @@ public class AgentAuditAspect {
                         .createdAt(LocalDateTime.now())
                         .build());
             } catch (Exception ex) {
-                log.warn("审计日志写入失败: {}", ex.getMessage());
+                log.warn("写入 AI 审计日志失败: {}", ex.getMessage());
             }
         }
     }
 
     private String truncate(String s, int maxLen) {
-        if (s == null) return null;
+        if (s == null) {
+            return null;
+        }
         return s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
     }
 }

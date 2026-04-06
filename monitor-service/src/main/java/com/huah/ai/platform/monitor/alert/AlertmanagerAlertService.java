@@ -30,7 +30,7 @@ public class AlertmanagerAlertService {
     private final AlertmanagerProperties properties;
     private final ObjectMapper objectMapper;
 
-    public List<AlertEventView> fetchActiveAlerts() {
+    public List<AlertEventResponse> fetchActiveAlerts() {
         if (!properties.isEnabled()) {
             return List.of();
         }
@@ -51,7 +51,7 @@ public class AlertmanagerAlertService {
             }
 
             List<Map<String, Object>> payload = objectMapper.readValue(body, ALERT_LIST_TYPE);
-            List<AlertEventView> alerts = new ArrayList<>();
+            List<AlertEventResponse> alerts = new ArrayList<>();
 
             for (Map<String, Object> item : payload) {
                 Object statusObject = item.get("status");
@@ -66,7 +66,7 @@ public class AlertmanagerAlertService {
                 Map<String, String> labels = stringifyMap(item.get("labels"));
                 Map<String, String> annotations = stringifyMap(item.get("annotations"));
 
-                alerts.add(AlertEventView.builder()
+                alerts.add(AlertEventResponse.builder()
                         .level(normalizeSeverity(labels.get("severity")))
                         .type(stringValue(labels.get("alertname"), "Prometheus 告警"))
                         .message(stringValue(
@@ -82,7 +82,7 @@ public class AlertmanagerAlertService {
                         .build());
             }
 
-            alerts.sort(Comparator.comparing(AlertEventView::getTime, (a, b) -> parseTime(b).compareTo(parseTime(a))));
+            alerts.sort(Comparator.comparing(AlertEventResponse::getTime, (a, b) -> parseTime(b).compareTo(parseTime(a))));
             return alerts;
         } catch (Exception e) {
             log.warn("读取 Alertmanager 告警失败，将回退到本地规则评估: {}", e.getMessage());

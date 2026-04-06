@@ -2,10 +2,10 @@ package com.huah.ai.platform.monitor.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.huah.ai.platform.monitor.model.AuditLogView;
-import com.huah.ai.platform.monitor.model.ToolAuditView;
-import com.huah.ai.platform.monitor.model.TraceDetailView;
-import com.huah.ai.platform.monitor.model.TracePhaseView;
+import com.huah.ai.platform.monitor.model.AuditLogResponse;
+import com.huah.ai.platform.monitor.model.ToolAuditResponse;
+import com.huah.ai.platform.monitor.model.TraceDetailResponse;
+import com.huah.ai.platform.monitor.model.TracePhaseResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -27,7 +27,7 @@ public class MonitorTraceQueryService {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
 
-    public List<AuditLogView> getAuditLogs(int limit, String userId) {
+    public List<AuditLogResponse> getAuditLogs(int limit, String userId) {
         try {
             String sql = userId != null
                     ? "SELECT id, user_id, agent_type, model_id, error_message, session_id, trace_id, latency_ms, success, created_at " +
@@ -43,7 +43,7 @@ public class MonitorTraceQueryService {
         }
     }
 
-    public List<ToolAuditView> getToolAudits(int limit, String userId, String agentType, String toolName) {
+    public List<ToolAuditResponse> getToolAudits(int limit, String userId, String agentType, String toolName) {
         try {
             StringBuilder sql = new StringBuilder(
                     "SELECT id, user_id, session_id, agent_type, tool_name, tool_class, input_summary, output_summary, " +
@@ -72,17 +72,17 @@ public class MonitorTraceQueryService {
         }
     }
 
-    public Optional<TraceDetailView> getTraceDetail(String traceId) {
+    public Optional<TraceDetailResponse> getTraceDetail(String traceId) {
         try {
-            List<TraceDetailView> rows = jdbcTemplate.query(
+            List<TraceDetailResponse> rows = jdbcTemplate.query(
                     "SELECT id, trace_id, user_id, agent_type, model_id, session_id, success, error_message, " +
                             "latency_ms, prompt_tokens, completion_tokens, created_at, user_message, ai_response, phase_breakdown_json " +
                             "FROM ai_audit_logs WHERE trace_id = ? ORDER BY created_at DESC LIMIT 1",
                     (rs, rowNum) -> {
-                        List<ToolAuditView> toolExecutions = getToolAuditsByTraceId(traceId);
+                        List<ToolAuditResponse> toolExecutions = getToolAuditsByTraceId(traceId);
                         long latencyMs = rs.getLong("latency_ms");
                         String phaseBreakdownJson = rs.getString("phase_breakdown_json");
-                        return TraceDetailView.builder()
+                        return TraceDetailResponse.builder()
                                 .id(rs.getString("id"))
                                 .traceId(rs.getString("trace_id"))
                                 .userId(rs.getString("user_id"))
@@ -110,8 +110,8 @@ public class MonitorTraceQueryService {
         }
     }
 
-    private AuditLogView mapAuditLog(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
-        return AuditLogView.builder()
+    private AuditLogResponse mapAuditLog(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+        return AuditLogResponse.builder()
                 .id(rs.getString("id"))
                 .userId(rs.getString("user_id"))
                 .agentType(rs.getString("agent_type"))
@@ -125,8 +125,8 @@ public class MonitorTraceQueryService {
                 .build();
     }
 
-    private ToolAuditView mapToolAudit(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
-        return ToolAuditView.builder()
+    private ToolAuditResponse mapToolAudit(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+        return ToolAuditResponse.builder()
                 .id(rs.getString("id"))
                 .userId(rs.getString("user_id"))
                 .sessionId(rs.getString("session_id"))
@@ -143,7 +143,7 @@ public class MonitorTraceQueryService {
                 .build();
     }
 
-    private List<ToolAuditView> getToolAuditsByTraceId(String traceId) {
+    private List<ToolAuditResponse> getToolAuditsByTraceId(String traceId) {
         try {
             return jdbcTemplate.query(
                     "SELECT id, user_id, session_id, agent_type, tool_name, tool_class, input_summary, output_summary, " +
@@ -158,18 +158,18 @@ public class MonitorTraceQueryService {
         }
     }
 
-    private List<TracePhaseView> resolveTracePhases(String phaseBreakdownJson,
+    private List<TracePhaseResponse> resolveTracePhases(String phaseBreakdownJson,
                                                     long totalLatencyMs,
-                                                    List<ToolAuditView> toolExecutions,
+                                                    List<ToolAuditResponse> toolExecutions,
                                                     boolean success) {
-        List<TracePhaseView> parsed = parseTracePhases(phaseBreakdownJson);
+        List<TracePhaseResponse> parsed = parseTracePhases(phaseBreakdownJson);
         if (!parsed.isEmpty()) {
             return parsed;
         }
         return buildTracePhases(totalLatencyMs, toolExecutions, success);
     }
 
-    private List<TracePhaseView> parseTracePhases(String phaseBreakdownJson) {
+    private List<TracePhaseResponse> parseTracePhases(String phaseBreakdownJson) {
         if (phaseBreakdownJson == null || phaseBreakdownJson.isBlank()) {
             return List.of();
         }
@@ -180,7 +180,7 @@ public class MonitorTraceQueryService {
                     }
             );
             return items.stream()
-                    .map(item -> TracePhaseView.builder()
+                    .map(item -> TracePhaseResponse.builder()
                             .key(String.valueOf(item.getOrDefault("key", "")))
                             .label(String.valueOf(item.getOrDefault("label", "")))
                             .latencyMs(((Number) item.getOrDefault("latencyMs", 0)).longValue())
@@ -195,7 +195,7 @@ public class MonitorTraceQueryService {
         }
     }
 
-        private List<TracePhaseView> buildTracePhases(long totalLatencyMs, List<ToolAuditView> toolExecutions, boolean success) {
+        private List<TracePhaseResponse> buildTracePhases(long totalLatencyMs, List<ToolAuditResponse> toolExecutions, boolean success) {
         if (totalLatencyMs <= 0) {
             return List.of();
         }
@@ -219,7 +219,7 @@ public class MonitorTraceQueryService {
         long adjust = totalLatencyMs - totalAssigned;
         generationLatency += adjust;
 
-        List<TracePhaseView> phases = new ArrayList<>();
+        List<TracePhaseResponse> phases = new ArrayList<>();
         phases.add(buildPhase("auth", "鉴权与上下文", authLatency, totalLatencyMs, true, "请求进入网关后完成鉴权校验与会话上下文装配。"));
         phases.add(buildPhase("retrieval", "检索与准备", retrievalLatency, totalLatencyMs, true, "检索知识、准备提示词，并组织模型输入内容。"));
         phases.add(buildPhase("tools", "工具执行", toolLatency, totalLatencyMs, false, toolExecutions.isEmpty()
@@ -230,14 +230,14 @@ public class MonitorTraceQueryService {
         return phases;
     }
 
-    private TracePhaseView buildPhase(String key,
+    private TracePhaseResponse buildPhase(String key,
                                       String label,
                                       long latencyMs,
                                       long totalLatencyMs,
                                       boolean estimated,
                                       String description) {
         double share = totalLatencyMs <= 0 ? 0d : Math.round((latencyMs * 10000d / totalLatencyMs)) / 100d;
-        return TracePhaseView.builder()
+        return TracePhaseResponse.builder()
                 .key(key)
                 .label(label)
                 .latencyMs(Math.max(latencyMs, 0))

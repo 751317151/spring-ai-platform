@@ -1,200 +1,86 @@
 <template>
-  <table>
-    <thead>
-      <tr>
-        <th class="check-col">
-          <input
-            type="checkbox"
-            :checked="allSelected"
-            :indeterminate.prop="indeterminate"
-            @change="toggleAll(($event.target as HTMLInputElement).checked)"
-          >
-        </th>
-        <th>用户</th>
-        <th>工号</th>
-        <th>部门</th>
-        <th>角色</th>
-        <th>状态</th>
-        <th>最后登录</th>
-        <th>操作</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr v-if="!users.length">
-        <td colspan="8" class="empty-cell">
-          <EmptyState
-            icon="U"
-            title="当前筛选条件下没有匹配的用户"
-            description="可以调整状态、角色或关键词筛选条件后重试。"
-            action-text="清空筛选"
-            variant="compact"
-            @action="emit('reset-filters')"
-          />
-        </td>
-      </tr>
-      <tr
-        v-for="u in users"
-        :id="`user-row-${u.userId}`"
-        :key="u.userId"
-        :class="{ highlighted: highlightedUserId === u.userId }"
-      >
-        <td class="check-col">
-          <input
-            type="checkbox"
-            :checked="selectedIds.includes(u.userId)"
-            @change="toggleOne(u.userId, ($event.target as HTMLInputElement).checked)"
-          >
-        </td>
-        <td>
-          <div class="user-name">
-            <div class="avatar avatar-sm">{{ (u.username || '?').charAt(0).toUpperCase() }}</div>
-            <div class="user-main">
-              <span class="username">{{ u.username }}</span>
-              <small class="subtle-text">{{ u.userId }}</small>
+  <div class="table-shell">
+    <table v-if="users.length">
+      <thead>
+        <tr>
+          <th>用户</th>
+          <th>部门</th>
+          <th>角色</th>
+          <th>状态</th>
+          <th>最近登录</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="user in users" :key="user.userId">
+          <td>
+            <div class="user-cell">
+              <div class="avatar">{{ (user.username || user.userId || '?').slice(0, 1).toUpperCase() }}</div>
+              <div>
+                <div class="primary">{{ user.username }}</div>
+                <div class="secondary">{{ user.userId }}</div>
+              </div>
             </div>
-          </div>
-        </td>
-        <td><span class="mono">{{ u.employeeId || '-' }}</span></td>
-        <td>{{ u.department || '-' }}</td>
-        <td>
-          <div class="role-list">
-            <span
-              v-for="role in (u.roles || '').split(',').map((item) => item.trim()).filter(Boolean)"
-              :key="role"
-              class="pill"
-              :class="roleColors[role] || 'blue'"
-            >
-              {{ role }}
+          </td>
+          <td>{{ user.department || '-' }}</td>
+          <td>
+            <div class="tag-list">
+              <span v-for="role in splitCsv(user.roles)" :key="role" class="tag">{{ role }}</span>
+            </div>
+          </td>
+          <td>
+            <span class="status-pill" :class="user.enabled !== false ? 'enabled' : 'disabled'">
+              {{ user.enabled !== false ? '启用' : '停用' }}
             </span>
-          </div>
-        </td>
-        <td>
-          <span class="pill" :class="u.enabled !== false ? 'green' : 'red'">
-            {{ u.enabled !== false ? '启用' : '停用' }}
-          </span>
-        </td>
-        <td class="last-login">{{ formatTime(u.lastLoginAt) }}</td>
-        <td>
-          <div class="action-list">
-            <button class="table-action-btn" @click="emit('edit', u.userId)">编辑</button>
-            <button class="table-action-btn" @click="emit('inspect', u.userId)">概览</button>
-            <button class="table-action-btn danger" @click="emit('delete', u.userId, u.username)">删除</button>
-          </div>
-        </td>
-      </tr>
-    </tbody>
-  </table>
+          </td>
+          <td>{{ formatTime(user.lastLoginAt) }}</td>
+          <td>
+            <div class="actions">
+              <button class="table-btn" @click="emit('edit', user.userId)">编辑</button>
+              <button class="table-btn danger" @click="emit('delete', user.userId, user.username)">删除</button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <EmptyState
+      v-else
+      icon="U"
+      title="没有匹配的用户"
+      description="可以调整筛选条件，或直接新建用户。"
+      variant="compact"
+    />
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import type { AiUser } from '@/api/types'
 import EmptyState from '@/components/common/EmptyState.vue'
-import { ROLE_COLORS } from '@/utils/constants'
 import { formatTime } from '@/utils/format'
 
-const props = defineProps<{
-  users: AiUser[]
-  selectedIds: string[]
-  highlightedUserId?: string
-}>()
+defineProps<{ users: AiUser[] }>()
 
-const emit = defineEmits<{
-  (e: 'edit', userId: string): void
-  (e: 'inspect', userId: string): void
-  (e: 'delete', userId: string, username: string): void
-  (e: 'update:selectedIds', ids: string[]): void
-  (e: 'reset-filters'): void
-}>()
+const emit = defineEmits<{ edit: [userId: string]; delete: [userId: string, username: string] }>()
 
-const roleColors = ROLE_COLORS
-
-const allSelected = computed(() => props.users.length > 0 && props.users.every((user) => props.selectedIds.includes(user.userId)))
-const indeterminate = computed(() => props.selectedIds.length > 0 && !allSelected.value)
-
-function toggleAll(checked: boolean) {
-  emit('update:selectedIds', checked ? props.users.map((user) => user.userId) : [])
-}
-
-function toggleOne(id: string, checked: boolean) {
-  if (checked) {
-    emit('update:selectedIds', [...props.selectedIds, id])
-  } else {
-    emit('update:selectedIds', props.selectedIds.filter((item) => item !== id))
-  }
+function splitCsv(value?: string): string[] {
+  if (!value) return []
+  return value.split(',').map((item) => item.trim()).filter(Boolean)
 }
 </script>
 
 <style scoped>
-.check-col {
-  width: 42px;
-}
-
-.empty-cell {
-  padding: 12px;
-}
-
-.user-name {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.user-main {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.username {
-  color: var(--text);
-  font-weight: 500;
-}
-
-.role-list {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.last-login {
-  font-size: 11px;
-  color: var(--text3);
-}
-
-.action-list {
-  display: flex;
-  gap: 6px;
-}
-
-.table-action-btn {
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text2);
-  font-size: 11px;
-  cursor: pointer;
-  transition: all var(--transition);
-}
-
-.table-action-btn:hover {
-  background: var(--surface2);
-  color: var(--text);
-  border-color: var(--border2);
-}
-
-.table-action-btn.danger {
-  color: #ef4444;
-}
-
-.table-action-btn.danger:hover {
-  border-color: #ef4444;
-  background: rgba(239, 68, 68, 0.1);
-}
-
-tbody tr.highlighted {
-  background: rgba(59, 130, 246, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.25);
-}
+.table-shell { width: 100%; }
+.user-cell { display: flex; align-items: center; gap: 12px; }
+.avatar { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(14, 165, 233, 0.28)); color: var(--text); font-weight: 700; }
+.primary { color: var(--text); font-weight: 600; }
+.secondary { margin-top: 2px; color: var(--text3); font-size: 12px; }
+.tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 999px; background: rgba(148, 163, 184, 0.12); color: var(--text2); font-size: 12px; }
+.status-pill { display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 999px; font-size: 12px; }
+.status-pill.enabled { background: rgba(16, 185, 129, 0.14); color: #34d399; }
+.status-pill.disabled { background: rgba(239, 68, 68, 0.14); color: #f87171; }
+.actions { display: flex; gap: 8px; }
+.table-btn { border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 10px; background: rgba(15, 23, 42, 0.46); color: var(--text2); padding: 7px 12px; font-size: 12px; cursor: pointer; }
+.table-btn.danger { color: #fda4af; }
 </style>

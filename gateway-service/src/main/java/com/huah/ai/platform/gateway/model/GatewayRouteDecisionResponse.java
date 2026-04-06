@@ -15,5 +15,6 @@ public class GatewayRouteDecisionResponse {
     private String reason;
     private boolean fallbackTriggered;
     private String estimatedCostNote;
-    private List<GatewayCandidateModelView> candidateModels;
+    private List<GatewayCandidateModelResponse> candidateModels;
 }
+

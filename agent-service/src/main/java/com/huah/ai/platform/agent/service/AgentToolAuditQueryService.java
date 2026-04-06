@@ -1,6 +1,6 @@
 package com.huah.ai.platform.agent.service;
 
-import com.huah.ai.platform.agent.audit.AiToolAuditLog;
+import com.huah.ai.platform.agent.audit.AiToolAuditLogEntity;
 import com.huah.ai.platform.agent.audit.AiToolAuditLogMapper;
 import com.huah.ai.platform.agent.dto.ToolAuditLogResponse;
 import lombok.RequiredArgsConstructor;
@@ -24,7 +24,7 @@ public class AgentToolAuditQueryService {
                 .toList();
     }
 
-    private ToolAuditLogResponse toResponse(AiToolAuditLog log) {
+    private ToolAuditLogResponse toResponse(AiToolAuditLogEntity log) {
         return ToolAuditLogResponse.builder()
                 .id(log.getId())
                 .userId(log.getUserId())
@@ -44,3 +44,4 @@ public class AgentToolAuditQueryService {
                 .build();
     }
 }
+

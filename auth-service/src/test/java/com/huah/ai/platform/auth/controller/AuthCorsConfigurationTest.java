@@ -1,9 +1,13 @@
 package com.huah.ai.platform.auth.controller;
 
 import com.huah.ai.platform.auth.config.SecurityConfig;
+import com.huah.ai.platform.auth.mapper.AiBotPermissionRoleMapper;
+import com.huah.ai.platform.auth.mapper.AiRoleMapper;
 import com.huah.ai.platform.auth.mapper.AiUserMapper;
+import com.huah.ai.platform.auth.mapper.AiUserRoleMapper;
 import com.huah.ai.platform.auth.mapper.BotPermissionMapper;
 import com.huah.ai.platform.auth.service.AuthAdminService;
+import com.huah.ai.platform.auth.service.AuthRoleService;
 import com.huah.ai.platform.auth.service.AuthTokenService;
 import com.huah.ai.platform.common.config.CorsConfig;
 import org.junit.jupiter.api.Test;
@@ -39,13 +43,25 @@ class AuthCorsConfigurationTest {
     private AiUserMapper userMapper;
 
     @MockBean
+    private AiRoleMapper aiRoleMapper;
+
+    @MockBean
+    private AiUserRoleMapper aiUserRoleMapper;
+
+    @MockBean
     private BotPermissionMapper botPermissionMapper;
+
+    @MockBean
+    private AiBotPermissionRoleMapper aiBotPermissionRoleMapper;
 
     @MockBean
     private AuthTokenService authTokenService;
 
     @MockBean
     private AuthAdminService authAdminService;
+
+    @MockBean
+    private AuthRoleService authRoleService;
 
     @Test
     void shouldAllowConfiguredOrigin() throws Exception {

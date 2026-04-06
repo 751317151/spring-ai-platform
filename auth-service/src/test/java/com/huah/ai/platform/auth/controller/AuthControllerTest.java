@@ -1,5 +1,15 @@
 package com.huah.ai.platform.auth.controller;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.huah.ai.platform.auth.dto.LoginRequest;
 import com.huah.ai.platform.auth.dto.LogoutRequest;
 import com.huah.ai.platform.auth.dto.RefreshTokenRequest;
@@ -11,6 +21,8 @@ import com.huah.ai.platform.auth.service.AuthTokenService;
 import com.huah.ai.platform.auth.service.AuthViewAssembler;
 import com.huah.ai.platform.common.dto.Result;
 import com.huah.ai.platform.common.util.JwtUtil;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,19 +31,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.crypto.password.PasswordEncoder;
-
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class AuthControllerTest {
@@ -59,8 +58,8 @@ class AuthControllerTest {
                 redisTemplate,
                 userMapper,
                 mock(com.huah.ai.platform.auth.mapper.BotPermissionMapper.class),
-                new AuthViewAssembler()
-        );
+                new AuthViewAssembler(),
+                mock(com.huah.ai.platform.auth.service.AuthRoleService.class));
         controller = new AuthController(authTokenService, mock(AuthAdminService.class));
     }
 
@@ -123,12 +122,7 @@ class AuthControllerTest {
         Result<Void> result = controller.logout("Bearer " + token, new LogoutRequest());
 
         assertEquals(200, result.getCode());
-        verify(valueOperations).set(
-                eq("ai:token:blacklist:" + token),
-                eq("1"),
-                anyLong(),
-                eq(TimeUnit.SECONDS)
-        );
+        verify(valueOperations).set(eq("ai:token:blacklist:" + token), eq("1"), anyLong(), eq(TimeUnit.SECONDS));
     }
 
     @Test
@@ -171,7 +165,6 @@ class AuthControllerTest {
                 eq("ai:token:blacklist:" + refreshRequest.getRefreshToken()),
                 eq("1"),
                 anyLong(),
-                eq(TimeUnit.SECONDS)
-        );
+                eq(TimeUnit.SECONDS));
     }
 }
