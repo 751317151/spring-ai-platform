@@ -1,7 +1,5 @@
 package com.huah.ai.platform.agent.controller;
 
-import com.huah.ai.platform.agent.audit.AiToolAuditLog;
-import com.huah.ai.platform.agent.audit.AiToolAuditLogMapper;
 import com.huah.ai.platform.agent.dto.AgentAccessOverviewResponse;
 import com.huah.ai.platform.agent.dto.AgentArchivedTraceLookupResponse;
 import com.huah.ai.platform.agent.dto.AgentDiagnosticsResponse;
@@ -16,20 +14,21 @@ import com.huah.ai.platform.agent.dto.AgentWorkbenchSummaryResponse;
 import com.huah.ai.platform.agent.dto.McpServerListResponse;
 import com.huah.ai.platform.agent.dto.MultiAgentTraceRecoverRequest;
 import com.huah.ai.platform.agent.dto.MultiAgentTraceResponse;
+import com.huah.ai.platform.agent.dto.ToolAuditLogResponse;
 import com.huah.ai.platform.agent.dto.ToolSecurityOverviewResponse;
 import com.huah.ai.platform.agent.multi.MultiAgentExecutionListener;
 import com.huah.ai.platform.agent.multi.MultiAgentExecutionTrace;
 import com.huah.ai.platform.agent.multi.MultiAgentTraceService;
 import com.huah.ai.platform.agent.security.AgentAccessChecker;
-import com.huah.ai.platform.agent.security.ToolSecurityService;
 import com.huah.ai.platform.agent.service.AgentAccessOverviewService;
+import com.huah.ai.platform.agent.service.AgentDiagnosticsFacadeService;
 import com.huah.ai.platform.agent.service.AgentLogArchiveService;
 import com.huah.ai.platform.agent.service.AgentLogLifecycleService;
 import com.huah.ai.platform.agent.service.AgentMetadataService;
+import com.huah.ai.platform.agent.service.AgentToolAuditQueryService;
 import com.huah.ai.platform.agent.service.AgentRuntimeIsolationService;
 import com.huah.ai.platform.agent.service.AgentWorkbenchService;
 import com.huah.ai.platform.agent.service.McpServerCatalogService;
-import com.huah.ai.platform.agent.tools.InternalApiTools;
 import com.huah.ai.platform.common.dto.Result;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -41,7 +40,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.ArrayList;
 import java.util.List;
 
 @RestController
@@ -51,7 +49,6 @@ public class AgentOperationsController {
 
     private final MultiAgentTraceService multiAgentTraceService;
     private final AgentAccessChecker accessChecker;
-    private final ToolSecurityService toolSecurityService;
     private final McpServerCatalogService mcpServerCatalogService;
     private final AgentAccessOverviewService agentAccessOverviewService;
     private final AgentWorkbenchService agentWorkbenchService;
@@ -59,8 +56,8 @@ public class AgentOperationsController {
     private final AgentLogArchiveService agentLogArchiveService;
     private final AgentMetadataService agentMetadataService;
     private final AgentRuntimeIsolationService agentRuntimeIsolationService;
-    private final InternalApiTools internalApiTools;
-    private final AiToolAuditLogMapper toolAuditLogMapper;
+    private final AgentToolAuditQueryService agentToolAuditQueryService;
+    private final AgentDiagnosticsFacadeService agentDiagnosticsFacadeService;
     private final AgentControllerSupport controllerSupport;
 
     @GetMapping("/mcp/servers")
@@ -85,7 +82,7 @@ public class AgentOperationsController {
     }
 
     @GetMapping("/tools/audit")
-    public Result<List<AiToolAuditLog>> listToolAuditLogs(
+    public Result<List<ToolAuditLogResponse>> listToolAuditLogs(
             @RequestParam(name = "agentType", required = false) String agentType,
             @RequestParam(name = "toolName", required = false) String toolName,
             @RequestParam(name = "traceId", required = false) String traceId,
@@ -93,7 +90,7 @@ public class AgentOperationsController {
             HttpServletRequest request) {
         String userId = controllerSupport.currentUserId(request);
         int safeLimit = controllerSupport.safeLimit(limit, 50, 1, 200);
-        return Result.ok(toolAuditLogMapper.selectRecent(userId, agentType, toolName, traceId, safeLimit));
+        return Result.ok(agentToolAuditQueryService.listRecent(userId, agentType, toolName, traceId, safeLimit));
     }
 
     @GetMapping("/tools/security/{agentType}")
@@ -104,13 +101,7 @@ public class AgentOperationsController {
         if (deny != null) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
         }
-        return Result.ok(ToolSecurityOverviewResponse.builder()
-                .securityEnabled(toolSecurityService.isSecurityEnabled())
-                .agentType(agentType)
-                .allowedTools(toolSecurityService.getAllowedTools(agentType))
-                .allowedConnectors(toolSecurityService.getAllowedConnectors(agentType))
-                .enabledConnectors(internalApiTools.listEnabledConnectorCodes())
-                .build());
+        return Result.ok(agentDiagnosticsFacadeService.buildToolSecurityOverview(agentType));
     }
 
     @GetMapping("/diagnostics/{agentType}")
@@ -122,34 +113,7 @@ public class AgentOperationsController {
         if (deny != null) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
         }
-        McpServerListResponse mcpServers = mcpServerCatalogService.listServers(agentType);
-        List<String> allowedTools = toolSecurityService.getAllowedTools(agentType);
-        List<String> allowedConnectors = toolSecurityService.getAllowedConnectors(agentType);
-        List<String> allowedMcpServers = toolSecurityService.getAllowedMcpServers(agentType);
-        int recentMultiTraceCount = AgentApiConstants.AGENT_TYPE_MULTI.equals(agentType)
-                ? multiAgentTraceService.listTraces(context.getUserId(), null, 10).size()
-                : 0;
-        String summary = buildAgentDiagnosticSummary(
-                agentType,
-                allowedTools,
-                allowedConnectors,
-                allowedMcpServers,
-                mcpServers.getCount(),
-                mcpServers.getIssueCount(),
-                recentMultiTraceCount);
-        return Result.ok(AgentDiagnosticsResponse.builder()
-                .agentType(agentType)
-                .accessible(true)
-                .toolSecurityEnabled(toolSecurityService.isSecurityEnabled())
-                .allowedTools(allowedTools)
-                .allowedConnectors(allowedConnectors)
-                .allowedMcpServers(allowedMcpServers)
-                .enabledConnectors(internalApiTools.listEnabledConnectorCodes())
-                .recentMultiTraceCount(recentMultiTraceCount)
-                .availableMcpServerCount(mcpServers.getCount())
-                .mcpIssueCount(mcpServers.getIssueCount())
-                .summary(summary)
-                .build());
+        return Result.ok(agentDiagnosticsFacadeService.buildDiagnostics(agentType, context.getUserId()));
     }
 
     @GetMapping("/access/{agentType}")
@@ -326,27 +290,4 @@ public class AgentOperationsController {
         return Result.ok(multiAgentTraceService.listTraces(userId, sessionId, safeLimit));
     }
 
-    private String buildAgentDiagnosticSummary(String agentType,
-                                               List<String> allowedTools,
-                                               List<String> allowedConnectors,
-                                               List<String> allowedMcpServers,
-                                               int mcpServerCount,
-                                               int mcpIssueCount,
-                                               int recentMultiTraceCount) {
-        List<String> fragments = new ArrayList<>();
-        fragments.add("agent=" + agentType);
-        fragments.add("tools=" + allowedTools.size());
-        fragments.add("connectors=" + allowedConnectors.size());
-        fragments.add("mcpServers=" + mcpServerCount);
-        if (!allowedMcpServers.isEmpty()) {
-            fragments.add("mcpAllow=" + allowedMcpServers.size());
-        }
-        if (mcpIssueCount > 0) {
-            fragments.add("mcpIssues=" + mcpIssueCount);
-        }
-        if (recentMultiTraceCount > 0) {
-            fragments.add("recentMultiTraces=" + recentMultiTraceCount);
-        }
-        return String.join(", ", fragments);
-    }
 }

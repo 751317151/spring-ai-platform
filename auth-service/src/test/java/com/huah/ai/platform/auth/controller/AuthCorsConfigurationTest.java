@@ -3,6 +3,8 @@ package com.huah.ai.platform.auth.controller;
 import com.huah.ai.platform.auth.config.SecurityConfig;
 import com.huah.ai.platform.auth.mapper.AiUserMapper;
 import com.huah.ai.platform.auth.mapper.BotPermissionMapper;
+import com.huah.ai.platform.auth.service.AuthAdminService;
+import com.huah.ai.platform.auth.service.AuthTokenService;
 import com.huah.ai.platform.common.config.CorsConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +40,12 @@ class AuthCorsConfigurationTest {
 
     @MockBean
     private BotPermissionMapper botPermissionMapper;
+
+    @MockBean
+    private AuthTokenService authTokenService;
+
+    @MockBean
+    private AuthAdminService authAdminService;
 
     @Test
     void shouldAllowConfiguredOrigin() throws Exception {

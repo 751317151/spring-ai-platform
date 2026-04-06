@@ -1,18 +1,18 @@
 package com.huah.ai.platform.auth.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.huah.ai.platform.auth.model.AiUser;
+import com.huah.ai.platform.auth.model.AiUserEntity;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 @Mapper
-public interface AiUserMapper extends BaseMapper<AiUser> {
+public interface AiUserMapper extends BaseMapper<AiUserEntity> {
 
-    AiUser selectByUserId(@Param("userId") String userId);
+    AiUserEntity selectByUserId(@Param("userId") String userId);
 
-    AiUser selectByUserIdAndEnabled(@Param("userId") String userId);
+    AiUserEntity selectByUserIdAndEnabled(@Param("userId") String userId);
 
-    AiUser selectByUsername(@Param("username") String username);
+    AiUserEntity selectByUsername(@Param("username") String username);
 
-    AiUser selectByUsernameAndEnabled(@Param("username") String username);
+    AiUserEntity selectByUsernameAndEnabled(@Param("username") String username);
 }

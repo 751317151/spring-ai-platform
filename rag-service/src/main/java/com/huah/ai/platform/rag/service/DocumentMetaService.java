@@ -6,8 +6,8 @@ import com.huah.ai.platform.rag.mapper.DocumentMetaMapper;
 import com.huah.ai.platform.rag.mapper.KnowledgeBaseMapper;
 import com.huah.ai.platform.rag.metrics.RagMetricsService;
 import com.huah.ai.platform.rag.model.DocumentChunkPreview;
-import com.huah.ai.platform.rag.model.DocumentMeta;
-import com.huah.ai.platform.rag.model.KnowledgeBase;
+import com.huah.ai.platform.rag.model.DocumentMetaEntity;
+import com.huah.ai.platform.rag.model.KnowledgeBaseEntity;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -28,33 +28,33 @@ public class DocumentMetaService {
     private final JdbcTemplate jdbcTemplate;
     private final RagMetricsService metricsService;
 
-    public KnowledgeBase getKnowledgeBase(Long id) {
-        KnowledgeBase kb = kbMapper.selectById(id);
+    public KnowledgeBaseEntity getKnowledgeBase(Long id) {
+        KnowledgeBaseEntity kb = kbMapper.selectById(id);
         if (kb == null) {
             throw new BizException("Knowledge base not found: " + id);
         }
         return kb;
     }
 
-    public KnowledgeBase getKnowledgeBase(Long id, AccessContext context) {
-        KnowledgeBase kb = getKnowledgeBase(id);
+    public KnowledgeBaseEntity getKnowledgeBase(Long id, AccessContext context) {
+        KnowledgeBaseEntity kb = getKnowledgeBase(id);
         ensureKnowledgeBaseAccessible(kb, context);
         return kb;
     }
 
-    public List<KnowledgeBase> listKnowledgeBases(AccessContext context) {
+    public List<KnowledgeBaseEntity> listKnowledgeBases(AccessContext context) {
         return kbMapper.selectList(null).stream()
                 .filter(kb -> isKnowledgeBaseAccessible(kb, context))
                 .toList();
     }
 
-    public KnowledgeBase createKnowledgeBase(KnowledgeBase kb) {
+    public KnowledgeBaseEntity createKnowledgeBase(KnowledgeBaseEntity kb) {
         kbMapper.insert(kb);
         return kb;
     }
 
-    public KnowledgeBase updateKnowledgeBase(Long id, KnowledgeBase update) {
-        KnowledgeBase kb = getKnowledgeBase(id);
+    public KnowledgeBaseEntity updateKnowledgeBase(Long id, KnowledgeBaseEntity update) {
+        KnowledgeBaseEntity kb = getKnowledgeBase(id);
         if (update.getName() != null) {
             kb.setName(update.getName());
         }
@@ -87,41 +87,41 @@ public class DocumentMetaService {
     }
 
     public void deleteKnowledgeBase(Long id) {
-        KnowledgeBase kb = getKnowledgeBase(id);
-        List<DocumentMeta> docs = docMapper.selectByKnowledgeBaseId(id);
+        KnowledgeBaseEntity kb = getKnowledgeBase(id);
+        List<DocumentMetaEntity> docs = docMapper.selectByKnowledgeBaseId(id);
         if (!docs.isEmpty()) {
             throw new BizException("Knowledge base still contains " + docs.size() + " documents. Delete them first.");
         }
         kbMapper.deleteById(kb.getId());
     }
 
-    public DocumentMeta getDocument(Long docId) {
-        DocumentMeta doc = docMapper.selectById(docId);
+    public DocumentMetaEntity getDocument(Long docId) {
+        DocumentMetaEntity doc = docMapper.selectById(docId);
         if (doc == null) {
             throw new BizException("Document not found: " + docId);
         }
         return doc;
     }
 
-    public DocumentMeta findLatestByKnowledgeBaseAndFilename(Long knowledgeBaseId, String filename) {
+    public DocumentMetaEntity findLatestByKnowledgeBaseAndFilename(Long knowledgeBaseId, String filename) {
         return docMapper.selectLatestByKnowledgeBaseIdAndFilename(knowledgeBaseId, filename);
     }
 
-    public DocumentMeta createProcessingDocumentMeta(DocumentMeta meta) {
-        meta.setStatus(DocumentMeta.STATUS_PROCESSING);
+    public DocumentMetaEntity createProcessingDocumentMeta(DocumentMetaEntity meta) {
+        meta.setStatus(DocumentMetaEntity.STATUS_PROCESSING);
         meta.setErrorMessage(null);
         meta.setIndexedAt(null);
         docMapper.insert(meta);
         return meta;
     }
 
-    public DocumentMeta resetFailedDocumentForRetry(Long docId) {
-        DocumentMeta meta = getDocument(docId);
-        if (!DocumentMeta.STATUS_FAILED.equals(meta.getStatus())) {
+    public DocumentMetaEntity resetFailedDocumentForRetry(Long docId) {
+        DocumentMetaEntity meta = getDocument(docId);
+        if (!DocumentMetaEntity.STATUS_FAILED.equals(meta.getStatus())) {
             throw new BizException("Only failed documents can be retried: " + docId);
         }
         ensureSourceFileExists(meta, "retry");
-        meta.setStatus(DocumentMeta.STATUS_PROCESSING);
+        meta.setStatus(DocumentMetaEntity.STATUS_PROCESSING);
         meta.setErrorMessage(null);
         meta.setIndexedAt(null);
         meta.setChunkCount(0);
@@ -129,14 +129,14 @@ public class DocumentMetaService {
         return meta;
     }
 
-    public DocumentMeta prepareDocumentForReindex(Long docId) {
-        DocumentMeta meta = getDocument(docId);
+    public DocumentMetaEntity prepareDocumentForReindex(Long docId) {
+        DocumentMetaEntity meta = getDocument(docId);
         ensureSourceFileExists(meta, "reindex");
 
-        if (DocumentMeta.STATUS_INDEXED.equals(meta.getStatus())) {
+        if (DocumentMetaEntity.STATUS_INDEXED.equals(meta.getStatus())) {
             deleteDocumentVectors(docId, "delete-vectors-for-reindex");
 
-            KnowledgeBase kb = kbMapper.selectById(meta.getKnowledgeBaseId());
+            KnowledgeBaseEntity kb = kbMapper.selectById(meta.getKnowledgeBaseId());
             if (kb != null) {
                 kb.setDocumentCount(Math.max(0, kb.getDocumentCount() - 1));
                 kb.setTotalChunks(Math.max(0, kb.getTotalChunks() - meta.getChunkCount()));
@@ -144,7 +144,7 @@ public class DocumentMetaService {
             }
         }
 
-        meta.setStatus(DocumentMeta.STATUS_PROCESSING);
+        meta.setStatus(DocumentMetaEntity.STATUS_PROCESSING);
         meta.setErrorMessage(null);
         meta.setIndexedAt(null);
         meta.setChunkCount(0);
@@ -152,20 +152,20 @@ public class DocumentMetaService {
         return meta;
     }
 
-    public DocumentMeta markDocumentIndexed(Long docId, String storagePath, String contentType, int chunkCount) {
-        DocumentMeta meta = getDocument(docId);
-        boolean newlyIndexed = !DocumentMeta.STATUS_INDEXED.equals(meta.getStatus());
+    public DocumentMetaEntity markDocumentIndexed(Long docId, String storagePath, String contentType, int chunkCount) {
+        DocumentMetaEntity meta = getDocument(docId);
+        boolean newlyIndexed = !DocumentMetaEntity.STATUS_INDEXED.equals(meta.getStatus());
 
         meta.setStoragePath(storagePath);
         meta.setContentType(contentType);
         meta.setChunkCount(chunkCount);
-        meta.setStatus(DocumentMeta.STATUS_INDEXED);
+        meta.setStatus(DocumentMetaEntity.STATUS_INDEXED);
         meta.setErrorMessage(null);
         meta.setIndexedAt(LocalDateTime.now());
         docMapper.updateById(meta);
 
         if (newlyIndexed) {
-            KnowledgeBase kb = kbMapper.selectById(meta.getKnowledgeBaseId());
+            KnowledgeBaseEntity kb = kbMapper.selectById(meta.getKnowledgeBaseId());
             if (kb != null) {
                 kb.setDocumentCount(kb.getDocumentCount() + 1);
                 kb.setTotalChunks(kb.getTotalChunks() + chunkCount);
@@ -175,27 +175,27 @@ public class DocumentMetaService {
         return meta;
     }
 
-    public DocumentMeta markDocumentFailed(Long docId, String errorMessage) {
-        DocumentMeta meta = getDocument(docId);
-        meta.setStatus(DocumentMeta.STATUS_FAILED);
+    public DocumentMetaEntity markDocumentFailed(Long docId, String errorMessage) {
+        DocumentMetaEntity meta = getDocument(docId);
+        meta.setStatus(DocumentMetaEntity.STATUS_FAILED);
         meta.setErrorMessage(errorMessage);
         meta.setIndexedAt(null);
         docMapper.updateById(meta);
         return meta;
     }
 
-    public List<DocumentMeta> listDocuments(Long kbId, AccessContext context) {
+    public List<DocumentMetaEntity> listDocuments(Long kbId, AccessContext context) {
         getKnowledgeBase(kbId, context);
         return docMapper.selectByKnowledgeBaseId(kbId);
     }
 
-    public DocumentMeta getDocument(Long docId, AccessContext context) {
-        DocumentMeta doc = getDocument(docId);
+    public DocumentMetaEntity getDocument(Long docId, AccessContext context) {
+        DocumentMetaEntity doc = getDocument(docId);
         getKnowledgeBase(doc.getKnowledgeBaseId(), context);
         return doc;
     }
 
-    public List<DocumentMeta> listRetryableFailedDocuments(int limit) {
+    public List<DocumentMetaEntity> listRetryableFailedDocuments(int limit) {
         return docMapper.selectRetryCandidates(limit);
     }
 
@@ -224,7 +224,7 @@ public class DocumentMetaService {
     }
 
     public void deleteDocument(Long docId) {
-        DocumentMeta doc = getDocument(docId);
+        DocumentMetaEntity doc = getDocument(docId);
 
         if (doc.getStoragePath() != null) {
             fileStorageService.delete(doc.getStoragePath());
@@ -232,8 +232,8 @@ public class DocumentMetaService {
 
         deleteDocumentVectors(docId, "delete-vectors");
 
-        KnowledgeBase kb = kbMapper.selectById(doc.getKnowledgeBaseId());
-        if (kb != null && DocumentMeta.STATUS_INDEXED.equals(doc.getStatus())) {
+        KnowledgeBaseEntity kb = kbMapper.selectById(doc.getKnowledgeBaseId());
+        if (kb != null && DocumentMetaEntity.STATUS_INDEXED.equals(doc.getStatus())) {
             kb.setDocumentCount(Math.max(0, kb.getDocumentCount() - 1));
             kb.setTotalChunks(Math.max(0, kb.getTotalChunks() - doc.getChunkCount()));
             kbMapper.updateById(kb);
@@ -243,7 +243,7 @@ public class DocumentMetaService {
         log.info("Document deleted: id={}, file={}", docId, doc.getFilename());
     }
 
-    private void ensureSourceFileExists(DocumentMeta meta, String action) {
+    private void ensureSourceFileExists(DocumentMetaEntity meta, String action) {
         if (meta.getStoragePath() == null || meta.getStoragePath().isBlank()) {
             throw new BizException("Document source file is missing and cannot " + action + ": " + meta.getId());
         }
@@ -264,13 +264,13 @@ public class DocumentMetaService {
         getKnowledgeBase(knowledgeBaseId, context);
     }
 
-    private void ensureKnowledgeBaseAccessible(KnowledgeBase kb, AccessContext context) {
+    private void ensureKnowledgeBaseAccessible(KnowledgeBaseEntity kb, AccessContext context) {
         if (!isKnowledgeBaseAccessible(kb, context)) {
             throw new PermissionDeniedException("无权限访问该知识库");
         }
     }
 
-    private boolean isKnowledgeBaseAccessible(KnowledgeBase kb, AccessContext context) {
+    private boolean isKnowledgeBaseAccessible(KnowledgeBaseEntity kb, AccessContext context) {
         if (context == null || context.admin()) {
             return true;
         }

@@ -61,7 +61,7 @@ class AgentWorkbenchServiceTest {
         List<AiAuditLog> auditLogs24h = new ArrayList<>();
         for (int i = 0; i < 10; i++) {
             auditLogs24h.add(AiAuditLog.builder()
-                    .id("audit-" + i)
+                    .id(1000L + i)
                     .agentType("multi")
                     .userId("u-" + i)
                     .sessionId("session-" + (i % 2))
@@ -74,16 +74,16 @@ class AgentWorkbenchServiceTest {
                     .build());
         }
         List<AiToolAuditLog> toolLogs24h = List.of(
-                buildToolLog("tool-1", "searchDocuments", true, null, null, 80L, "trace-1", now.minusHours(1)),
-                buildToolLog("tool-2", "searchDocuments", false, "MCP_DENIED", "access denied", 90L, "trace-2", now.minusHours(1)),
-                buildToolLog("tool-3", "fetchChunk", true, null, null, 60L, "trace-3", now.minusHours(2)),
-                buildToolLog("tool-4", "fetchChunk", false, null, "network timeout", 120L, "trace-4", now.minusHours(2)),
-                buildToolLog("tool-5", "searchDocuments", true, null, null, 110L, "trace-5", now.minusHours(3)),
-                buildToolLog("tool-6", "searchDocuments", true, null, null, 70L, "trace-6", now.minusHours(3)),
-                buildToolLog("tool-7", "searchDocuments", true, null, null, 65L, "trace-7", now.minusHours(4)),
-                buildToolLog("tool-8", "fetchChunk", true, null, null, 75L, "trace-8", now.minusHours(4)),
-                buildToolLog("tool-9", "searchDocuments", true, null, null, 78L, "trace-9", now.minusHours(5)),
-                buildToolLog("tool-10", "fetchChunk", true, null, null, 82L, "trace-10", now.minusHours(5))
+                buildToolLog(2001L, "searchDocuments", true, null, null, 80L, "trace-1", now.minusHours(1)),
+                buildToolLog(2002L, "searchDocuments", false, "MCP_DENIED", "access denied", 90L, "trace-2", now.minusHours(1)),
+                buildToolLog(2003L, "fetchChunk", true, null, null, 60L, "trace-3", now.minusHours(2)),
+                buildToolLog(2004L, "fetchChunk", false, null, "network timeout", 120L, "trace-4", now.minusHours(2)),
+                buildToolLog(2005L, "searchDocuments", true, null, null, 110L, "trace-5", now.minusHours(3)),
+                buildToolLog(2006L, "searchDocuments", true, null, null, 70L, "trace-6", now.minusHours(3)),
+                buildToolLog(2007L, "searchDocuments", true, null, null, 65L, "trace-7", now.minusHours(4)),
+                buildToolLog(2008L, "fetchChunk", true, null, null, 75L, "trace-8", now.minusHours(4)),
+                buildToolLog(2009L, "searchDocuments", true, null, null, 78L, "trace-9", now.minusHours(5)),
+                buildToolLog(2010L, "fetchChunk", true, null, null, 82L, "trace-10", now.minusHours(5))
         );
         List<MultiAgentExecutionTrace> traces = List.of(
                 MultiAgentExecutionTrace.builder()
@@ -131,7 +131,7 @@ class AgentWorkbenchServiceTest {
         List<AiAuditLog> leftLogs = new ArrayList<>();
         for (int i = 0; i < 12; i++) {
             leftLogs.add(AiAuditLog.builder()
-                    .id("left-" + i)
+                    .id(3000L + i)
                     .agentType("rd")
                     .latencyMs(220L)
                     .success(i >= 4)
@@ -141,7 +141,7 @@ class AgentWorkbenchServiceTest {
         List<AiAuditLog> rightLogs = new ArrayList<>();
         for (int i = 0; i < 5; i++) {
             rightLogs.add(AiAuditLog.builder()
-                    .id("right-" + i)
+                    .id(4000L + i)
                     .agentType("ops")
                     .latencyMs(90L)
                     .success(true)
@@ -175,7 +175,7 @@ class AgentWorkbenchServiceTest {
         assertTrue(response.getSummary().contains("primaryGap"));
     }
 
-    private AiToolAuditLog buildToolLog(String id,
+    private AiToolAuditLog buildToolLog(Long id,
                                         String toolName,
                                         boolean success,
                                         String reasonCode,

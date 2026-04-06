@@ -3,10 +3,10 @@
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.huah.ai.platform.rag.mapper.KnowledgeBaseMapper">
-    <select id="selectByStatus" resultType="com.huah.ai.platform.rag.model.KnowledgeBase">
+    <select id="selectByStatus" resultType="com.huah.ai.platform.rag.model.KnowledgeBaseEntity">
         SELECT * FROM knowledge_bases WHERE status = #{status}
     </select>
-    <select id="selectByDepartment" resultType="com.huah.ai.platform.rag.model.KnowledgeBase">
+    <select id="selectByDepartment" resultType="com.huah.ai.platform.rag.model.KnowledgeBaseEntity">
         SELECT * FROM knowledge_bases WHERE department = #{department}
     </select>
 </mapper>

@@ -7,6 +7,7 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import java.util.HashMap;
 import java.util.List;
@@ -81,8 +82,8 @@ public class WeatherTools {
             result.put(FIELD_WEATHER, String.valueOf(now.get("text")));
             result.put("updateTime", String.valueOf(now.get("obsTime")));
             return result;
-        } catch (Exception exception) {
-            log.error("[Tool] queryWeather failed: city={}, error={}", city, exception.getMessage());
+        } catch (AiServiceException | RestClientException | IllegalArgumentException exception) {
+            log.error("[Tool] queryWeather failed: city={}, error={}", city, exception.getMessage(), exception);
             return Map.of(FIELD_ERROR, MESSAGE_CURRENT_WEATHER_FAILED + ": " + exception.getMessage());
         }
     }
@@ -128,8 +129,8 @@ public class WeatherTools {
                         return result;
                     })
                     .toList();
-        } catch (Exception exception) {
-            log.error("[Tool] queryWeatherForecast failed: city={}, error={}", city, exception.getMessage());
+        } catch (AiServiceException | RestClientException | IllegalArgumentException exception) {
+            log.error("[Tool] queryWeatherForecast failed: city={}, error={}", city, exception.getMessage(), exception);
             return List.of(Map.of(FIELD_ERROR, MESSAGE_FORECAST_FAILED + ": " + exception.getMessage()));
         }
     }

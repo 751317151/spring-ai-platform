@@ -3,18 +3,18 @@
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.huah.ai.platform.auth.mapper.AiUserMapper">
-    <select id="selectByUserId" resultType="com.huah.ai.platform.auth.model.AiUser">
+    <select id="selectByUserId" resultType="com.huah.ai.platform.auth.model.AiUserEntity">
         SELECT * FROM ai_users WHERE userid = #{userId}
     </select>
-    <select id="selectByUserIdAndEnabled" resultType="com.huah.ai.platform.auth.model.AiUser">
+    <select id="selectByUserIdAndEnabled" resultType="com.huah.ai.platform.auth.model.AiUserEntity">
         SELECT * FROM ai_users
         WHERE userid = #{userId}
           AND enabled = true
     </select>
-    <select id="selectByUsername" resultType="com.huah.ai.platform.auth.model.AiUser">
+    <select id="selectByUsername" resultType="com.huah.ai.platform.auth.model.AiUserEntity">
         SELECT * FROM ai_users WHERE username = #{username}
     </select>
-    <select id="selectByUsernameAndEnabled" resultType="com.huah.ai.platform.auth.model.AiUser">
+    <select id="selectByUsernameAndEnabled" resultType="com.huah.ai.platform.auth.model.AiUserEntity">
         SELECT * FROM ai_users
         WHERE username = #{username}
           AND enabled = true

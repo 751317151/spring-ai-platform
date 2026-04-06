@@ -1,44 +1,34 @@
 package com.huah.ai.platform.gateway.controller;
 
 import com.huah.ai.platform.common.dto.Result;
-import com.huah.ai.platform.gateway.config.ModelRegistryConfig;
 import com.huah.ai.platform.gateway.model.ChatRequest;
 import com.huah.ai.platform.gateway.model.ChatResponse;
 import com.huah.ai.platform.gateway.model.GatewayModelsResponse;
 import com.huah.ai.platform.gateway.model.GatewayRouteDecisionResponse;
+import com.huah.ai.platform.gateway.service.GatewayFacadeService;
 import com.huah.ai.platform.gateway.service.ModelGatewayService;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class GatewayControllerTest {
 
     private ModelGatewayService gatewayService;
-    private ModelRegistryConfig registryConfig;
-    private ExecutorService executor;
+    private GatewayFacadeService gatewayFacadeService;
     private GatewayController controller;
 
     @BeforeEach
     void setUp() {
         gatewayService = mock(ModelGatewayService.class);
-        registryConfig = new ModelRegistryConfig();
-        executor = Executors.newSingleThreadExecutor();
-        controller = new GatewayController(gatewayService, registryConfig, executor);
-    }
-
-    @AfterEach
-    void tearDown() {
-        executor.shutdownNow();
+        gatewayFacadeService = mock(GatewayFacadeService.class);
+        controller = new GatewayController(gatewayService, gatewayFacadeService);
     }
 
     @Test
@@ -51,6 +41,8 @@ class GatewayControllerTest {
 
     @Test
     void updateLoadBalanceShouldRejectUnsupportedStrategy() {
+        when(gatewayFacadeService.isSupportedStrategy("random")).thenReturn(false);
+
         Result<String> result = controller.updateLoadBalance(Map.of("strategy", "random"));
 
         assertEquals(400, result.getCode());
@@ -58,78 +50,50 @@ class GatewayControllerTest {
     }
 
     @Test
-    void chatFallbackShouldReturnServiceUnavailableResult() {
-        Result<ChatResponse> result = controller.chatFallback(new ChatRequest(), "default", "model-a", new RuntimeException("boom"));
+    void updateLoadBalanceShouldDelegateToFacade() {
+        when(gatewayFacadeService.isSupportedStrategy("weighted")).thenReturn(true);
+        when(gatewayFacadeService.updateLoadBalance("weighted"))
+                .thenReturn("Load balance strategy updated to: weighted");
 
-        assertEquals(503, result.getCode());
-        assertEquals("AI service is temporarily unavailable because circuit breaker protection was triggered. Please retry later.", result.getMessage());
+        Result<String> result = controller.updateLoadBalance(Map.of("strategy", "weighted"));
+
+        assertEquals(200, result.getCode());
+        assertEquals("Load balance strategy updated to: weighted", result.getData());
+        verify(gatewayFacadeService).updateLoadBalance("weighted");
     }
 
     @Test
-    void listModelsShouldIncludeStatsAndHealth() {
-        ModelRegistryConfig.ModelDefinition definition = new ModelRegistryConfig.ModelDefinition();
-        definition.setId("model-a");
-        definition.setName("GPT");
-        definition.setProvider("openai");
-        definition.setEnabled(true);
-        definition.setWeight(2);
-        definition.setRpmLimit(100);
-        definition.setPromptCostPer1kTokens(0.01);
-        definition.setCompletionCostPer1kTokens(0.02);
-        registryConfig.setRegistry(List.of(definition));
-        registryConfig.setSceneRoutes(Map.of("default", List.of("model-a")));
-        registryConfig.setLoadBalanceStrategy("weighted");
+    void chatFallbackShouldReturnServiceUnavailableResult() {
+        Result<ChatResponse> result =
+                controller.chatFallback(new ChatRequest(), "default", "model-a", new RuntimeException("boom"));
 
-        ModelGatewayService.ModelStats stats = new ModelGatewayService.ModelStats("model-a");
-        stats.record(120, true, 500, 250, 0.015d);
+        assertEquals(503, result.getCode());
+        assertEquals(
+                "AI service is temporarily unavailable because circuit breaker protection was triggered. Please retry later.",
+                result.getMessage());
+    }
 
-        ModelGatewayService.ModelHealth health = new ModelGatewayService.ModelHealth("model-a");
-        health.recordProbe(true, 80L, "probe-ok");
-
-        when(gatewayService.getAllStats()).thenReturn(Map.of("model-a", stats));
-        when(gatewayService.getAllHealth()).thenReturn(Map.of("model-a", health));
+    @Test
+    void listModelsShouldDelegateToFacade() {
+        GatewayModelsResponse response =
+                GatewayModelsResponse.builder().count(1).build();
+        when(gatewayFacadeService.listModels()).thenReturn(response);
 
         Result<GatewayModelsResponse> result = controller.listModels();
 
         assertEquals(200, result.getCode());
         assertEquals(1, result.getData().getCount());
-        assertEquals("model-a", result.getData().getModels().get(0).getId());
-        assertEquals("healthy", result.getData().getModels().get(0).getHealthStatus());
-        assertEquals(100.0d, result.getData().getModels().get(0).getSuccessRate());
     }
 
     @Test
-    void previewRouteDecisionShouldReturnCandidateModels() {
-        ModelGatewayService.RouteDecision decision = ModelGatewayService.RouteDecision.builder()
-                .scene("default")
-                .selectedModelId("model-a")
-                .strategy("weighted")
-                .reason("selected")
-                .candidateModelIds(List.of("model-a"))
-                .healthyCandidateModelIds(List.of("model-a"))
-                .degradedModelIds(List.of())
-                .fallbackTriggered(false)
-                .build();
-
-        ModelRegistryConfig.ModelDefinition definition = new ModelRegistryConfig.ModelDefinition();
-        definition.setId("model-a");
-        definition.setName("GPT");
-        definition.setProvider("openai");
-        definition.setEnabled(true);
-        definition.setWeight(3);
-        definition.setPromptCostPer1kTokens(0.01);
-        definition.setCompletionCostPer1kTokens(0.02);
-
-        when(gatewayService.selectModelWithDecision("default", null)).thenReturn(decision);
-        when(gatewayService.getModelDefinition("model-a")).thenReturn(definition);
-        when(gatewayService.getAllStats()).thenReturn(Map.of());
-        when(gatewayService.getAllHealth()).thenReturn(Map.of());
+    void previewRouteDecisionShouldDelegateToFacade() {
+        GatewayRouteDecisionResponse response =
+                GatewayRouteDecisionResponse.builder().selectedModelId("model-a").build();
+        when(gatewayFacadeService.previewRouteDecision("default", null)).thenReturn(response);
 
         Result<GatewayRouteDecisionResponse> result = controller.previewRouteDecision("default", null);
 
         assertEquals(200, result.getCode());
         assertEquals("model-a", result.getData().getSelectedModelId());
-        assertEquals(1, result.getData().getCandidateModels().size());
-        assertEquals(true, result.getData().getCandidateModels().get(0).isSelected());
     }
 }

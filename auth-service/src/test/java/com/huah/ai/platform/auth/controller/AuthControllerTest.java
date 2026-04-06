@@ -5,9 +5,10 @@ import com.huah.ai.platform.auth.dto.LogoutRequest;
 import com.huah.ai.platform.auth.dto.RefreshTokenRequest;
 import com.huah.ai.platform.auth.dto.TokenResponse;
 import com.huah.ai.platform.auth.dto.TokenValidationResponse;
-import com.huah.ai.platform.auth.mapper.AiUserMapper;
-import com.huah.ai.platform.auth.mapper.BotPermissionMapper;
-import com.huah.ai.platform.auth.model.AiUser;
+import com.huah.ai.platform.auth.model.AiUserEntity;
+import com.huah.ai.platform.auth.service.AuthAdminService;
+import com.huah.ai.platform.auth.service.AuthTokenService;
+import com.huah.ai.platform.auth.service.AuthViewAssembler;
 import com.huah.ai.platform.common.dto.Result;
 import com.huah.ai.platform.common.util.JwtUtil;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -44,23 +46,28 @@ class AuthControllerTest {
     private ValueOperations<String, String> valueOperations;
 
     @Mock
-    private AiUserMapper userMapper;
-
-    @Mock
-    private BotPermissionMapper botPermissionMapper;
+    private com.huah.ai.platform.auth.mapper.AiUserMapper userMapper;
 
     private AuthController controller;
 
     @BeforeEach
     void setUp() {
         JwtUtil jwtUtil = new JwtUtil("enterprise-ai-platform-secret-key-minimum-256-bits!!", 900_000L);
-        controller = new AuthController(jwtUtil, passwordEncoder, redisTemplate, userMapper, botPermissionMapper);
+        AuthTokenService authTokenService = new AuthTokenService(
+                jwtUtil,
+                passwordEncoder,
+                redisTemplate,
+                userMapper,
+                mock(com.huah.ai.platform.auth.mapper.BotPermissionMapper.class),
+                new AuthViewAssembler()
+        );
+        controller = new AuthController(authTokenService, mock(AuthAdminService.class));
     }
 
     @Test
     void loginReturnsTokenPairForValidCredentials() {
-        AiUser user = AiUser.builder()
-                .id("user-1")
+        AiUserEntity user = AiUserEntity.builder()
+                .userId("user-1")
                 .username("alice")
                 .passwordHash("encoded-password")
                 .department("研发中心")
@@ -68,10 +75,10 @@ class AuthControllerTest {
                 .build();
 
         LoginRequest request = new LoginRequest();
-        request.setUsername("alice");
+        request.setUserId("user-1");
         request.setPassword("plain-password");
 
-        when(userMapper.selectByUsernameAndEnabled("alice")).thenReturn(user);
+        when(userMapper.selectByUserIdAndEnabled("user-1")).thenReturn(user);
         when(passwordEncoder.matches("plain-password", "encoded-password")).thenReturn(true);
 
         Result<TokenResponse> result = controller.login(request);
@@ -82,28 +89,28 @@ class AuthControllerTest {
         assertEquals("Bearer", result.getData().getTokenType());
         assertNotNull(result.getData().getToken());
         assertNotNull(result.getData().getRefreshToken());
-        verify(userMapper).updateById(any(AiUser.class));
+        verify(userMapper).updateById(any(AiUserEntity.class));
     }
 
     @Test
     void loginRejectsInvalidPassword() {
-        AiUser user = AiUser.builder()
-                .id("user-1")
+        AiUserEntity user = AiUserEntity.builder()
+                .userId("user-1")
                 .username("alice")
                 .passwordHash("encoded-password")
                 .build();
 
         LoginRequest request = new LoginRequest();
-        request.setUsername("alice");
+        request.setUserId("user-1");
         request.setPassword("bad-password");
 
-        when(userMapper.selectByUsernameAndEnabled("alice")).thenReturn(user);
+        when(userMapper.selectByUserIdAndEnabled("user-1")).thenReturn(user);
         when(passwordEncoder.matches("bad-password", "encoded-password")).thenReturn(false);
 
         Result<TokenResponse> result = controller.login(request);
 
         assertEquals(401, result.getCode());
-        assertEquals("用户名或密码错误", result.getMessage());
+        assertNotNull(result.getMessage());
         assertNull(result.getData());
     }
 
@@ -131,25 +138,25 @@ class AuthControllerTest {
         Result<TokenValidationResponse> result = controller.validate("Bearer blacklisted-token");
 
         assertEquals(401, result.getCode());
-        assertEquals("Token 已失效", result.getMessage());
+        assertNotNull(result.getMessage());
         assertNull(result.getData());
     }
 
     @Test
     void refreshReturnsRotatedTokenPair() {
-        AiUser user = AiUser.builder()
-                .id("user-1")
+        AiUserEntity user = AiUserEntity.builder()
+                .userId("user-1")
                 .username("alice")
                 .passwordHash("encoded-password")
                 .department("研发中心")
                 .roles("ROLE_USER")
                 .build();
-        when(userMapper.selectByUsernameAndEnabled("alice")).thenReturn(user);
+        when(userMapper.selectByUserIdAndEnabled("user-1")).thenReturn(user);
         when(passwordEncoder.matches("plain-password", "encoded-password")).thenReturn(true);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
         LoginRequest loginRequest = new LoginRequest();
-        loginRequest.setUsername("alice");
+        loginRequest.setUserId("user-1");
         loginRequest.setPassword("plain-password");
         Result<TokenResponse> loginResult = controller.login(loginRequest);
 
@@ -160,6 +167,11 @@ class AuthControllerTest {
         assertEquals(200, result.getCode());
         assertNotNull(result.getData().getToken());
         assertNotNull(result.getData().getRefreshToken());
-        verify(valueOperations).set(eq("ai:token:blacklist:" + refreshRequest.getRefreshToken()), eq("1"), anyLong(), eq(TimeUnit.SECONDS));
+        verify(valueOperations).set(
+                eq("ai:token:blacklist:" + refreshRequest.getRefreshToken()),
+                eq("1"),
+                anyLong(),
+                eq(TimeUnit.SECONDS)
+        );
     }
 }

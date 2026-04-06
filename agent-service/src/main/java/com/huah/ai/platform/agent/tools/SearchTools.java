@@ -10,7 +10,9 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -60,7 +62,7 @@ public class SearchTools {
         if (hasText(tavilyKey)) {
             try {
                 return searchViaTavily(query, limit);
-            } catch (Exception exception) {
+            } catch (AiServiceException | RestClientException exception) {
                 log.warn("[Tool] Tavily search failed, trying Google fallback: {}", exception.getMessage());
             }
         }
@@ -70,8 +72,8 @@ public class SearchTools {
         if (hasText(googleKey) && hasText(googleCx)) {
             try {
                 return searchViaGoogle(query, limit);
-            } catch (Exception exception) {
-                log.error("[Tool] Google search also failed: {}", exception.getMessage());
+            } catch (AiServiceException | RestClientException exception) {
+                log.error("[Tool] Google search also failed: {}", exception.getMessage(), exception);
             }
         }
 
@@ -100,8 +102,8 @@ public class SearchTools {
             result.put(FIELD_CONTENT, bodyText);
             result.put(FIELD_CHAR_COUNT, String.valueOf(bodyText.length()));
             return result;
-        } catch (Exception exception) {
-            log.error("[Tool] summarizeUrl failed: url={}, error={}", url, exception.getMessage());
+        } catch (IOException | IllegalArgumentException exception) {
+            log.error("[Tool] summarizeUrl failed: url={}, error={}", url, exception.getMessage(), exception);
             Map<String, String> error = new HashMap<>();
             error.put(FIELD_URL, url);
             error.put(FIELD_ERROR, MESSAGE_FETCH_URL_FAILED + exception.getMessage());

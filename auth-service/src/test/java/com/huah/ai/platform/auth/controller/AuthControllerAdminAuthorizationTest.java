@@ -1,9 +1,11 @@
 package com.huah.ai.platform.auth.controller;
 
 import com.huah.ai.platform.auth.config.SecurityConfig;
+import com.huah.ai.platform.auth.dto.AuthUserResponse;
 import com.huah.ai.platform.auth.mapper.AiUserMapper;
 import com.huah.ai.platform.auth.mapper.BotPermissionMapper;
-import com.huah.ai.platform.auth.model.AiUser;
+import com.huah.ai.platform.auth.service.AuthAdminService;
+import com.huah.ai.platform.auth.service.AuthTokenService;
 import com.huah.ai.platform.common.config.CorsConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,7 +20,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -40,17 +41,23 @@ class AuthControllerAdminAuthorizationTest {
     private StringRedisTemplate redisTemplate;
 
     @MockBean
-    private AiUserMapper userMapper;
+    private AiUserMapper aiUserMapper;
 
     @MockBean
     private BotPermissionMapper botPermissionMapper;
 
+    @MockBean
+    private AuthTokenService authTokenService;
+
+    @MockBean
+    private AuthAdminService authAdminService;
+
     @Test
     @WithMockUser(authorities = "ROLE_ADMIN")
     void listUsersAllowsAdmin() throws Exception {
-        when(userMapper.selectList(isNull())).thenReturn(List.of(
-                AiUser.builder().id("u-1").username("admin").roles("ROLE_ADMIN").build()
-        ));
+        when(authAdminService.listUsers()).thenReturn(com.huah.ai.platform.common.dto.Result.ok(List.of(
+                AuthUserResponse.builder().userId("u-1").username("admin").roles("ROLE_ADMIN").enabled(true).build()
+        )));
 
         mockMvc.perform(get("/api/v1/auth/users"))
                 .andExpect(status().isOk())

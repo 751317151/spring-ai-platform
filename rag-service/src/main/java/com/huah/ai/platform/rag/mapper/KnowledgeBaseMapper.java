@@ -1,16 +1,16 @@
 package com.huah.ai.platform.rag.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.huah.ai.platform.rag.model.KnowledgeBase;
+import com.huah.ai.platform.rag.model.KnowledgeBaseEntity;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
 @Mapper
-public interface KnowledgeBaseMapper extends BaseMapper<KnowledgeBase> {
+public interface KnowledgeBaseMapper extends BaseMapper<KnowledgeBaseEntity> {
 
-    List<KnowledgeBase> selectByStatus(@Param("status") String status);
+    List<KnowledgeBaseEntity> selectByStatus(@Param("status") String status);
 
-    List<KnowledgeBase> selectByDepartment(@Param("department") String department);
+    List<KnowledgeBaseEntity> selectByDepartment(@Param("department") String department);
 }

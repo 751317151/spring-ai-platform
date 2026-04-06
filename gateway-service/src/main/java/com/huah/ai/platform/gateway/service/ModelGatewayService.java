@@ -13,19 +13,10 @@ import jakarta.annotation.PostConstruct;
 import lombok.Builder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.anthropic.AnthropicChatModel;
-import org.springframework.ai.anthropic.AnthropicChatOptions;
-import org.springframework.ai.anthropic.api.AnthropicApi;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.ollama.OllamaChatModel;
-import org.springframework.ai.ollama.api.OllamaApi;
-import org.springframework.ai.ollama.api.OllamaChatOptions;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -63,8 +54,9 @@ public class ModelGatewayService {
     private static final String REASON_DEGRADED = "Too many consecutive failures, model temporarily degraded";
 
     private final ModelRegistryConfig registryConfig;
-    private final JdbcTemplate jdbcTemplate;
     private final MeterRegistry meterRegistry;
+    private final GatewayModelClientFactory clientFactory;
+    private final GatewayModelStatsStore statsStore;
     private final Map<String, ChatModel> modelCache = new ConcurrentHashMap<>();
     private final AtomicInteger roundRobinCounter = new AtomicInteger(0);
     private final Map<String, ModelStats> statsMap = new ConcurrentHashMap<>();
@@ -72,8 +64,9 @@ public class ModelGatewayService {
 
     public ModelGatewayService(ModelRegistryConfig registryConfig, JdbcTemplate jdbcTemplate, MeterRegistry meterRegistry) {
         this.registryConfig = registryConfig;
-        this.jdbcTemplate = jdbcTemplate;
         this.meterRegistry = meterRegistry;
+        this.clientFactory = new GatewayModelClientFactory();
+        this.statsStore = new GatewayModelStatsStore(jdbcTemplate);
     }
 
     @PostConstruct
@@ -89,80 +82,53 @@ public class ModelGatewayService {
                 continue;
             }
             try {
-                ChatModel model = buildChatModel(definition);
+                ChatModel model = clientFactory.buildChatModel(definition);
                 modelCache.put(definition.getId(), model);
                 statsMap.put(definition.getId(), new ModelStats(definition.getId()));
                 healthMap.put(definition.getId(), new ModelHealth(definition.getId()));
                 log.info("Registered model: id={}, provider={}, name={}",
                         definition.getId(), definition.getProvider(), definition.getName());
-            } catch (Exception e) {
+            } catch (IllegalArgumentException | AiServiceException e) {
                 recordDependencyFailure("model-init", definition.getId());
-                log.error("Failed to initialize model: id={}, error={}", definition.getId(), e.getMessage());
+                log.error("Failed to initialize model: id={}, error={}", definition.getId(), e.getMessage(), e);
             }
         }
 
-        ensureStatsSchema();
         loadStatsFromDb();
         log.info("Model registry initialized, loaded {} models", modelCache.size());
     }
 
-    private void ensureStatsSchema() {
-        try {
-            jdbcTemplate.execute("ALTER TABLE gateway_model_stats ADD COLUMN IF NOT EXISTS total_prompt_tokens BIGINT DEFAULT 0");
-            jdbcTemplate.execute("ALTER TABLE gateway_model_stats ADD COLUMN IF NOT EXISTS total_completion_tokens BIGINT DEFAULT 0");
-            jdbcTemplate.execute("ALTER TABLE gateway_model_stats ADD COLUMN IF NOT EXISTS total_estimated_cost DOUBLE PRECISION DEFAULT 0");
-        } catch (Exception e) {
-            recordDependencyFailure("database", "ensure-gateway-model-stats-schema");
-            log.warn("Failed to ensure gateway_model_stats schema: {}", e.getMessage());
-        }
-    }
-
     private void loadStatsFromDb() {
         try {
-            jdbcTemplate.query(
-                    "SELECT model_id, total_calls, success_calls, total_latency_ms, total_prompt_tokens, total_completion_tokens, total_estimated_cost FROM gateway_model_stats",
-                    rs -> {
-                        String modelId = rs.getString("model_id");
-                        int totalCalls = rs.getInt("total_calls");
-                        int successCalls = rs.getInt("success_calls");
-                        long totalLatencyMs = rs.getLong("total_latency_ms");
-                        long totalPromptTokens = rs.getLong("total_prompt_tokens");
-                        long totalCompletionTokens = rs.getLong("total_completion_tokens");
-                        double totalEstimatedCost = rs.getDouble("total_estimated_cost");
-
-                        ModelStats stats = statsMap.computeIfAbsent(modelId, ModelStats::new);
-                        stats.restore(totalCalls, successCalls, totalLatencyMs, totalPromptTokens, totalCompletionTokens, totalEstimatedCost);
-                    });
-        } catch (Exception e) {
+            statsStore.loadStats().forEach((modelId, persistedStats) -> {
+                ModelStats stats = statsMap.computeIfAbsent(modelId, ModelStats::new);
+                stats.restore(
+                        persistedStats.getTotalCalls().get(),
+                        persistedStats.getSuccessCalls().get(),
+                        persistedStats.getTotalLatencyMs(),
+                        persistedStats.getTotalPromptTokens(),
+                        persistedStats.getTotalCompletionTokens(),
+                        persistedStats.getTotalEstimatedCost()
+                );
+            });
+        } catch (RuntimeException e) {
+            if (!statsStore.isRecoverableDataAccessException(e)) {
+                throw e;
+            }
             recordDependencyFailure("database", "load-model-stats");
-            log.warn("Failed to load model stats, ignoring on startup: {}", e.getMessage());
+            log.warn("Failed to load model stats on startup. Verify gateway_model_stats schema is up to date.", e);
         }
     }
 
     private void persistStats(String modelId, ModelStats stats) {
         try {
-            int total = stats.getTotalCalls().get();
-            int success = stats.getSuccessCalls().get();
-            long totalLatency = stats.getTotalLatencyMs();
-            long totalPromptTokens = stats.getTotalPromptTokens();
-            long totalCompletionTokens = stats.getTotalCompletionTokens();
-            double totalEstimatedCost = stats.getTotalEstimatedCost();
-
-            jdbcTemplate.update("""
-                INSERT INTO gateway_model_stats (model_id, total_calls, success_calls, total_latency_ms, total_prompt_tokens, total_completion_tokens, total_estimated_cost, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
-                ON CONFLICT (model_id) DO UPDATE SET
-                    total_calls = EXCLUDED.total_calls,
-                    success_calls = EXCLUDED.success_calls,
-                    total_latency_ms = EXCLUDED.total_latency_ms,
-                    total_prompt_tokens = EXCLUDED.total_prompt_tokens,
-                    total_completion_tokens = EXCLUDED.total_completion_tokens,
-                    total_estimated_cost = EXCLUDED.total_estimated_cost,
-                    updated_at = NOW()
-                """, modelId, total, success, totalLatency, totalPromptTokens, totalCompletionTokens, totalEstimatedCost);
-        } catch (Exception e) {
+            statsStore.persistStats(modelId, stats);
+        } catch (RuntimeException e) {
+            if (!statsStore.isRecoverableDataAccessException(e)) {
+                throw e;
+            }
             recordDependencyFailure("database", "persist-model-stats");
-            log.warn("Failed to persist model stats: modelId={}, error={}", modelId, e.getMessage());
+            log.warn("Failed to persist model stats: modelId={}", modelId, e);
         }
     }
 
@@ -342,62 +308,6 @@ public class ModelGatewayService {
         return candidates.stream()
                 .min(Comparator.comparingDouble(id -> statsMap.getOrDefault(id, new ModelStats(id)).getAvgLatencyMs()))
                 .orElse(candidates.get(0));
-    }
-
-    private ChatModel buildChatModel(ModelDefinition definition) {
-        return switch (definition.getProvider().toLowerCase()) {
-            case "openai", "deepseek", "qwen", "zhipu", "moonshot" -> buildOpenAiCompatibleModel(definition);
-            case "anthropic" -> buildAnthropicModel(definition);
-            case "ollama" -> buildOllamaModel(definition);
-            default -> throw new AiServiceException("Unsupported model provider: " + definition.getProvider());
-        };
-    }
-
-    private ChatModel buildOpenAiCompatibleModel(ModelDefinition definition) {
-        OpenAiApi api = OpenAiApi.builder()
-                .baseUrl(definition.getBaseUrl())
-                .apiKey(definition.getApiKey())
-                .build();
-        OpenAiChatOptions options = OpenAiChatOptions.builder()
-                .model(definition.getName())
-                .temperature(0.7)
-                .build();
-        return OpenAiChatModel.builder()
-                .openAiApi(api)
-                .defaultOptions(options)
-                .build();
-    }
-
-    private ChatModel buildAnthropicModel(ModelDefinition definition) {
-        AnthropicApi api = AnthropicApi.builder()
-                .baseUrl(definition.getBaseUrl() != null && !definition.getBaseUrl().isBlank()
-                        ? definition.getBaseUrl()
-                        : AnthropicApi.DEFAULT_BASE_URL)
-                .apiKey(definition.getApiKey())
-                .build();
-        AnthropicChatOptions options = AnthropicChatOptions.builder()
-                .model(definition.getName())
-                .temperature(0.7)
-                .maxTokens(4096)
-                .build();
-        return AnthropicChatModel.builder()
-                .anthropicApi(api)
-                .defaultOptions(options)
-                .build();
-    }
-
-    private ChatModel buildOllamaModel(ModelDefinition definition) {
-        OllamaApi api = OllamaApi.builder()
-                .baseUrl(definition.getBaseUrl())
-                .build();
-        OllamaChatOptions options = OllamaChatOptions.builder()
-                .model(definition.getName())
-                .temperature(0.7)
-                .build();
-        return OllamaChatModel.builder()
-                .ollamaApi(api)
-                .defaultOptions(options)
-                .build();
     }
 
     public void recordCall(String modelId, long latencyMs, boolean success) {

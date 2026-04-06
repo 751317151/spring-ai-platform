@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
@@ -195,7 +196,7 @@ public class McpServerCatalogService {
         try {
             Path path = Paths.get(firstArg);
             return path.toAbsolutePath().normalize().toString();
-        } catch (Exception e) {
+        } catch (InvalidPathException e) {
             return firstArg;
         }
     }
@@ -248,7 +249,7 @@ public class McpServerCatalogService {
             if (directPath.isAbsolute() || command.contains("\\") || command.contains("/")) {
                 return Files.exists(directPath);
             }
-        } catch (Exception ignored) {
+        } catch (InvalidPathException ignored) {
             // fall through to PATH lookup
         }
 
@@ -270,7 +271,7 @@ public class McpServerCatalogService {
                     if (Files.exists(Paths.get(directory, executableName))) {
                         return true;
                     }
-                } catch (Exception ignored) {
+                } catch (InvalidPathException ignored) {
                     // ignore bad PATH entry and continue scanning
                 }
             }

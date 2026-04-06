@@ -1,6 +1,7 @@
 package com.huah.ai.platform.rag.service;
 
 import com.huah.ai.platform.common.exception.BizException;
+import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import com.huah.ai.platform.rag.model.RagEvaluationOverview;
 import com.huah.ai.platform.rag.model.RagEvaluationSample;
 import org.junit.jupiter.api.Test;
@@ -30,30 +31,35 @@ class RagAuditServiceTest {
     @Mock
     private JdbcTemplate jdbcTemplate;
 
+    @Mock
+    private SnowflakeIdGenerator snowflakeIdGenerator;
+
     @InjectMocks
     private RagAuditService ragAuditService;
 
     @Test
     void shouldRejectFeedbackForOtherUsersResponse() {
-        when(jdbcTemplate.query(eq("SELECT user_id FROM ai_audit_logs WHERE id = ?"), any(ResultSetExtractor.class), eq("resp-1")))
+        when(jdbcTemplate.query(eq("SELECT user_id FROM ai_audit_logs WHERE id = ?"), any(ResultSetExtractor.class), eq(1001L)))
                 .thenReturn("other-user");
 
         assertThrows(BizException.class,
-                () -> ragAuditService.submitFeedback("user-1", "resp-1", "kb-1", "up", null));
+                () -> ragAuditService.submitFeedback("user-1", 1001L, 2001L, "up", null));
 
-        verify(jdbcTemplate, never()).update(eq("UPDATE ai_response_feedback SET feedback = ?, comment = ?, updated_at = ?, knowledge_base_id = ? WHERE response_id = ?"),
+        verify(jdbcTemplate, never()).update(
+                eq("UPDATE ai_response_feedback SET feedback = ?, comment = ?, updated_at = ?, knowledge_base_id = ? WHERE response_id = ?"),
                 any(), any(), any(), any(), any());
     }
 
     @Test
     void shouldRejectEvidenceFeedbackForOtherUsersResponse() {
-        when(jdbcTemplate.query(eq("SELECT user_id FROM ai_audit_logs WHERE id = ?"), any(ResultSetExtractor.class), eq("resp-1")))
+        when(jdbcTemplate.query(eq("SELECT user_id FROM ai_audit_logs WHERE id = ?"), any(ResultSetExtractor.class), eq(1001L)))
                 .thenReturn("other-user");
 
         assertThrows(BizException.class,
-                () -> ragAuditService.submitEvidenceFeedback("user-1", "resp-1", "chunk-1", "kb-1", "down", null));
+                () -> ragAuditService.submitEvidenceFeedback("user-1", 1001L, "chunk-1", 2001L, "down", null));
 
-        verify(jdbcTemplate, never()).update(eq("UPDATE ai_evidence_feedback SET feedback = ?, comment = ?, knowledge_base_id = ?, updated_at = ? WHERE response_id = ? AND chunk_id = ?"),
+        verify(jdbcTemplate, never()).update(
+                eq("UPDATE ai_evidence_feedback SET feedback = ?, comment = ?, knowledge_base_id = ?, updated_at = ? WHERE response_id = ? AND chunk_id = ?"),
                 any(), any(), any(), any(), any(), any());
     }
 
@@ -79,9 +85,9 @@ class RagAuditServiceTest {
     @Test
     void shouldReturnLowRatedSamples() {
         RagEvaluationSample sample = RagEvaluationSample.builder()
-                .responseId("resp-1")
+                .responseId(1001L)
                 .userId("user-1")
-                .knowledgeBaseId("kb-1")
+                .knowledgeBaseId(2001L)
                 .question("q")
                 .answer("a")
                 .feedback("down")
@@ -95,7 +101,7 @@ class RagAuditServiceTest {
         List<RagEvaluationSample> result = ragAuditService.getLowRatedSamples(null, 10);
 
         assertEquals(1, result.size());
-        assertEquals("resp-1", result.get(0).getResponseId());
+        assertEquals(1001L, result.get(0).getResponseId());
         assertEquals(2L, result.get(0).getEvidenceNegativeCount());
     }
 }

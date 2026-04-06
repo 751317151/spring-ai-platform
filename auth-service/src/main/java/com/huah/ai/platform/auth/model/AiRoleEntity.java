@@ -3,7 +3,10 @@ package com.huah.ai.platform.auth.model;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * AI 平台角色实体
@@ -13,7 +16,7 @@ import lombok.*;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AiRole {
+public class AiRoleEntity {
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 

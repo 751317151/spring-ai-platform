@@ -1,6 +1,6 @@
 package com.huah.ai.platform.rag.service;
 
-import com.huah.ai.platform.rag.model.DocumentMeta;
+import com.huah.ai.platform.rag.model.DocumentMetaEntity;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,12 +32,12 @@ public class FailedDocumentRetryScheduler {
             return;
         }
 
-        List<DocumentMeta> documents = documentMetaService.listRetryableFailedDocuments(batchSize);
+        List<DocumentMetaEntity> documents = documentMetaService.listRetryableFailedDocuments(batchSize);
         if (documents.isEmpty()) {
             return;
         }
 
-        for (DocumentMeta document : documents) {
+        for (DocumentMetaEntity document : documents) {
             try {
                 documentIngestionService.retryDocument(document.getId());
             } catch (Exception e) {

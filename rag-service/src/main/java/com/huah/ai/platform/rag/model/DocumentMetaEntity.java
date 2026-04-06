@@ -18,7 +18,7 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class DocumentMeta {
+public class DocumentMetaEntity {
 
     public static final String STATUS_PROCESSING = "PROCESSING";
     public static final String STATUS_INDEXED = "INDEXED";

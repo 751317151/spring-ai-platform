@@ -4,6 +4,7 @@ import com.huah.ai.platform.agent.config.ToolsProperties;
 import com.huah.ai.platform.agent.security.ToolAccessDeniedException;
 import com.huah.ai.platform.agent.support.AgentTestFixtures;
 import com.huah.ai.platform.agent.security.ToolSecurityService;
+import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.junit.jupiter.api.AfterEach;
@@ -26,7 +27,13 @@ class ToolAuditAspectTest {
     private final AiToolAuditLogMapper mapper = mock(AiToolAuditLogMapper.class);
     private final ToolsProperties toolsProperties = AgentTestFixtures.toolsProperties();
     private final ToolSecurityService toolSecurityService = AgentTestFixtures.toolSecurityService(toolsProperties);
-    private final ToolAuditAspect aspect = new ToolAuditAspect(mapper, AgentTestFixtures.objectMapper(), toolSecurityService);
+    private final SnowflakeIdGenerator snowflakeIdGenerator = new SnowflakeIdGenerator();
+    private final ToolAuditAspect aspect = new ToolAuditAspect(
+            mapper,
+            AgentTestFixtures.objectMapper(),
+            toolSecurityService,
+            snowflakeIdGenerator
+    );
 
     @AfterEach
     void tearDown() {

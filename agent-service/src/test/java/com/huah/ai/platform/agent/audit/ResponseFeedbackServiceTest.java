@@ -12,6 +12,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -29,34 +30,38 @@ class ResponseFeedbackServiceTest {
     @Mock
     private AiResponseFeedbackMapper feedbackMapper;
 
+    @Mock
+    private SnowflakeIdGenerator snowflakeIdGenerator;
+
     @InjectMocks
     private ResponseFeedbackService responseFeedbackService;
 
     @Test
     void shouldInsertFeedbackForOwnedResponse() {
-        when(auditLogMapper.selectById("resp-1")).thenReturn(AiAuditLog.builder()
-                .id("resp-1")
+        when(snowflakeIdGenerator.nextLongId()).thenReturn(2001L);
+        when(auditLogMapper.selectById(1001L)).thenReturn(AiAuditLog.builder()
+                .id(1001L)
                 .userId("user-1")
                 .build());
 
-        responseFeedbackService.submitAgentFeedback("user-1", "resp-1", "up", "great");
+        responseFeedbackService.submitAgentFeedback("user-1", 1001L, "up", "great");
 
         ArgumentCaptor<AiResponseFeedback> captor = ArgumentCaptor.forClass(AiResponseFeedback.class);
         verify(feedbackMapper).insert((AiResponseFeedback) captor.capture());
-        assertEquals("resp-1", captor.getValue().getResponseId());
+        assertEquals(1001L, captor.getValue().getResponseId());
         assertEquals("agent", captor.getValue().getSourceType());
         assertEquals("up", captor.getValue().getFeedback());
     }
 
     @Test
     void shouldRejectFeedbackForOtherUsersResponse() {
-        when(auditLogMapper.selectById("resp-1")).thenReturn(AiAuditLog.builder()
-                .id("resp-1")
+        when(auditLogMapper.selectById(1001L)).thenReturn(AiAuditLog.builder()
+                .id(1001L)
                 .userId("other-user")
                 .build());
 
         assertThrows(BizException.class,
-                () -> responseFeedbackService.submitAgentFeedback("user-1", "resp-1", "down", null));
+                () -> responseFeedbackService.submitAgentFeedback("user-1", 1001L, "down", null));
         verify(feedbackMapper, never()).insert(any(AiResponseFeedback.class));
     }
 }

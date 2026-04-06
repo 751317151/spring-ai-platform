@@ -1,71 +1,8 @@
 package com.huah.ai.platform.agent.config;
 
-import com.huah.ai.platform.agent.tools.*;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
-import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
-import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.memory.ChatMemoryRepository;
-import org.springframework.ai.chat.memory.MessageWindowChatMemory;
-import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.ai.tool.ToolCallbackProvider;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import lombok.RequiredArgsConstructor;
+final class AgentSystemPrompts {
 
-@Configuration
-@RequiredArgsConstructor
-public class CommonConfiguration {
-
-    private final RdTools rdTools;
-    private final SalesTools salesTools;
-    private final HrTools hrTools;
-    private final FinanceTools financeTools;
-    private final SupplyChainTools supplyChainTools;
-    private final QcTools qcTools;
-    private final WeatherTools weatherTools;
-    private final SearchTools searchTools;
-    private final DataAnalysisTools dataAnalysisTools;
-    private final CodeTools codeTools;
-    private final InternalApiTools internalApiTools;
-
-    @Bean
-    public ChatMemory chatMemory(ChatMemoryRepository chatMemoryRepository) {
-        return MessageWindowChatMemory.builder()
-                .chatMemoryRepository(chatMemoryRepository)
-                .maxMessages(10)
-                .build();
-    }
-
-    private ChatClient buildChatClient(ChatModel model, ChatMemory chatMemory, String systemPrompt, Object... tools) {
-        return ChatClient
-                .builder(model)
-                .defaultSystem(systemPrompt)
-                .defaultTools(tools)
-                .defaultAdvisors(
-                        new SimpleLoggerAdvisor(),
-                        MessageChatMemoryAdvisor.builder(chatMemory).build()
-                )
-                .build();
-    }
-
-    private ChatClient buildMcpChatClient(ChatModel model, ChatMemory chatMemory,
-                                          ToolCallbackProvider toolCallbackProvider, String systemPrompt) {
-        return ChatClient
-                .builder(model)
-                .defaultSystem(systemPrompt)
-                .defaultToolCallbacks(toolCallbackProvider)
-                .defaultAdvisors(
-                        new SimpleLoggerAdvisor(),
-                        MessageChatMemoryAdvisor.builder(chatMemory).build()
-                )
-                .build();
-    }
-
-    // ===== 企业内部助手 =====
-
-    private static final String RD_SYSTEM_PROMPT = """
+    static final String RD = """
             你是企业研发部门的智能助手，专注于以下领域：
             1. 代码审查与优化建议
             2. 技术文档查询和解答
@@ -85,12 +22,7 @@ public class CommonConfiguration {
             当前用户: {userId}
             """;
 
-    @Bean
-    public ChatClient rdChatClient(ChatModel model, ChatMemory chatMemory) {
-        return buildChatClient(model, chatMemory, RD_SYSTEM_PROMPT, rdTools, internalApiTools);
-    }
-
-    private static final String SALES_SYSTEM_PROMPT = """
+    static final String SALES = """
             你是企业销售报价智能助手，帮助销售人员快速：
             1. 查询产品报价和折扣政策
             2. 分析客户需求，推荐合适产品
@@ -105,12 +37,7 @@ public class CommonConfiguration {
             当前用户: {userId}
             """;
 
-    @Bean
-    public ChatClient salesChatClient(ChatModel model, ChatMemory chatMemory) {
-        return buildChatClient(model, chatMemory, SALES_SYSTEM_PROMPT, salesTools);
-    }
-
-    private static final String SUPPLY_CHAIN_SYSTEM_PROMPT = """
+    static final String SUPPLY_CHAIN = """
             你是供应链智能助手，帮助采购和仓储人员：
             1. 库存查询与预警
             2. 采购订单追踪
@@ -126,12 +53,7 @@ public class CommonConfiguration {
             当前用户: {userId}
             """;
 
-    @Bean
-    public ChatClient supplyChainChatClient(ChatModel model, ChatMemory chatMemory) {
-        return buildChatClient(model, chatMemory, SUPPLY_CHAIN_SYSTEM_PROMPT, supplyChainTools);
-    }
-
-    private static final String FINANCE_SYSTEM_PROMPT = """
+    static final String FINANCE = """
             你是财务分析智能助手，帮助财务人员：
             1. 报表查询与分析
             2. 收支数据对比
@@ -145,12 +67,7 @@ public class CommonConfiguration {
             当前用户: {userId}
             """;
 
-    @Bean
-    public ChatClient financeChatClient(ChatModel model, ChatMemory chatMemory) {
-        return buildChatClient(model, chatMemory, FINANCE_SYSTEM_PROMPT, financeTools);
-    }
-
-    private static final String QC_SYSTEM_PROMPT = """
+    static final String QC = """
             你是生产质控智能助手，帮助质检人员：
             1. 查询指定生产线的不良品率和质检数据
             2. 分析质量问题的主要原因和趋势
@@ -166,12 +83,7 @@ public class CommonConfiguration {
             当前用户: {userId}
             """;
 
-    @Bean
-    public ChatClient qcChatClient(ChatModel model, ChatMemory chatMemory) {
-        return buildChatClient(model, chatMemory, QC_SYSTEM_PROMPT, qcTools);
-    }
-
-    private static final String HR_SYSTEM_PROMPT = """
+    static final String HR = """
             你是HR行政智能助手，帮助员工处理：
             1. 员工信息查询
             2. 请假/报销/采购等审批申请
@@ -187,14 +99,7 @@ public class CommonConfiguration {
             当前用户: {userId}
             """;
 
-    @Bean
-    public ChatClient hrChatClient(ChatModel model, ChatMemory chatMemory) {
-        return buildChatClient(model, chatMemory, HR_SYSTEM_PROMPT, hrTools);
-    }
-
-    // ===== 通用助手 =====
-
-    private static final String WEATHER_SYSTEM_PROMPT = """
+    static final String WEATHER = """
             你是天气查询智能助手，帮助用户：
             1. 查询任意城市的实时天气信息
             2. 获取未来多天的天气预报
@@ -209,12 +114,7 @@ public class CommonConfiguration {
             当前用户: {userId}
             """;
 
-    @Bean
-    public ChatClient weatherChatClient(ChatModel model, ChatMemory chatMemory) {
-        return buildChatClient(model, chatMemory, WEATHER_SYSTEM_PROMPT, weatherTools);
-    }
-
-    private static final String SEARCH_SYSTEM_PROMPT = """
+    static final String SEARCH = """
             你是网络搜索智能助手，帮助用户：
             1. 搜索互联网获取最新信息
             2. 对搜索结果进行分析和总结
@@ -230,12 +130,7 @@ public class CommonConfiguration {
             当前用户: {userId}
             """;
 
-    @Bean
-    public ChatClient searchChatClient(ChatModel model, ChatMemory chatMemory) {
-        return buildChatClient(model, chatMemory, SEARCH_SYSTEM_PROMPT, searchTools);
-    }
-
-    private static final String DATA_ANALYSIS_SYSTEM_PROMPT = """
+    static final String DATA_ANALYSIS = """
             你是数据分析智能助手，帮助用户：
             1. 先查看可访问的数据表和字段，再编写 SQL
             2. 编写和执行 SQL 查询（只读，仅支持 SELECT 或 WITH）
@@ -260,12 +155,7 @@ public class CommonConfiguration {
             当前用户: {userId}
             """;
 
-    @Bean
-    public ChatClient dataAnalysisChatClient(ChatModel model, ChatMemory chatMemory) {
-        return buildChatClient(model, chatMemory, DATA_ANALYSIS_SYSTEM_PROMPT, dataAnalysisTools);
-    }
-
-    private static final String CODE_SYSTEM_PROMPT = """
+    static final String CODE = """
             你是代码开发智能助手，帮助开发人员：
             1. 分析代码片段，预测执行结果
             2. 在 Git 仓库中搜索代码
@@ -281,14 +171,7 @@ public class CommonConfiguration {
             当前用户: {userId}
             """;
 
-    @Bean
-    public ChatClient codeChatClient(ChatModel model, ChatMemory chatMemory) {
-        return buildChatClient(model, chatMemory, CODE_SYSTEM_PROMPT, codeTools);
-    }
-
-    // ===== MCP 助手（条件加载） =====
-
-    private static final String MCP_SYSTEM_PROMPT = """
+    static final String MCP = """
             你是 MCP (Model Context Protocol) 智能助手，通过 MCP 协议连接外部工具服务器。
             你的工具来自配置的 MCP 服务器，具备动态扩展能力。
 
@@ -297,10 +180,6 @@ public class CommonConfiguration {
             当前用户: {userId}
             """;
 
-    @Bean
-    @ConditionalOnProperty(name = "spring.ai.mcp.client.enabled", havingValue = "true")
-    public ChatClient mcpChatClient(ChatModel model, ChatMemory chatMemory, ToolCallbackProvider toolCallbackProvider) {
-        return buildMcpChatClient(model, chatMemory, toolCallbackProvider, MCP_SYSTEM_PROMPT);
+    private AgentSystemPrompts() {
     }
-
 }

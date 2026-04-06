@@ -48,7 +48,7 @@ class AgentLogArchiveServiceTest {
 
         when(auditLogMapper.selectArchiveCandidates(eq("rd"), any(), eq(2))).thenReturn(List.of(
                 AiAuditLog.builder()
-                        .id("audit-1")
+                        .id(1001L)
                         .traceId("trace-a1")
                         .sessionId("session-a1")
                         .userMessage("old request")
@@ -56,13 +56,13 @@ class AgentLogArchiveServiceTest {
                         .build()
         ));
         when(auditLogMapper.selectArchiveCandidatesBatch(eq("rd"), any(), eq(2), eq(0L))).thenReturn(List.of(
-                AiAuditLog.builder().id("audit-1").traceId("trace-a1").sessionId("session-a1").userMessage("old request").createdAt(LocalDateTime.of(2026, 3, 1, 10, 0)).build(),
-                AiAuditLog.builder().id("audit-2").traceId("trace-a2").sessionId("session-a2").userMessage("older request").createdAt(LocalDateTime.of(2026, 3, 1, 11, 0)).build()
+                AiAuditLog.builder().id(1001L).traceId("trace-a1").sessionId("session-a1").userMessage("old request").createdAt(LocalDateTime.of(2026, 3, 1, 10, 0)).build(),
+                AiAuditLog.builder().id(1002L).traceId("trace-a2").sessionId("session-a2").userMessage("older request").createdAt(LocalDateTime.of(2026, 3, 1, 11, 0)).build()
         ));
         when(auditLogMapper.selectArchiveCandidatesBatch(eq("rd"), any(), eq(2), eq(2L))).thenReturn(List.of());
         when(toolAuditLogMapper.selectArchiveCandidates(eq("rd"), any(), eq(2))).thenReturn(List.of(
                 AiToolAuditLog.builder()
-                        .id("tool-1")
+                        .id(2001L)
                         .traceId("trace-t1")
                         .sessionId("session-t1")
                         .toolName("queryJira")
@@ -71,11 +71,11 @@ class AgentLogArchiveServiceTest {
                         .build()
         ));
         when(toolAuditLogMapper.selectArchiveCandidatesBatch(eq("rd"), any(), eq(2), eq(0L))).thenReturn(List.of(
-                AiToolAuditLog.builder().id("tool-1").traceId("trace-t1").sessionId("session-t1").toolName("queryJira").inputSummary("tool input").createdAt(LocalDateTime.of(2026, 3, 2, 11, 0)).build()
+                AiToolAuditLog.builder().id(2001L).traceId("trace-t1").sessionId("session-t1").toolName("queryJira").inputSummary("tool input").createdAt(LocalDateTime.of(2026, 3, 2, 11, 0)).build()
         ));
         when(traceMapper.selectArchiveCandidates(eq("rd"), any(), eq(2))).thenReturn(List.of(
                 MultiAgentExecutionTrace.builder()
-                        .id("trace-1")
+                        .id(3001L)
                         .traceId("trace-m1")
                         .sessionId("session-m1")
                         .requestSummary("multi request")
@@ -83,7 +83,7 @@ class AgentLogArchiveServiceTest {
                         .build()
         ));
         when(traceMapper.selectArchiveCandidatesBatch(eq("rd"), any(), eq(2), eq(0L))).thenReturn(List.of(
-                MultiAgentExecutionTrace.builder().id("trace-1").traceId("trace-m1").sessionId("session-m1").requestSummary("multi request").createdAt(LocalDateTime.of(2026, 3, 3, 12, 0)).build()
+                MultiAgentExecutionTrace.builder().id(3001L).traceId("trace-m1").sessionId("session-m1").requestSummary("multi request").createdAt(LocalDateTime.of(2026, 3, 3, 12, 0)).build()
         ));
 
         AgentLogArchiveService service = new AgentLogArchiveService(
@@ -139,7 +139,7 @@ class AgentLogArchiveServiceTest {
         assertEquals("audit", preview.getArtifactType());
         assertEquals(2, preview.getPreviewLimit());
         assertEquals(2, preview.getItems().size());
-        assertTrue(preview.getItems().get(0).getContent().contains("\"id\":\"audit-1\""));
+        assertTrue(preview.getItems().get(0).getContent().contains("\"id\":1001"));
 
         AgentArchivedTraceLookupResponse archivedTrace = service.findArchivedTrace("rd", "trace-m1");
         assertTrue(archivedTrace.isFound());

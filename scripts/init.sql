@@ -245,6 +245,9 @@ CREATE TABLE IF NOT EXISTS gateway_model_stats (
     total_calls INT DEFAULT 0,
     success_calls INT DEFAULT 0,
     total_latency_ms BIGINT DEFAULT 0,
+    total_prompt_tokens BIGINT DEFAULT 0,
+    total_completion_tokens BIGINT DEFAULT 0,
+    total_estimated_cost DOUBLE PRECISION DEFAULT 0,
     updated_at TIMESTAMP DEFAULT NOW()
 );
 

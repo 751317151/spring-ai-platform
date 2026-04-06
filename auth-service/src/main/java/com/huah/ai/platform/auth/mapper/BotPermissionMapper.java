@@ -1,12 +1,12 @@
 package com.huah.ai.platform.auth.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.huah.ai.platform.auth.model.BotPermission;
+import com.huah.ai.platform.auth.model.BotPermissionEntity;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 @Mapper
-public interface BotPermissionMapper extends BaseMapper<BotPermission> {
+public interface BotPermissionMapper extends BaseMapper<BotPermissionEntity> {
 
-    BotPermission selectByBotTypeAndEnabled(@Param("botType") String botType);
+    BotPermissionEntity selectByBotTypeAndEnabled(@Param("botType") String botType);
 }

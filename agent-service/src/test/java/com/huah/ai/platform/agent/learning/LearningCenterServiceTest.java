@@ -51,7 +51,7 @@ class LearningCenterServiceTest {
     @Test
     void saveFavoriteInsertsNewRecordAndPersistsJsonFields() {
         LearningFavoritePayload payload = new LearningFavoritePayload();
-        payload.setId("fav-1");
+        payload.setId(1001L);
         payload.setRole("assistant");
         payload.setContent("answer");
         payload.setAgentType("rd");
@@ -77,7 +77,7 @@ class LearningCenterServiceTest {
         verify(favoriteMapper, never()).updateById(any(LearningFavoriteRecord.class));
         LearningFavoriteRecord saved = captor.getValue();
         assertEquals("user-1", saved.getUserId());
-        assertEquals("fav-1", saved.getId());
+        assertEquals(1001L, saved.getId());
         assertTrue(saved.getTagsJson().contains("登录"));
         assertTrue(saved.getSessionConfigSnapshotJson().contains("gpt-4.1"));
     }
@@ -86,7 +86,7 @@ class LearningCenterServiceTest {
     void listFavoritesMapsTagsAndSessionConfig() {
         when(favoriteMapper.selectByUserId("user-1")).thenReturn(List.of(
                 LearningFavoriteRecord.builder()
-                        .id("fav-1")
+                        .id(1001L)
                         .userId("user-1")
                         .role("assistant")
                         .content("answer")
@@ -107,7 +107,7 @@ class LearningCenterServiceTest {
     void listNotesFallsBackToEmptyTagsWhenJsonBroken() {
         when(noteMapper.selectByUserId("user-1")).thenReturn(List.of(
                 LearningNoteRecord.builder()
-                        .id("note-1")
+                        .id(2001L)
                         .userId("user-1")
                         .title("note")
                         .content("content")
@@ -124,13 +124,13 @@ class LearningCenterServiceTest {
     @Test
     void saveTemplateUpdatesExistingRecord() {
         FollowUpTemplatePayload payload = new FollowUpTemplatePayload();
-        payload.setId("tpl-1");
+        payload.setId(3001L);
         payload.setName("追问模板");
         payload.setContent("继续展开");
         payload.setSourceCount(2);
         payload.setUpdatedAt(100L);
 
-        when(templateMapper.selectOne(any())).thenReturn(FollowUpTemplateRecord.builder().id("tpl-1").userId("user-1").build());
+        when(templateMapper.selectOne(any())).thenReturn(FollowUpTemplateRecord.builder().id(3001L).userId("user-1").build());
         when(templateMapper.selectByUserId("user-1")).thenReturn(List.of());
 
         service.saveTemplate("user-1", payload);
@@ -143,8 +143,8 @@ class LearningCenterServiceTest {
 
     @Test
     void deleteNoteDeletesOnlyCurrentUserRecord() {
-        service.deleteNote("user-1", "note-1");
-        verify(noteMapper).deleteByUserIdAndId("user-1", "note-1");
+        service.deleteNote("user-1", "2001");
+        verify(noteMapper).deleteByUserIdAndId("user-1", 2001L);
     }
 
     @Test

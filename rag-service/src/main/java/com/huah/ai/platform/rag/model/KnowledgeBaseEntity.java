@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class KnowledgeBase {
+public class KnowledgeBaseEntity {
 
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;

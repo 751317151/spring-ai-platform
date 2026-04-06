@@ -1,17 +1,12 @@
 package com.huah.ai.platform.agent.multi;
 
 import com.huah.ai.platform.agent.dto.MultiAgentTraceResponse;
-import com.huah.ai.platform.agent.dto.MultiAgentTraceStepResponse;
 import com.huah.ai.platform.agent.memory.ConversationMemoryService;
-import com.huah.ai.platform.common.trace.TraceIdContext;
 import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -19,21 +14,25 @@ import java.util.UUID;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class MultiAgentTraceService {
 
-    private static final int MAX_SUMMARY_LENGTH = 1000;
-    private static final String INTERNAL_SESSION_PREFIX = "m";
-    private static final String RECOVERY_SESSION_PREFIX = "r";
-    private static final String ACTION_RETRY = "retry";
-    private static final String ACTION_REPLAY = "replay";
-    private static final String ACTION_SKIP = "skip";
-
-    private final MultiAgentOrchestrator multiAgentOrchestrator;
     private final MultiAgentExecutionTraceMapper traceMapper;
     private final MultiAgentExecutionStepMapper stepMapper;
     private final ConversationMemoryService memoryService;
-    private final SnowflakeIdGenerator snowflakeIdGenerator;
+    private final MultiAgentTraceSupport traceSupport;
+    private final MultiAgentStageRunner stageRunner;
+
+    public MultiAgentTraceService(MultiAgentOrchestrator multiAgentOrchestrator,
+                                  MultiAgentExecutionTraceMapper traceMapper,
+                                  MultiAgentExecutionStepMapper stepMapper,
+                                  ConversationMemoryService memoryService,
+                                  SnowflakeIdGenerator snowflakeIdGenerator) {
+        this.traceMapper = traceMapper;
+        this.stepMapper = stepMapper;
+        this.memoryService = memoryService;
+        this.traceSupport = new MultiAgentTraceSupport(snowflakeIdGenerator);
+        this.stageRunner = new MultiAgentStageRunner(multiAgentOrchestrator, traceSupport);
+    }
 
     public MultiAgentExecutionResult execute(String userId,
                                              String sessionId,
@@ -69,7 +68,7 @@ public class MultiAgentTraceService {
                                                 MultiAgentExecutionListener listener) {
         MultiAgentExecutionTrace sourceTrace = traceMapper.selectByTraceIdAndUserId(sourceTraceId, userId);
         if (sourceTrace == null) {
-            throw new IllegalArgumentException("未找到可恢复的多智能体轨迹");
+            throw new IllegalArgumentException("鏈壘鍒板彲鎭㈠鐨勫鏅鸿兘浣撹建杩?");
         }
         List<MultiAgentExecutionStep> sourceSteps = stepMapper.selectByTraceId(sourceTraceId);
         if (sourceSteps.isEmpty()) {
@@ -79,11 +78,11 @@ public class MultiAgentTraceService {
         MultiAgentExecutionStep targetStep = sourceSteps.stream()
                 .filter(step -> Objects.equals(step.getStepOrder(), effectiveStepOrder))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("未找到指定步骤"));
+                .orElseThrow(() -> new IllegalArgumentException("未找到指定的恢复步骤"));
 
         String normalizedAction = normalizeAction(action);
         if (!Boolean.TRUE.equals(targetStep.getRecoverable())) {
-            throw new IllegalArgumentException("当前步骤不支持恢复操作");
+            throw new IllegalArgumentException("涓嶆敮鎸佹仮澶?");
         }
 
         RecoveryExecutionResult recovery = executeRecoveryTrace(
@@ -119,22 +118,22 @@ public class MultiAgentTraceService {
                                                         String recoveryAction) {
         long startedAt = System.currentTimeMillis();
         String traceId = currentTraceId();
-        String internalId = nextInternalSessionId(INTERNAL_SESSION_PREFIX);
+        String internalId = nextInternalSessionId(MultiAgentTraceSupport.INTERNAL_SESSION_PREFIX);
         List<MultiAgentExecutionStep> steps = new ArrayList<>();
 
         MultiAgentOrchestrator.StepResult planResult = null;
         MultiAgentOrchestrator.StepResult executeResult = null;
         MultiAgentOrchestrator.StepResult criticResult = null;
         try {
-            planResult = runPlanner(traceId, task, internalId, listener);
+            planResult = stageRunner.runPlanner(traceId, task, internalId, listener);
             steps.add(toStep(traceId, 1, "planner", "Planner", summarize(task), planResult, true, null, planResult.getLatencyMs()));
 
-            String executionInput = summarize("任务:\n" + task + "\n\n规划:\n" + planResult.getContent());
-            executeResult = runExecutor(traceId, userId, task, planResult.getContent(), internalId, executionInput, listener);
+            String executionInput = summarize("浠诲姟:\n" + task + "\n\n瑙勫垝:\n" + planResult.getContent());
+            executeResult = stageRunner.runExecutor(traceId, userId, task, planResult.getContent(), internalId, executionInput, listener);
             steps.add(toStep(traceId, 2, "executor", "Executor", executionInput, executeResult, true, null, executeResult.getLatencyMs()));
 
             String criticInput = summarize("原始任务:\n" + task + "\n\n执行结果:\n" + executeResult.getContent());
-            criticResult = runCritic(traceId, task, executeResult.getContent(), internalId, criticInput, listener);
+            criticResult = stageRunner.runCritic(traceId, task, executeResult.getContent(), internalId, criticInput, listener);
             steps.add(toStep(traceId, 3, "critic", "Critic", criticInput, criticResult, true, null, criticResult.getLatencyMs()));
 
             long totalLatency = System.currentTimeMillis() - startedAt;
@@ -157,7 +156,7 @@ public class MultiAgentTraceService {
                     .success(true)
                     .steps(steps)
                     .build();
-        } catch (StageExecutionException ex) {
+        } catch (MultiAgentStageRunner.StageExecutionException ex) {
             steps.add(ex.getFailedStep());
             long totalLatency = System.currentTimeMillis() - startedAt;
             String errorMessage = ex.getCause() != null ? ex.getCause().getMessage() : ex.getMessage();
@@ -171,7 +170,7 @@ public class MultiAgentTraceService {
                     totalLatency, steps, errorMessage, parentTraceId, parentTraceId, null, recoveryAction
             ), steps);
             throw ex;
-        } catch (Exception ex) {
+        } catch (RuntimeException ex) {
             long totalLatency = System.currentTimeMillis() - startedAt;
             String errorMessage = ex.getMessage();
             listener.onFailed(null, errorMessage);
@@ -195,7 +194,7 @@ public class MultiAgentTraceService {
                                                          MultiAgentExecutionListener listener) {
         long startedAt = System.currentTimeMillis();
         String recoveryTraceId = UUID.randomUUID().toString();
-        String internalId = nextInternalSessionId(RECOVERY_SESSION_PREFIX);
+        String internalId = nextInternalSessionId(MultiAgentTraceSupport.RECOVERY_SESSION_PREFIX);
         List<MultiAgentExecutionStep> recoverySteps = new ArrayList<>();
         Map<String, MultiAgentExecutionStep> sourceByStage = toStageMap(sourceSteps);
 
@@ -211,32 +210,15 @@ public class MultiAgentTraceService {
                     continue;
                 }
 
-                if (sourceStep.getStepOrder().equals(targetStep.getStepOrder()) && ACTION_SKIP.equals(action)) {
-                    recoverySteps.add(MultiAgentExecutionStep.builder()
-                            .id(snowflakeIdGenerator.nextLongId())
-                            .traceId(recoveryTraceId)
-                            .stepOrder(sourceStep.getStepOrder())
-                            .stage(sourceStep.getStage())
-                            .agentName(sourceStep.getAgentName())
-                            .inputSummary(sourceStep.getInputSummary())
-                            .outputSummary(sourceOutput(sourceStep))
-                            .promptTokens(0)
-                            .completionTokens(0)
-                            .latencyMs(0L)
-                            .success(true)
-                            .errorMessage("步骤已跳过，沿用已有上下文继续执行")
-                            .recoverable(true)
-                            .skipped(true)
-                            .recoveryAction(action)
-                            .sourceTraceId(sourceTrace.getTraceId())
-                            .sourceStepOrder(sourceStep.getStepOrder())
-                            .createdAt(LocalDateTime.now())
-                            .build());
+                if (sourceStep.getStepOrder().equals(targetStep.getStepOrder())
+                        && MultiAgentTraceSupport.ACTION_SKIP.equals(action)) {
+                    recoverySteps.add(traceSupport.buildSkippedRecoveryStep(recoveryTraceId, sourceStep, action));
                     continue;
                 }
 
                 if ("planner".equals(sourceStep.getStage())) {
-                    MultiAgentOrchestrator.StepResult planResult = runPlanner(recoveryTraceId, task, internalId, listener);
+                    MultiAgentOrchestrator.StepResult planResult =
+                            stageRunner.runPlanner(recoveryTraceId, task, internalId, listener);
                     recoverySteps.add(toRecoveryStep(recoveryTraceId, sourceTrace.getTraceId(), sourceStep.getStepOrder(), action,
                             "planner", "Planner", summarize(task), planResult, true, null));
                     planContent = planResult.getContent();
@@ -244,8 +226,8 @@ public class MultiAgentTraceService {
                 }
 
                 if ("executor".equals(sourceStep.getStage())) {
-                    String executionInput = summarize("任务:\n" + task + "\n\n规划:\n" + defaultString(planContent));
-                    MultiAgentOrchestrator.StepResult executeResult = runExecutor(
+                    String executionInput = summarize("浠诲姟:\n" + task + "\n\n瑙勫垝:\n" + defaultString(planContent));
+                    MultiAgentOrchestrator.StepResult executeResult = stageRunner.runExecutor(
                             recoveryTraceId, userId, task, planContent, internalId, executionInput, listener);
                     recoverySteps.add(toRecoveryStep(recoveryTraceId, sourceTrace.getTraceId(), sourceStep.getStepOrder(), action,
                             "executor", "Executor", executionInput, executeResult, true, null));
@@ -255,7 +237,7 @@ public class MultiAgentTraceService {
 
                 if ("critic".equals(sourceStep.getStage())) {
                     String criticInput = summarize("原始任务:\n" + task + "\n\n执行结果:\n" + defaultString(executeContent));
-                    MultiAgentOrchestrator.StepResult criticResult = runCritic(
+                    MultiAgentOrchestrator.StepResult criticResult = stageRunner.runCritic(
                             recoveryTraceId, task, executeContent, internalId, criticInput, listener);
                     recoverySteps.add(toRecoveryStep(recoveryTraceId, sourceTrace.getTraceId(), sourceStep.getStepOrder(), action,
                             "critic", "Critic", criticInput, criticResult, true, null));
@@ -273,7 +255,7 @@ public class MultiAgentTraceService {
             );
             persistTrace(recoveryTrace, recoverySteps);
             return new RecoveryExecutionResult(recoveryTrace, recoverySteps);
-        } catch (StageExecutionException ex) {
+        } catch (MultiAgentStageRunner.StageExecutionException ex) {
             recoverySteps.add(markFailedRecoveryStep(recoveryTraceId, sourceTrace.getTraceId(), action, ex.getFailedStep()));
             long totalLatency = System.currentTimeMillis() - startedAt;
             persistTrace(buildTraceRecord(
@@ -287,75 +269,13 @@ public class MultiAgentTraceService {
         }
     }
 
-    private MultiAgentOrchestrator.StepResult runPlanner(String traceId, String task, String internalId, MultiAgentExecutionListener listener) {
-        return runStage(traceId, 1, "planner", "Planner", summarize(task), listener,
-                () -> multiAgentOrchestrator.planTask(task, internalId + "-planner"));
-    }
-
-    private MultiAgentOrchestrator.StepResult runExecutor(String traceId,
-                                                          String userId,
-                                                          String task,
-                                                          String planContent,
-                                                          String internalId,
-                                                          String executionInput,
-                                                          MultiAgentExecutionListener listener) {
-        return runStage(traceId, 2, "executor", "Executor", executionInput, listener,
-                () -> multiAgentOrchestrator.executeWithTools(userId, task, defaultString(planContent), internalId + "-executor"));
-    }
-
-    private MultiAgentOrchestrator.StepResult runCritic(String traceId,
-                                                        String task,
-                                                        String executionContent,
-                                                        String internalId,
-                                                        String criticInput,
-                                                        MultiAgentExecutionListener listener) {
-        return runStage(traceId, 3, "critic", "Critic", criticInput, listener,
-                () -> multiAgentOrchestrator.critique(task, defaultString(executionContent), internalId + "-critic"));
-    }
-
-    private MultiAgentOrchestrator.StepResult runStage(String traceId,
-                                                       int order,
-                                                       String stage,
-                                                       String label,
-                                                       String inputSummary,
-                                                       MultiAgentExecutionListener listener,
-                                                       StageSupplier supplier) {
-        listener.onStageStarted(stage, label);
-        long start = System.currentTimeMillis();
-        try {
-            MultiAgentOrchestrator.StepResult result = supplier.get().withLatencyMs(System.currentTimeMillis() - start);
-            listener.onStageCompleted(toStep(traceId, order, stage, label, inputSummary, result, true, null, result.getLatencyMs()));
-            return result;
-        } catch (Exception ex) {
-            long latency = System.currentTimeMillis() - start;
-            MultiAgentExecutionStep failedStep = MultiAgentExecutionStep.builder()
-                    .traceId(traceId)
-                    .stepOrder(order)
-                    .stage(stage)
-                    .agentName(label)
-                    .inputSummary(inputSummary)
-                    .outputSummary(null)
-                    .promptTokens(0)
-                    .completionTokens(0)
-                    .latencyMs(latency)
-                    .success(false)
-                    .errorMessage(summarize(ex.getMessage()))
-                    .recoverable(true)
-                    .skipped(false)
-                    .createdAt(LocalDateTime.now())
-                    .build();
-            listener.onStageCompleted(failedStep);
-            throw new StageExecutionException(failedStep, ex);
-        }
-    }
-
     private void persistTrace(MultiAgentExecutionTrace trace, List<MultiAgentExecutionStep> steps) {
         try {
             traceMapper.insert(trace);
             for (MultiAgentExecutionStep step : steps) {
                 stepMapper.insert(step);
             }
-        } catch (Exception ex) {
+        } catch (RuntimeException ex) {
             log.warn("persist multi-agent trace failed, traceId={}, error={}", trace.getTraceId(), ex.getMessage());
         }
     }
@@ -375,28 +295,9 @@ public class MultiAgentTraceService {
                                                       String recoverySourceTraceId,
                                                       Integer recoverySourceStepOrder,
                                                       String recoveryAction) {
-        LocalDateTime now = LocalDateTime.now();
-        return MultiAgentExecutionTrace.builder()
-                .id(snowflakeIdGenerator.nextLongId())
-                .traceId(traceId)
-                .userId(userId)
-                .sessionId(sessionId)
-                .agentType("multi")
-                .requestSummary(summarize(task))
-                .finalSummary(summarize(finalSummary))
-                .status(status)
-                .totalPromptTokens(promptTokens)
-                .totalCompletionTokens(completionTokens)
-                .totalLatencyMs(latencyMs)
-                .stepCount(steps.size())
-                .errorMessage(summarize(errorMessage))
-                .parentTraceId(parentTraceId)
-                .recoverySourceTraceId(recoverySourceTraceId)
-                .recoverySourceStepOrder(recoverySourceStepOrder)
-                .recoveryAction(recoveryAction)
-                .createdAt(now)
-                .updatedAt(now)
-                .build();
+        return traceSupport.buildTraceRecord(traceId, userId, sessionId, task, finalSummary, status, promptTokens,
+                completionTokens, latencyMs, steps, errorMessage, parentTraceId, recoverySourceTraceId,
+                recoverySourceStepOrder, recoveryAction);
     }
 
     private MultiAgentExecutionStep toStep(String traceId,
@@ -408,23 +309,7 @@ public class MultiAgentTraceService {
                                            boolean success,
                                            String errorMessage,
                                            long latencyMs) {
-        return MultiAgentExecutionStep.builder()
-                .id(snowflakeIdGenerator.nextLongId())
-                .traceId(traceId)
-                .stepOrder(order)
-                .stage(stage)
-                .agentName(agentName)
-                .inputSummary(inputSummary)
-                .outputSummary(summarize(result != null ? result.getContent() : null))
-                .promptTokens(result != null ? result.getPromptTokens() : 0)
-                .completionTokens(result != null ? result.getCompletionTokens() : 0)
-                .latencyMs(latencyMs)
-                .success(success)
-                .errorMessage(summarize(errorMessage))
-                .recoverable(true)
-                .skipped(false)
-                .createdAt(LocalDateTime.now())
-                .build();
+        return traceSupport.toStep(traceId, order, stage, agentName, inputSummary, result, success, errorMessage, latencyMs);
     }
 
     private MultiAgentExecutionStep toRecoveryStep(String traceId,
@@ -437,203 +322,63 @@ public class MultiAgentTraceService {
                                                    MultiAgentOrchestrator.StepResult result,
                                                    boolean success,
                                                    String errorMessage) {
-        return MultiAgentExecutionStep.builder()
-                .id(snowflakeIdGenerator.nextLongId())
-                .traceId(traceId)
-                .stepOrder(sourceStepOrder)
-                .stage(stage)
-                .agentName(agentName)
-                .inputSummary(inputSummary)
-                .outputSummary(summarize(result != null ? result.getContent() : null))
-                .promptTokens(result != null ? result.getPromptTokens() : 0)
-                .completionTokens(result != null ? result.getCompletionTokens() : 0)
-                .latencyMs(result != null ? result.getLatencyMs() : 0L)
-                .success(success)
-                .errorMessage(summarize(errorMessage))
-                .recoverable(true)
-                .skipped(false)
-                .recoveryAction(action)
-                .sourceTraceId(sourceTraceId)
-                .sourceStepOrder(sourceStepOrder)
-                .createdAt(LocalDateTime.now())
-                .build();
+        return traceSupport.toRecoveryStep(traceId, sourceTraceId, sourceStepOrder, action, stage, agentName, inputSummary,
+                result, success, errorMessage);
     }
 
-    private MultiAgentExecutionStep copyStepForRecovery(String recoveryTraceId, MultiAgentExecutionStep sourceStep, String action) {
-        return MultiAgentExecutionStep.builder()
-                .id(snowflakeIdGenerator.nextLongId())
-                .traceId(recoveryTraceId)
-                .stepOrder(sourceStep.getStepOrder())
-                .stage(sourceStep.getStage())
-                .agentName(sourceStep.getAgentName())
-                .inputSummary(sourceStep.getInputSummary())
-                .outputSummary(sourceStep.getOutputSummary())
-                .promptTokens(sourceStep.getPromptTokens())
-                .completionTokens(sourceStep.getCompletionTokens())
-                .latencyMs(sourceStep.getLatencyMs())
-                .success(sourceStep.getSuccess())
-                .errorMessage(sourceStep.getErrorMessage())
-                .recoverable(sourceStep.getRecoverable())
-                .skipped(Boolean.TRUE.equals(sourceStep.getSkipped()))
-                .recoveryAction(action)
-                .sourceTraceId(sourceStep.getTraceId())
-                .sourceStepOrder(sourceStep.getStepOrder())
-                .createdAt(LocalDateTime.now())
-                .build();
+    private MultiAgentExecutionStep copyStepForRecovery(String recoveryTraceId,
+                                                        MultiAgentExecutionStep sourceStep,
+                                                        String action) {
+        return traceSupport.copyStepForRecovery(recoveryTraceId, sourceStep, action);
     }
 
     private MultiAgentExecutionStep markFailedRecoveryStep(String recoveryTraceId,
                                                            String sourceTraceId,
                                                            String action,
                                                            MultiAgentExecutionStep failedStep) {
-        return MultiAgentExecutionStep.builder()
-                .id(snowflakeIdGenerator.nextLongId())
-                .traceId(recoveryTraceId)
-                .stepOrder(failedStep.getStepOrder())
-                .stage(failedStep.getStage())
-                .agentName(failedStep.getAgentName())
-                .inputSummary(failedStep.getInputSummary())
-                .outputSummary(failedStep.getOutputSummary())
-                .promptTokens(failedStep.getPromptTokens())
-                .completionTokens(failedStep.getCompletionTokens())
-                .latencyMs(failedStep.getLatencyMs())
-                .success(false)
-                .errorMessage(failedStep.getErrorMessage())
-                .recoverable(true)
-                .skipped(false)
-                .recoveryAction(action)
-                .sourceTraceId(sourceTraceId)
-                .sourceStepOrder(failedStep.getStepOrder())
-                .createdAt(LocalDateTime.now())
-                .build();
+        return traceSupport.markFailedRecoveryStep(recoveryTraceId, sourceTraceId, action, failedStep);
     }
 
     private MultiAgentTraceResponse toResponse(MultiAgentExecutionTrace trace, List<MultiAgentExecutionStep> steps) {
-        return MultiAgentTraceResponse.builder()
-                .traceId(trace.getTraceId())
-                .sessionId(trace.getSessionId())
-                .userId(trace.getUserId())
-                .agentType(trace.getAgentType())
-                .requestSummary(trace.getRequestSummary())
-                .finalSummary(trace.getFinalSummary())
-                .status(trace.getStatus())
-                .totalPromptTokens(trace.getTotalPromptTokens())
-                .totalCompletionTokens(trace.getTotalCompletionTokens())
-                .totalLatencyMs(trace.getTotalLatencyMs())
-                .stepCount(trace.getStepCount())
-                .errorMessage(trace.getErrorMessage())
-                .parentTraceId(trace.getParentTraceId())
-                .recoverySourceTraceId(trace.getRecoverySourceTraceId())
-                .recoverySourceStepOrder(trace.getRecoverySourceStepOrder())
-                .recoveryAction(trace.getRecoveryAction())
-                .createdAt(trace.getCreatedAt())
-                .updatedAt(trace.getUpdatedAt())
-                .steps(steps == null ? null : steps.stream().map(this::toStepResponse).toList())
-                .build();
-    }
-
-    private MultiAgentTraceStepResponse toStepResponse(MultiAgentExecutionStep step) {
-        return MultiAgentTraceStepResponse.builder()
-                .stepOrder(step.getStepOrder())
-                .stage(step.getStage())
-                .agentName(step.getAgentName())
-                .inputSummary(step.getInputSummary())
-                .outputSummary(step.getOutputSummary())
-                .promptTokens(step.getPromptTokens())
-                .completionTokens(step.getCompletionTokens())
-                .latencyMs(step.getLatencyMs())
-                .success(step.getSuccess())
-                .errorMessage(step.getErrorMessage())
-                .recoverable(step.getRecoverable())
-                .skipped(step.getSkipped())
-                .recoveryAction(step.getRecoveryAction())
-                .sourceTraceId(step.getSourceTraceId())
-                .sourceStepOrder(step.getSourceStepOrder())
-                .createdAt(step.getCreatedAt())
-                .build();
+        return traceSupport.toResponse(trace, steps);
     }
 
     private int sumPromptTokens(MultiAgentOrchestrator.StepResult... results) {
-        int total = 0;
-        for (MultiAgentOrchestrator.StepResult result : results) {
-            if (result != null) {
-                total += result.getPromptTokens();
-            }
-        }
-        return total;
+        return traceSupport.sumPromptTokens(results);
     }
 
     private int sumCompletionTokens(MultiAgentOrchestrator.StepResult... results) {
-        int total = 0;
-        for (MultiAgentOrchestrator.StepResult result : results) {
-            if (result != null) {
-                total += result.getCompletionTokens();
-            }
-        }
-        return total;
+        return traceSupport.sumCompletionTokens(results);
     }
 
     private String currentTraceId() {
-        String traceId = TraceIdContext.currentTraceId();
-        return traceId == null || traceId.isBlank() ? UUID.randomUUID().toString() : traceId;
+        return traceSupport.currentTraceId();
     }
 
     private String summarize(String text) {
-        if (text == null) {
-            return null;
-        }
-        return text.length() <= MAX_SUMMARY_LENGTH ? text : text.substring(0, MAX_SUMMARY_LENGTH) + "...";
+        return traceSupport.summarize(text);
     }
 
     private String normalizeAction(String action) {
-        if (action == null || action.isBlank()) {
-            return ACTION_RETRY;
-        }
-        String normalized = action.trim().toLowerCase();
-        if (!List.of(ACTION_RETRY, ACTION_REPLAY, ACTION_SKIP).contains(normalized)) {
-            throw new IllegalArgumentException("不支持的恢复动作: " + action);
-        }
-        return normalized;
+        return traceSupport.normalizeAction(action);
     }
 
     private Map<String, MultiAgentExecutionStep> toStageMap(List<MultiAgentExecutionStep> steps) {
-        Map<String, MultiAgentExecutionStep> mapping = new LinkedHashMap<>();
-        for (MultiAgentExecutionStep step : steps) {
-            mapping.put(step.getStage(), step);
-        }
-        return mapping;
+        return traceSupport.toStageMap(steps);
     }
 
     private String sourceOutput(MultiAgentExecutionStep step) {
-        return step == null ? "" : defaultString(step.getOutputSummary());
+        return traceSupport.sourceOutput(step);
     }
 
     private String defaultString(String value) {
-        return value == null ? "" : value;
+        return traceSupport.defaultString(value);
     }
 
     private String nextInternalSessionId(String prefix) {
-        return prefix + snowflakeIdGenerator.nextLongId();
-    }
-
-    @FunctionalInterface
-    private interface StageSupplier {
-        MultiAgentOrchestrator.StepResult get();
+        return traceSupport.nextInternalSessionId(prefix);
     }
 
     private record RecoveryExecutionResult(MultiAgentExecutionTrace trace, List<MultiAgentExecutionStep> steps) {
-    }
-
-    private static class StageExecutionException extends RuntimeException {
-        private final MultiAgentExecutionStep failedStep;
-
-        private StageExecutionException(MultiAgentExecutionStep failedStep, Throwable cause) {
-            super(cause);
-            this.failedStep = failedStep;
-        }
-
-        public MultiAgentExecutionStep getFailedStep() {
-            return failedStep;
-        }
     }
 }

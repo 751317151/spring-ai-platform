@@ -3,8 +3,8 @@ package com.huah.ai.platform.rag.service;
 import com.huah.ai.platform.common.exception.BizException;
 import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import com.huah.ai.platform.rag.metrics.RagMetricsService;
-import com.huah.ai.platform.rag.model.DocumentMeta;
-import com.huah.ai.platform.rag.model.KnowledgeBase;
+import com.huah.ai.platform.rag.model.DocumentMetaEntity;
+import com.huah.ai.platform.rag.model.KnowledgeBaseEntity;
 import com.huah.ai.platform.rag.parser.ExcelDocumentParser;
 import com.huah.ai.platform.rag.parser.StructuredDocumentParser;
 import lombok.RequiredArgsConstructor;
@@ -49,17 +49,18 @@ public class DocumentIngestionService {
     private final RagMetricsService metricsService;
     private final SnowflakeIdGenerator snowflakeIdGenerator;
 
-    public DocumentMeta ingestDocument(MultipartFile file, Long knowledgeBaseId, String uploadedBy) {
+    public DocumentMetaEntity ingestDocument(MultipartFile file, Long knowledgeBaseId, String uploadedBy) {
         return ingestDocument(file, knowledgeBaseId, uploadedBy, false);
     }
 
-    public DocumentMeta ingestDocument(MultipartFile file, Long knowledgeBaseId, String uploadedBy, boolean replaceExisting) {
+    public DocumentMetaEntity ingestDocument(
+            MultipartFile file, Long knowledgeBaseId, String uploadedBy, boolean replaceExisting) {
         String filename = file.getOriginalFilename();
         if (filename == null || filename.isBlank()) {
             throw new BizException("Filename cannot be empty.");
         }
 
-        DocumentMeta duplicate = metaService.findLatestByKnowledgeBaseAndFilename(knowledgeBaseId, filename);
+        DocumentMetaEntity duplicate = metaService.findLatestByKnowledgeBaseAndFilename(knowledgeBaseId, filename);
         if (duplicate != null) {
             if (!replaceExisting) {
                 throw new BizException("A document with the same filename already exists in this knowledge base. Enable replacement or delete it first.");
@@ -73,8 +74,8 @@ public class DocumentIngestionService {
         String extension = getFileExtension(filename).toLowerCase();
         log.info("Start ingesting document: {}, knowledgeBaseId={}, docId={}", filename, knowledgeBaseId, docId);
 
-        KnowledgeBase kb = metaService.getKnowledgeBase(knowledgeBaseId);
-        DocumentMeta meta = DocumentMeta.builder()
+        KnowledgeBaseEntity kb = metaService.getKnowledgeBase(knowledgeBaseId);
+        DocumentMetaEntity meta = DocumentMetaEntity.builder()
                 .id(docId)
                 .filename(filename)
                 .knowledgeBaseId(knowledgeBaseId)
@@ -82,7 +83,7 @@ public class DocumentIngestionService {
                 .storagePath(storageKey)
                 .contentType(contentType)
                 .uploadedBy(uploadedBy)
-                .status(DocumentMeta.STATUS_PROCESSING)
+                .status(DocumentMetaEntity.STATUS_PROCESSING)
                 .build();
         metaService.createProcessingDocumentMeta(meta);
 
@@ -107,9 +108,9 @@ public class DocumentIngestionService {
         }
     }
 
-    public DocumentMeta retryDocument(Long docId) {
-        DocumentMeta meta = metaService.resetFailedDocumentForRetry(docId);
-        KnowledgeBase kb = metaService.getKnowledgeBase(meta.getKnowledgeBaseId());
+    public DocumentMetaEntity retryDocument(Long docId) {
+        DocumentMetaEntity meta = metaService.resetFailedDocumentForRetry(docId);
+        KnowledgeBaseEntity kb = metaService.getKnowledgeBase(meta.getKnowledgeBaseId());
 
         try (InputStream inputStream = fileStorageService.download(meta.getStoragePath())) {
             byte[] content = StreamUtils.copyToByteArray(inputStream);
@@ -139,9 +140,9 @@ public class DocumentIngestionService {
         }
     }
 
-    public DocumentMeta reindexDocument(Long docId) {
-        DocumentMeta meta = metaService.prepareDocumentForReindex(docId);
-        KnowledgeBase kb = metaService.getKnowledgeBase(meta.getKnowledgeBaseId());
+    public DocumentMetaEntity reindexDocument(Long docId) {
+        DocumentMetaEntity meta = metaService.prepareDocumentForReindex(docId);
+        KnowledgeBaseEntity kb = metaService.getKnowledgeBase(meta.getKnowledgeBaseId());
 
         try (InputStream inputStream = fileStorageService.download(meta.getStoragePath())) {
             byte[] content = StreamUtils.copyToByteArray(inputStream);
@@ -171,14 +172,14 @@ public class DocumentIngestionService {
         }
     }
 
-    private DocumentMeta ingestContent(
+    private DocumentMetaEntity ingestContent(
             Long docId,
             String filename,
             Long knowledgeBaseId,
             String uploadedBy,
             String contentType,
             String storageKey,
-            KnowledgeBase kb,
+            KnowledgeBaseEntity kb,
             byte[] content
     ) {
         long parseStart = System.nanoTime();
@@ -258,7 +259,7 @@ public class DocumentIngestionService {
         }
     }
 
-    private List<Document> splitDocuments(List<Document> documents, KnowledgeBase kb, String chunkStrategy) {
+    private List<Document> splitDocuments(List<Document> documents, KnowledgeBaseEntity kb, String chunkStrategy) {
         if ("STRUCTURED".equals(chunkStrategy)) {
             return splitStructuredDocuments(documents, kb.getStructuredBatchSize());
         }
@@ -270,7 +271,7 @@ public class DocumentIngestionService {
         return splitter.apply(documents);
     }
 
-    private String resolveChunkStrategy(KnowledgeBase kb, String filename) {
+    private String resolveChunkStrategy(KnowledgeBaseEntity kb, String filename) {
         String configured = kb.getChunkStrategy() == null ? "TOKEN" : kb.getChunkStrategy().trim().toUpperCase();
         String extension = getFileExtension(filename).toLowerCase();
         if ("STRUCTURED".equals(configured) && STRUCTURED_EXTENSIONS.contains(extension)) {
