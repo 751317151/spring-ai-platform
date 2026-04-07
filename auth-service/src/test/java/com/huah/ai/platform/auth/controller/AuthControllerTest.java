@@ -17,6 +17,7 @@ import com.huah.ai.platform.auth.dto.TokenResponse;
 import com.huah.ai.platform.auth.dto.TokenValidationResponse;
 import com.huah.ai.platform.auth.model.AiUserEntity;
 import com.huah.ai.platform.auth.service.AuthAdminService;
+import com.huah.ai.platform.auth.service.AuthQuotaAdminService;
 import com.huah.ai.platform.auth.service.AuthTokenService;
 import com.huah.ai.platform.auth.service.AuthViewAssembler;
 import com.huah.ai.platform.common.dto.Result;
@@ -60,7 +61,10 @@ class AuthControllerTest {
                 mock(com.huah.ai.platform.auth.mapper.BotPermissionMapper.class),
                 new AuthViewAssembler(),
                 mock(com.huah.ai.platform.auth.service.AuthRoleService.class));
-        controller = new AuthController(authTokenService, mock(AuthAdminService.class));
+        controller = new AuthController(
+                authTokenService,
+                mock(AuthAdminService.class),
+                mock(AuthQuotaAdminService.class));
     }
 
     @Test

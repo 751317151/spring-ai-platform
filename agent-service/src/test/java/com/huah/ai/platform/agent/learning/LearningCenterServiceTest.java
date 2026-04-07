@@ -1,9 +1,11 @@
 package com.huah.ai.platform.agent.learning;
 
 import com.huah.ai.platform.agent.dto.SessionConfigRequest;
-import com.huah.ai.platform.agent.learning.dto.FollowUpTemplatePayload;
-import com.huah.ai.platform.agent.learning.dto.LearningFavoritePayload;
-import com.huah.ai.platform.agent.learning.dto.LearningNotePayload;
+import com.huah.ai.platform.agent.learning.dto.FollowUpTemplateRequest;
+import com.huah.ai.platform.agent.learning.dto.FollowUpTemplateResponse;
+import com.huah.ai.platform.agent.learning.dto.LearningFavoriteRequest;
+import com.huah.ai.platform.agent.learning.dto.LearningFavoriteResponse;
+import com.huah.ai.platform.agent.learning.dto.LearningNoteResponse;
 import com.huah.ai.platform.agent.support.AgentTestFixtures;
 import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,10 +15,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -50,32 +52,31 @@ class LearningCenterServiceTest {
 
     @Test
     void saveFavoriteInsertsNewRecordAndPersistsJsonFields() {
-        LearningFavoritePayload payload = new LearningFavoritePayload();
-        payload.setId(1001L);
-        payload.setRole("assistant");
-        payload.setContent("answer");
-        payload.setAgentType("rd");
-        payload.setSessionId("session-1");
-        payload.setSessionSummary("排查记录");
-        payload.setSourceMessageIndex(2);
-        payload.setCreatedAt(10L);
-        payload.setLastCollectedAt(20L);
-        payload.setDuplicateCount(1);
-        payload.setTags(List.of("登录", "排查"));
+        LearningFavoriteRequest request = new LearningFavoriteRequest();
+        request.setId(1001L);
+        request.setRole("assistant");
+        request.setContent("answer");
+        request.setAgentType("rd");
+        request.setSessionId("session-1");
+        request.setSessionSummary("排查记录");
+        request.setSourceMessageIndex(2);
+        request.setLastCollectedAt(LocalDateTime.of(2026, 4, 1, 10, 20));
+        request.setDuplicateCount(1);
+        request.setTags(List.of("登录", "排查"));
         SessionConfigRequest sessionConfig = new SessionConfigRequest();
         sessionConfig.setModel("gpt-4.1");
         sessionConfig.setKnowledgeEnabled(Boolean.TRUE);
-        payload.setSessionConfigSnapshot(sessionConfig);
+        request.setSessionConfigSnapshot(sessionConfig);
 
         when(favoriteMapper.selectOne(any())).thenReturn(null);
         when(favoriteMapper.selectByUserId("user-1")).thenReturn(List.of());
 
-        service.saveFavorite("user-1", payload);
+        service.saveFavorite("user-1", request);
 
-        ArgumentCaptor<LearningFavoriteRecord> captor = ArgumentCaptor.forClass(LearningFavoriteRecord.class);
+        ArgumentCaptor<LearningFavoriteEntity> captor = ArgumentCaptor.forClass(LearningFavoriteEntity.class);
         verify(favoriteMapper).insert(captor.capture());
-        verify(favoriteMapper, never()).updateById(any(LearningFavoriteRecord.class));
-        LearningFavoriteRecord saved = captor.getValue();
+        verify(favoriteMapper, never()).updateById(any(LearningFavoriteEntity.class));
+        LearningFavoriteEntity saved = captor.getValue();
         assertEquals("user-1", saved.getUserId());
         assertEquals(1001L, saved.getId());
         assertTrue(saved.getTagsJson().contains("登录"));
@@ -85,7 +86,7 @@ class LearningCenterServiceTest {
     @Test
     void listFavoritesMapsTagsAndSessionConfig() {
         when(favoriteMapper.selectByUserId("user-1")).thenReturn(List.of(
-                LearningFavoriteRecord.builder()
+                LearningFavoriteEntity.builder()
                         .id(1001L)
                         .userId("user-1")
                         .role("assistant")
@@ -95,7 +96,7 @@ class LearningCenterServiceTest {
                         .build()
         ));
 
-        List<LearningFavoritePayload> result = service.listFavorites("user-1");
+        List<LearningFavoriteResponse> result = service.listFavorites("user-1");
 
         assertEquals(1, result.size());
         assertEquals(List.of("登录", "排查"), result.get(0).getTags());
@@ -106,7 +107,7 @@ class LearningCenterServiceTest {
     @Test
     void listNotesFallsBackToEmptyTagsWhenJsonBroken() {
         when(noteMapper.selectByUserId("user-1")).thenReturn(List.of(
-                LearningNoteRecord.builder()
+                LearningNoteEntity.builder()
                         .id(2001L)
                         .userId("user-1")
                         .title("note")
@@ -115,7 +116,7 @@ class LearningCenterServiceTest {
                         .build()
         ));
 
-        List<LearningNotePayload> result = service.listNotes("user-1");
+        List<LearningNoteResponse> result = service.listNotes("user-1");
 
         assertEquals(1, result.size());
         assertTrue(result.get(0).getTags().isEmpty());
@@ -123,19 +124,19 @@ class LearningCenterServiceTest {
 
     @Test
     void saveTemplateUpdatesExistingRecord() {
-        FollowUpTemplatePayload payload = new FollowUpTemplatePayload();
-        payload.setId(3001L);
-        payload.setName("追问模板");
-        payload.setContent("继续展开");
-        payload.setSourceCount(2);
-        payload.setUpdatedAt(100L);
+        FollowUpTemplateRequest request = new FollowUpTemplateRequest();
+        request.setId(3001L);
+        request.setName("追问模板");
+        request.setContent("继续展开");
+        request.setSourceCount(2);
 
-        when(templateMapper.selectOne(any())).thenReturn(FollowUpTemplateRecord.builder().id(3001L).userId("user-1").build());
+        when(templateMapper.selectOne(any())).thenReturn(
+                FollowUpTemplateEntity.builder().id(3001L).userId("user-1").build());
         when(templateMapper.selectByUserId("user-1")).thenReturn(List.of());
 
-        service.saveTemplate("user-1", payload);
+        service.saveTemplate("user-1", request);
 
-        ArgumentCaptor<FollowUpTemplateRecord> captor = ArgumentCaptor.forClass(FollowUpTemplateRecord.class);
+        ArgumentCaptor<FollowUpTemplateEntity> captor = ArgumentCaptor.forClass(FollowUpTemplateEntity.class);
         verify(templateMapper).updateById(captor.capture());
         assertEquals("user-1", captor.getValue().getUserId());
         assertEquals("追问模板", captor.getValue().getName());
@@ -150,7 +151,7 @@ class LearningCenterServiceTest {
     @Test
     void listTemplatesReturnsEmptyWhenNoData() {
         when(templateMapper.selectByUserId("user-1")).thenReturn(List.of());
-        List<FollowUpTemplatePayload> result = service.listTemplates("user-1");
+        List<FollowUpTemplateResponse> result = service.listTemplates("user-1");
         assertTrue(result.isEmpty());
     }
 }

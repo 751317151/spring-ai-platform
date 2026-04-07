@@ -57,9 +57,9 @@ class ToolAuditAspectTest {
         Object result = aspect.auditTool(pjp, method.getAnnotation(Tool.class));
 
         assertEquals("world", result);
-        ArgumentCaptor<AiToolAuditLog> captor = ArgumentCaptor.forClass(AiToolAuditLog.class);
+        ArgumentCaptor<AiToolAuditLogEntity> captor = ArgumentCaptor.forClass(AiToolAuditLogEntity.class);
         verify(mapper).insert(captor.capture());
-        AiToolAuditLog log = captor.getValue();
+        AiToolAuditLogEntity log = captor.getValue();
         assertEquals("u-1", log.getUserId());
         assertEquals("s-1", log.getSessionId());
         assertEquals("rd", log.getAgentType());

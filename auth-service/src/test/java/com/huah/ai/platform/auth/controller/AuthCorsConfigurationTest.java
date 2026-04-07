@@ -3,10 +3,13 @@ package com.huah.ai.platform.auth.controller;
 import com.huah.ai.platform.auth.config.SecurityConfig;
 import com.huah.ai.platform.auth.mapper.AiBotPermissionRoleMapper;
 import com.huah.ai.platform.auth.mapper.AiRoleMapper;
+import com.huah.ai.platform.auth.mapper.AiRoleTokenLimitMapper;
 import com.huah.ai.platform.auth.mapper.AiUserMapper;
 import com.huah.ai.platform.auth.mapper.AiUserRoleMapper;
+import com.huah.ai.platform.auth.mapper.AiUserTokenLimitMapper;
 import com.huah.ai.platform.auth.mapper.BotPermissionMapper;
 import com.huah.ai.platform.auth.service.AuthAdminService;
+import com.huah.ai.platform.auth.service.AuthQuotaAdminService;
 import com.huah.ai.platform.auth.service.AuthRoleService;
 import com.huah.ai.platform.auth.service.AuthTokenService;
 import com.huah.ai.platform.common.config.CorsConfig;
@@ -46,7 +49,13 @@ class AuthCorsConfigurationTest {
     private AiRoleMapper aiRoleMapper;
 
     @MockBean
+    private AiRoleTokenLimitMapper aiRoleTokenLimitMapper;
+
+    @MockBean
     private AiUserRoleMapper aiUserRoleMapper;
+
+    @MockBean
+    private AiUserTokenLimitMapper aiUserTokenLimitMapper;
 
     @MockBean
     private BotPermissionMapper botPermissionMapper;
@@ -59,6 +68,9 @@ class AuthCorsConfigurationTest {
 
     @MockBean
     private AuthAdminService authAdminService;
+
+    @MockBean
+    private AuthQuotaAdminService authQuotaAdminService;
 
     @MockBean
     private AuthRoleService authRoleService;

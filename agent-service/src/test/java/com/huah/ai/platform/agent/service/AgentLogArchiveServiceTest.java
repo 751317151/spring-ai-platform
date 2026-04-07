@@ -1,16 +1,16 @@
 package com.huah.ai.platform.agent.service;
 
 import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.huah.ai.platform.agent.audit.AiAuditLog;
+import com.huah.ai.platform.agent.audit.AiAuditLogEntity;
 import com.huah.ai.platform.agent.audit.AiAuditLogMapper;
-import com.huah.ai.platform.agent.audit.AiToolAuditLog;
+import com.huah.ai.platform.agent.audit.AiToolAuditLogEntity;
 import com.huah.ai.platform.agent.audit.AiToolAuditLogMapper;
 import com.huah.ai.platform.agent.config.AgentLifecycleProperties;
-import com.huah.ai.platform.agent.dto.AgentLogArchiveManifest;
+import com.huah.ai.platform.agent.dto.AgentArchivedTraceLookupResponse;
 import com.huah.ai.platform.agent.dto.AgentLogArchiveDetailResponse;
+import com.huah.ai.platform.agent.dto.AgentLogArchiveManifest;
 import com.huah.ai.platform.agent.dto.AgentLogArchiveManifestInfo;
 import com.huah.ai.platform.agent.dto.AgentLogArchivePreviewResponse;
-import com.huah.ai.platform.agent.dto.AgentArchivedTraceLookupResponse;
 import com.huah.ai.platform.agent.dto.AgentLogLifecycleSummaryResponse;
 import com.huah.ai.platform.agent.multi.MultiAgentExecutionTrace;
 import com.huah.ai.platform.agent.multi.MultiAgentExecutionTraceMapper;
@@ -47,7 +47,7 @@ class AgentLogArchiveServiceTest {
         properties.getArchive().setExportBatchSize(2);
 
         when(auditLogMapper.selectArchiveCandidates(eq("rd"), any(), eq(2))).thenReturn(List.of(
-                AiAuditLog.builder()
+                AiAuditLogEntity.builder()
                         .id(1001L)
                         .traceId("trace-a1")
                         .sessionId("session-a1")
@@ -56,12 +56,12 @@ class AgentLogArchiveServiceTest {
                         .build()
         ));
         when(auditLogMapper.selectArchiveCandidatesBatch(eq("rd"), any(), eq(2), eq(0L))).thenReturn(List.of(
-                AiAuditLog.builder().id(1001L).traceId("trace-a1").sessionId("session-a1").userMessage("old request").createdAt(LocalDateTime.of(2026, 3, 1, 10, 0)).build(),
-                AiAuditLog.builder().id(1002L).traceId("trace-a2").sessionId("session-a2").userMessage("older request").createdAt(LocalDateTime.of(2026, 3, 1, 11, 0)).build()
+                AiAuditLogEntity.builder().id(1001L).traceId("trace-a1").sessionId("session-a1").userMessage("old request").createdAt(LocalDateTime.of(2026, 3, 1, 10, 0)).build(),
+                AiAuditLogEntity.builder().id(1002L).traceId("trace-a2").sessionId("session-a2").userMessage("older request").createdAt(LocalDateTime.of(2026, 3, 1, 11, 0)).build()
         ));
         when(auditLogMapper.selectArchiveCandidatesBatch(eq("rd"), any(), eq(2), eq(2L))).thenReturn(List.of());
         when(toolAuditLogMapper.selectArchiveCandidates(eq("rd"), any(), eq(2))).thenReturn(List.of(
-                AiToolAuditLog.builder()
+                AiToolAuditLogEntity.builder()
                         .id(2001L)
                         .traceId("trace-t1")
                         .sessionId("session-t1")
@@ -71,7 +71,7 @@ class AgentLogArchiveServiceTest {
                         .build()
         ));
         when(toolAuditLogMapper.selectArchiveCandidatesBatch(eq("rd"), any(), eq(2), eq(0L))).thenReturn(List.of(
-                AiToolAuditLog.builder().id(2001L).traceId("trace-t1").sessionId("session-t1").toolName("queryJira").inputSummary("tool input").createdAt(LocalDateTime.of(2026, 3, 2, 11, 0)).build()
+                AiToolAuditLogEntity.builder().id(2001L).traceId("trace-t1").sessionId("session-t1").toolName("queryJira").inputSummary("tool input").createdAt(LocalDateTime.of(2026, 3, 2, 11, 0)).build()
         ));
         when(traceMapper.selectArchiveCandidates(eq("rd"), any(), eq(2))).thenReturn(List.of(
                 MultiAgentExecutionTrace.builder()

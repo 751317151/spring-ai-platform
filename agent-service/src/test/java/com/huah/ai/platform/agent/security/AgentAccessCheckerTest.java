@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -102,6 +103,34 @@ class AgentAccessCheckerTest {
     @Test
     void checkAndConsumeTokensRollsBackWhenLimitExceeded() {
         when(jdbcTemplate.queryForList(
+                "SELECT daily_token_limit FROM ai_user_token_limits "
+                        + "WHERE user_id = ? AND bot_type = ? AND enabled = true LIMIT 1",
+                "user-1",
+                "rd"
+        )).thenReturn(List.of());
+        when(jdbcTemplate.queryForList(
+                "SELECT daily_token_limit FROM ai_user_token_limits "
+                        + "WHERE user_id = ? AND bot_type IS NULL AND enabled = true LIMIT 1",
+                "user-1"
+        )).thenReturn(List.of());
+        when(jdbcTemplate.queryForList(
+                "SELECT r.role_name, rtl.daily_token_limit "
+                        + "FROM ai_role_token_limits rtl "
+                        + "INNER JOIN ai_roles r ON r.id = rtl.role_id "
+                        + "INNER JOIN ai_user_roles ur ON ur.role_id = rtl.role_id "
+                        + "WHERE ur.user_id = ? AND rtl.bot_type = ? AND rtl.enabled = true",
+                "user-1",
+                "rd"
+        )).thenReturn(List.of());
+        when(jdbcTemplate.queryForList(
+                "SELECT r.role_name, rtl.daily_token_limit "
+                        + "FROM ai_role_token_limits rtl "
+                        + "INNER JOIN ai_roles r ON r.id = rtl.role_id "
+                        + "INNER JOIN ai_user_roles ur ON ur.role_id = rtl.role_id "
+                        + "WHERE ur.user_id = ? AND rtl.bot_type IS NULL AND rtl.enabled = true",
+                "user-1"
+        )).thenReturn(List.of());
+        when(jdbcTemplate.queryForList(
                 "SELECT daily_token_limit FROM ai_bot_permissions WHERE bot_type = ? AND enabled = true",
                 "rd"
         )).thenReturn(List.of(Map.of("daily_token_limit", 100)));
@@ -110,8 +139,8 @@ class AgentAccessCheckerTest {
 
         String result = checker.checkAndConsumeTokens("user-1", "rd", 120);
 
-        assertEquals("今日 Token 配额已用完，限额: 100", result);
-        verify(valueOperations).decrement(anyString(), eq(120L));
-        verify(redisTemplate).expire(anyString(), eq(2L), eq(TimeUnit.DAYS));
+        assertEquals("今日 Token 配额已用完，限额: 100（助手默认配额）", result);
+        verify(valueOperations, times(2)).decrement(anyString(), eq(120L));
+        verify(redisTemplate, times(2)).expire(anyString(), eq(2L), eq(TimeUnit.DAYS));
     }
 }

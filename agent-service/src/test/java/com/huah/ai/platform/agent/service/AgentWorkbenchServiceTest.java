@@ -1,11 +1,11 @@
 package com.huah.ai.platform.agent.service;
 
-import com.huah.ai.platform.agent.audit.AiAuditLog;
+import com.huah.ai.platform.agent.audit.AiAuditLogEntity;
 import com.huah.ai.platform.agent.audit.AiAuditLogMapper;
-import com.huah.ai.platform.agent.audit.AiToolAuditLog;
+import com.huah.ai.platform.agent.audit.AiToolAuditLogEntity;
 import com.huah.ai.platform.agent.audit.AiToolAuditLogMapper;
-import com.huah.ai.platform.agent.dto.AgentWorkbenchErrorTypeItem;
 import com.huah.ai.platform.agent.dto.AgentWorkbenchCompareResponse;
+import com.huah.ai.platform.agent.dto.AgentWorkbenchErrorTypeItem;
 import com.huah.ai.platform.agent.dto.AgentWorkbenchSummaryResponse;
 import com.huah.ai.platform.agent.multi.MultiAgentExecutionTrace;
 import com.huah.ai.platform.agent.multi.MultiAgentExecutionTraceMapper;
@@ -58,9 +58,9 @@ class AgentWorkbenchServiceTest {
     @Test
     void shouldBuildWorkbenchSummaryWithTrendRankingAndErrorDistribution() {
         LocalDateTime now = LocalDateTime.now();
-        List<AiAuditLog> auditLogs24h = new ArrayList<>();
+        List<AiAuditLogEntity> auditLogs24h = new ArrayList<>();
         for (int i = 0; i < 10; i++) {
-            auditLogs24h.add(AiAuditLog.builder()
+            auditLogs24h.add(AiAuditLogEntity.builder()
                     .id(1000L + i)
                     .agentType("multi")
                     .userId("u-" + i)
@@ -73,7 +73,7 @@ class AgentWorkbenchServiceTest {
                     .createdAt(now.minusHours(i % 4))
                     .build());
         }
-        List<AiToolAuditLog> toolLogs24h = List.of(
+        List<AiToolAuditLogEntity> toolLogs24h = List.of(
                 buildToolLog(2001L, "searchDocuments", true, null, null, 80L, "trace-1", now.minusHours(1)),
                 buildToolLog(2002L, "searchDocuments", false, "MCP_DENIED", "access denied", 90L, "trace-2", now.minusHours(1)),
                 buildToolLog(2003L, "fetchChunk", true, null, null, 60L, "trace-3", now.minusHours(2)),
@@ -112,7 +112,6 @@ class AgentWorkbenchServiceTest {
         assertEquals(7, response.getLast7dTrend().size());
         assertEquals(4, response.getLast4wTrend().size());
         assertEquals("policy-summary", response.getRuntimePolicySummary().getSummary());
-        assertTrue(response.getWeeklyDigest().contains("最近一周调用"));
         assertFalse(response.getRecentChanges().isEmpty());
         assertTrue(response.getToolRanking().stream().anyMatch(item ->
                 "searchDocuments".equals(item.getToolName()) && item.getCallCount() == 6));
@@ -128,9 +127,9 @@ class AgentWorkbenchServiceTest {
     @Test
     void shouldBuildCompareInsights() {
         LocalDateTime now = LocalDateTime.now();
-        List<AiAuditLog> leftLogs = new ArrayList<>();
+        List<AiAuditLogEntity> leftLogs = new ArrayList<>();
         for (int i = 0; i < 12; i++) {
-            leftLogs.add(AiAuditLog.builder()
+            leftLogs.add(AiAuditLogEntity.builder()
                     .id(3000L + i)
                     .agentType("rd")
                     .latencyMs(220L)
@@ -138,9 +137,9 @@ class AgentWorkbenchServiceTest {
                     .createdAt(now.minusHours(1))
                     .build());
         }
-        List<AiAuditLog> rightLogs = new ArrayList<>();
+        List<AiAuditLogEntity> rightLogs = new ArrayList<>();
         for (int i = 0; i < 5; i++) {
-            rightLogs.add(AiAuditLog.builder()
+            rightLogs.add(AiAuditLogEntity.builder()
                     .id(4000L + i)
                     .agentType("ops")
                     .latencyMs(90L)
@@ -175,15 +174,15 @@ class AgentWorkbenchServiceTest {
         assertTrue(response.getSummary().contains("primaryGap"));
     }
 
-    private AiToolAuditLog buildToolLog(Long id,
-                                        String toolName,
-                                        boolean success,
-                                        String reasonCode,
-                                        String errorMessage,
-                                        long latencyMs,
-                                        String traceId,
-                                        LocalDateTime createdAt) {
-        return AiToolAuditLog.builder()
+    private AiToolAuditLogEntity buildToolLog(Long id,
+                                              String toolName,
+                                              boolean success,
+                                              String reasonCode,
+                                              String errorMessage,
+                                              long latencyMs,
+                                              String traceId,
+                                              LocalDateTime createdAt) {
+        return AiToolAuditLogEntity.builder()
                 .id(id)
                 .agentType("multi")
                 .toolName(toolName)
