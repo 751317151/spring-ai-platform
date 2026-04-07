@@ -63,6 +63,12 @@ const router = createRouter({
           meta: { title: '运行监控', requiresAdmin: true }
         },
         {
+          path: 'screen',
+          name: 'screen',
+          component: () => import('@/views/ScreenView.vue'),
+          meta: { title: '大屏指挥台', requiresAdmin: true }
+        },
+        {
           path: 'mcp',
           name: 'mcp',
           component: () => import('@/views/McpView.vue'),

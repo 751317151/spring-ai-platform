@@ -15,4 +15,6 @@ public class TokenResponse {
     String username;
     String roles;
     String department;
+    String province;
+    String city;
 }

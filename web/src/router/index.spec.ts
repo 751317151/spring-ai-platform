@@ -43,6 +43,15 @@ describe('router guards', () => {
 
     await router.push('/monitor')
 
-    expect(router.currentRoute.value.name).toBe('dashboard')
+    expect(router.currentRoute.value.name).toBe('chat')
+  })
+
+  it('allows admin users to access screen route', async () => {
+    localStorage.setItem('auth_token', 'token-1')
+    localStorage.setItem('auth_roles', 'ROLE_ADMIN')
+
+    await router.push('/screen')
+
+    expect(router.currentRoute.value.name).toBe('screen')
   })
 })

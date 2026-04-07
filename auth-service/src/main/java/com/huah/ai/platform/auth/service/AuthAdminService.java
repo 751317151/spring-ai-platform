@@ -81,6 +81,8 @@ public class AuthAdminService {
                 "\u4eba\u529b\u8d44\u6e90\u90e8",
                 "\u8d22\u52a1\u90e8"
         };
+        String[] provinces = {"北京", "上海", "广东", "浙江", "四川"};
+        String[] cities = {"北京", "上海", "深圳", "杭州", "成都"};
 
         for (int i = 0; i < userIds.length; i++) {
             if (userMapper.selectByUserId(userIds[i]) == null) {
@@ -89,6 +91,8 @@ public class AuthAdminService {
                         .username(usernames[i])
                         .passwordHash(passwordEncoder.encode("admin123"))
                         .department(departments[i])
+                        .province(provinces[i])
+                        .city(cities[i])
                         .employeeId("EMP00" + (i + 1))
                         .enabled(true)
                         .build();
@@ -223,6 +227,8 @@ public class AuthAdminService {
                 .username(defaultString(request.getUsername(), request.getUserId()))
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .department(defaultString(request.getDepartment(), ""))
+                .province(defaultString(request.getProvince(), ""))
+                .city(defaultString(request.getCity(), ""))
                 .employeeId(defaultString(request.getEmployeeId(), ""))
                 .enabled(parseEnabled(request.getEnabled(), true))
                 .build();
@@ -255,6 +261,12 @@ public class AuthAdminService {
         }
         if (request.getDepartment() != null) {
             user.setDepartment(request.getDepartment());
+        }
+        if (request.getProvince() != null) {
+            user.setProvince(request.getProvince());
+        }
+        if (request.getCity() != null) {
+            user.setCity(request.getCity());
         }
         if (request.getEmployeeId() != null) {
             user.setEmployeeId(request.getEmployeeId());

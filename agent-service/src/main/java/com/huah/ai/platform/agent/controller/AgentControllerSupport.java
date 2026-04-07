@@ -1,6 +1,8 @@
 package com.huah.ai.platform.agent.controller;
 
 import com.huah.ai.platform.agent.security.AgentAccessChecker;
+import com.huah.ai.platform.common.web.RequestOrigin;
+import com.huah.ai.platform.common.web.RequestOriginResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -13,9 +15,14 @@ import java.nio.charset.StandardCharsets;
 class AgentControllerSupport {
 
     private final AgentRequestContextResolver requestContextResolver;
+    private final RequestOriginResolver requestOriginResolver;
 
     AgentRequestContext resolveContext(HttpServletRequest request) {
         return requestContextResolver.resolve(request);
+    }
+
+    RequestOrigin resolveOrigin(HttpServletRequest request) {
+        return requestOriginResolver.resolve(request);
     }
 
     String currentUserId(HttpServletRequest request) {

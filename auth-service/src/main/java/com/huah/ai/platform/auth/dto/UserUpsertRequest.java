@@ -8,6 +8,8 @@ public class UserUpsertRequest {
     private String username;
     private String password;
     private String department;
+    private String province;
+    private String city;
     private String employeeId;
     private String roles;
     private String enabled;

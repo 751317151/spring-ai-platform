@@ -9,6 +9,7 @@ import com.huah.ai.platform.agent.audit.AiToolAuditLogMapper;
 import com.huah.ai.platform.agent.audit.TracePhaseSnapshot;
 import com.huah.ai.platform.common.trace.TraceIdContext;
 import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
+import com.huah.ai.platform.common.web.RequestOrigin;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -45,7 +46,8 @@ public class AgentAuditLogService {
                                boolean success, String errorMessage,
                                long authLatencyMs, long preparationLatencyMs,
                                long modelLatencyMs, long persistenceLatencyMs,
-                               int promptTokens, int completionTokens) {
+                               int promptTokens, int completionTokens,
+                               RequestOrigin requestOrigin) {
         Long logId = snowflakeIdGenerator.nextLongId();
         try {
             String traceId = TraceIdContext.currentTraceId();
@@ -61,6 +63,10 @@ public class AgentAuditLogService {
                     .latencyMs(latencyMs)
                     .success(success)
                     .errorMessage(errorMessage)
+                    .clientIp(requestOrigin != null ? requestOrigin.getClientIp() : null)
+                    .country(requestOrigin != null ? requestOrigin.getCountry() : null)
+                    .province(requestOrigin != null ? requestOrigin.getProvince() : null)
+                    .city(requestOrigin != null ? requestOrigin.getCity() : null)
                     .traceId(traceId)
                     .phaseBreakdownJson(buildPhaseBreakdownJson(
                             traceId, latencyMs, authLatencyMs, preparationLatencyMs, modelLatencyMs, persistenceLatencyMs))

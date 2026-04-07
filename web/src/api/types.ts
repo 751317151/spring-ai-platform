@@ -22,6 +22,8 @@ export interface LoginResponse {
   username: string
   roles: string
   department: string
+  province?: string
+  city?: string
 }
 
 export interface UserUpsertRequest {
@@ -30,6 +32,8 @@ export interface UserUpsertRequest {
   password?: string
   employeeId?: string
   department?: string
+  province?: string
+  city?: string
   roles?: string
   enabled?: string
 }
@@ -39,6 +43,8 @@ export interface AiUser {
   username: string
   employeeId?: string
   department?: string
+  province?: string
+  city?: string
   roles?: string
   enabled?: boolean
   createdAt?: string
@@ -304,6 +310,20 @@ export interface MonitorOverview {
   activeRequests: number
 }
 
+export interface MonitorScreenSnapshot {
+  overview: MonitorOverview
+  hourlyStats: HourlyStat[]
+  agentStats: AgentStat[]
+  topUsers: TopUser[]
+  regionHeat: RegionHeat[]
+  failureSamples: FailureSample[]
+  feedbackOverview: FeedbackOverview
+  alerts: {
+    activeAlerts: number
+    alerts: AlertEvent[]
+  }
+}
+
 export interface HourlyStat {
   hour: number
   total: number
@@ -356,6 +376,16 @@ export interface TopUser {
   agent_type: string
   calls: number
   avg_latency: number
+}
+
+export interface RegionHeat {
+  province: string
+  city: string
+  regionName: string
+  calls: number
+  errors: number
+  avgLatencyMs: number
+  successRate: number
 }
 
 export interface AuditLog {

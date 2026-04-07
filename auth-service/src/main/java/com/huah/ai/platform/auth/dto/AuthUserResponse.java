@@ -11,6 +11,8 @@ public class AuthUserResponse {
     String userId;
     String username;
     String department;
+    String province;
+    String city;
     String employeeId;
     String roles;
     boolean enabled;

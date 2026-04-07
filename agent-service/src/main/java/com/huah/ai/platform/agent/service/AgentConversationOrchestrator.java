@@ -10,6 +10,7 @@ import com.huah.ai.platform.agent.multi.MultiAgentExecutionStep;
 import com.huah.ai.platform.agent.multi.MultiAgentTraceService;
 import com.huah.ai.platform.agent.security.AgentAccessChecker;
 import com.huah.ai.platform.agent.security.ToolAccessDeniedException;
+import com.huah.ai.platform.common.web.RequestOrigin;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -37,7 +38,8 @@ public class AgentConversationOrchestrator {
     @Qualifier("agentControllerExecutor")
     private final ExecutorService agentControllerExecutor;
 
-    public AgentChatResponse executeChat(String agentType, String userId, String sessionId, String message) {
+    public AgentChatResponse executeChat(
+            String agentType, String userId, String sessionId, String message, RequestOrigin requestOrigin) {
         long startTime = System.currentTimeMillis();
         try {
             long agentStartTime = System.currentTimeMillis();
@@ -72,7 +74,8 @@ public class AgentConversationOrchestrator {
                             : Math.max(0, System.currentTimeMillis() - agentStartTime),
                     Math.max(0, System.currentTimeMillis() - persistenceStartTime),
                     result.getPromptTokens(),
-                    result.getCompletionTokens());
+                    result.getCompletionTokens(),
+                    requestOrigin);
             recordSuccessMetrics(agentType, latency, result.getPromptTokens(), result.getCompletionTokens());
             log.info("[Chat] output agent={}, userId={}, latency={}ms, responseLength={}, promptTokens={}, completionTokens={}, response={}",
                     agentType,
@@ -103,7 +106,13 @@ public class AgentConversationOrchestrator {
         }
     }
 
-    public void executeStream(String agentType, String userId, String sessionId, String message, SseEmitter emitter) {
+    public void executeStream(
+            String agentType,
+            String userId,
+            String sessionId,
+            String message,
+            RequestOrigin requestOrigin,
+            SseEmitter emitter) {
         long startTime = System.currentTimeMillis();
         AtomicInteger chunkCount = new AtomicInteger(0);
         StringBuilder fullResponse = new StringBuilder();
@@ -115,7 +124,8 @@ public class AgentConversationOrchestrator {
         agentControllerExecutor.submit(() -> {
             try {
                 if (AgentApiConstants.AGENT_TYPE_MULTI.equals(agentType)) {
-                    handleMultiAgentStream(emitter, userId, sessionId, message, startTime, chunkCount, fullResponse);
+                    handleMultiAgentStream(
+                            emitter, userId, sessionId, message, startTime, chunkCount, fullResponse, requestOrigin);
                     return;
                 }
 
@@ -156,7 +166,8 @@ public class AgentConversationOrchestrator {
                                 fullResponse,
                                 totalPromptTokens.get(),
                                 totalCompletionTokens.get(),
-                                executionMetrics
+                                executionMetrics,
+                                requestOrigin
                         ))
                         .doOnError(error -> failStreamExecution(
                                 emitter,
@@ -169,6 +180,7 @@ public class AgentConversationOrchestrator {
                                 chunkCount,
                                 fullResponse,
                                 executionMetrics,
+                                requestOrigin,
                                 error
                         ))
                         .subscribe();
@@ -223,7 +235,8 @@ public class AgentConversationOrchestrator {
                                        StringBuilder fullResponse,
                                        int promptTokens,
                                        int completionTokens,
-                                       AgentExecutionMetrics executionMetrics) {
+                                       AgentExecutionMetrics executionMetrics,
+                                       RequestOrigin requestOrigin) {
         metricsCollector.decrementActive();
         long latency = System.currentTimeMillis() - startTime;
         long persistenceStartTime = System.currentTimeMillis();
@@ -257,7 +270,8 @@ public class AgentConversationOrchestrator {
                 Math.max(0, System.currentTimeMillis() - agentStartTime),
                 Math.max(0, System.currentTimeMillis() - persistenceStartTime),
                 promptTokens,
-                completionTokens);
+                completionTokens,
+                requestOrigin);
         sendDone(emitter, responseId, null);
     }
 
@@ -271,6 +285,7 @@ public class AgentConversationOrchestrator {
                                      AtomicInteger chunkCount,
                                      StringBuilder fullResponse,
                                      AgentExecutionMetrics executionMetrics,
+                                     RequestOrigin requestOrigin,
                                      Throwable error) {
         metricsCollector.decrementActive();
         long latency = System.currentTimeMillis() - startTime;
@@ -299,7 +314,8 @@ public class AgentConversationOrchestrator {
                 Math.max(0, System.currentTimeMillis() - agentStartTime),
                 Math.max(0, System.currentTimeMillis() - persistenceStartTime),
                 0,
-                0);
+                0,
+                requestOrigin);
         memoryService.rollbackLastUserMessage(sessionId);
         sendChunk(emitter, AgentApiConstants.MESSAGE_STREAM_AI_UNAVAILABLE);
         sendDone(emitter, null, null);
@@ -311,7 +327,8 @@ public class AgentConversationOrchestrator {
                                         String message,
                                         long startTime,
                                         AtomicInteger chunkCount,
-                                        StringBuilder fullResponse) {
+                                        StringBuilder fullResponse,
+                                        RequestOrigin requestOrigin) {
         log.info("[Stream] multi-agent started userId={}", userId);
         MultiAgentExecutionResult multiResult = multiAgentTraceService.execute(
                 userId,
@@ -365,7 +382,8 @@ public class AgentConversationOrchestrator {
                 latency,
                 0L,
                 multiResult.getPromptTokens(),
-                multiResult.getCompletionTokens());
+                multiResult.getCompletionTokens(),
+                requestOrigin);
         accessChecker.recordActualTokens(
                 userId,
                 AgentApiConstants.AGENT_TYPE_MULTI,

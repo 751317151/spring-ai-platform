@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import DashboardView from './DashboardView.vue'
 import { useMonitorStore } from '@/stores/monitor'
+import { useAuthStore } from '@/stores/auth'
+import { useRagStore } from '@/stores/rag'
 
 const push = vi.fn()
 
@@ -16,117 +18,74 @@ vi.mock('vue-router', async (importOriginal) => {
   }
 })
 
-vi.mock('vue-chartjs', () => ({
-  Line: {
-    name: 'Line',
-    template: '<div class="chart-line" />'
-  },
-  Doughnut: {
-    name: 'Doughnut',
-    template: '<div class="chart-doughnut" />'
-  }
-}))
-
 describe('DashboardView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     push.mockReset()
   })
 
-  it('renders overview cards and jumps to monitor with agent context', async () => {
-    const store = useMonitorStore()
-    store.overview = {
+  it('renders core entry cards for regular users', () => {
+    const monitorStore = useMonitorStore()
+    const ragStore = useRagStore()
+    const authStore = useAuthStore()
+
+    authStore.roles = 'ROLE_USER'
+    monitorStore.overview = {
       totalRequests: 120,
-      totalTokens: 4000,
+      errorRequests: 2,
+      successRate: 0.98,
       avgLatencyMs: 180,
-      successRate: 0.98
+      p95LatencyMs: 240,
+      p99LatencyMs: 360,
+      totalPromptTokens: 1200,
+      totalCompletionTokens: 2800,
+      totalTokens: 4000,
+      activeRequests: 3
     } as never
-    store.agentStats = [
-      { agent_type: 'assistant', count: 16, avg_latency: 240, errors: 3 }
-    ] as never
-    store.models = [
-      { id: 'gpt', name: 'GPT', provider: 'openai', enabled: true, weight: 1, capabilities: [], totalCalls: 24, successCalls: 23, avgLatencyMs: 150, successRate: 95 } as never
+    ragStore.knowledgeBases = [
+      { id: 'kb-1', name: '知识库', documentCount: 3 } as never
     ]
-    store.auditLogs = [
-      { id: '1', user_id: 'alice', agent_type: 'assistant', success: true, created_at: '2026-03-25T10:00:00Z' } as never
-    ]
-    store.hourlyStats = [
-      { hour: 10, total: 12, errors: 1 } as never
-    ]
-    store.loadDashboardData = vi.fn().mockResolvedValue(undefined) as never
-    store.startRealtimeUpdates = vi.fn() as never
-    store.stopRealtimeUpdates = vi.fn() as never
+    ragStore.loadKnowledgeBases = vi.fn().mockResolvedValue(undefined) as never
+    monitorStore.loadDashboardData = vi.fn().mockResolvedValue(undefined) as never
 
     const wrapper = mount(DashboardView)
 
-    expect(wrapper.text()).toContain('平台总览')
-    expect(wrapper.text()).toContain('当前最慢助手链路')
-    expect(wrapper.text()).toContain('模型排名')
-
-    const jumpButton = wrapper.findAll('.summary-link')[0]
-    await jumpButton.trigger('click')
-
-    expect(push).toHaveBeenCalledWith({ name: 'monitor', query: { agent: 'assistant' } })
+    expect(wrapper.text()).toContain('从主任务开始')
+    expect(wrapper.text()).toContain('AI 助手')
+    expect(wrapper.text()).toContain('知识库')
+    expect(wrapper.text()).not.toContain('查看大屏')
   })
 
-  it('jumps to chat from quick action tile', async () => {
-    const store = useMonitorStore()
-    store.loadDashboardData = vi.fn().mockResolvedValue(undefined) as never
-    store.startRealtimeUpdates = vi.fn() as never
-    store.stopRealtimeUpdates = vi.fn() as never
+  it('shows screen entry for admin users', () => {
+    const monitorStore = useMonitorStore()
+    const ragStore = useRagStore()
+    const authStore = useAuthStore()
+
+    authStore.roles = 'ROLE_ADMIN'
+    ragStore.loadKnowledgeBases = vi.fn().mockResolvedValue(undefined) as never
+    monitorStore.loadDashboardData = vi.fn().mockResolvedValue(undefined) as never
 
     const wrapper = mount(DashboardView)
-    await wrapper.findAll('.quick-action-item')[0]!.trigger('click')
 
-    expect(push).toHaveBeenCalledWith({ path: '/chat', query: { source: 'dashboard' } })
+    expect(wrapper.text()).toContain('大屏指挥台')
+    expect(wrapper.text()).toContain('查看大屏')
   })
 
-  it('opens rag page with failed status context', async () => {
-    const store = useMonitorStore()
-    store.auditLogs = [
-      { id: '1', user_id: 'alice', agent_type: 'assistant', success: false, created_at: '2026-03-25T10:00:00Z' } as never
-    ]
-    store.loadDashboardData = vi.fn().mockResolvedValue(undefined) as never
-    store.startRealtimeUpdates = vi.fn() as never
-    store.stopRealtimeUpdates = vi.fn() as never
+  it('navigates to screen when admin clicks the button', async () => {
+    const monitorStore = useMonitorStore()
+    const ragStore = useRagStore()
+    const authStore = useAuthStore()
+
+    authStore.roles = 'ROLE_ADMIN'
+    ragStore.loadKnowledgeBases = vi.fn().mockResolvedValue(undefined) as never
+    monitorStore.loadDashboardData = vi.fn().mockResolvedValue(undefined) as never
 
     const wrapper = mount(DashboardView)
-    await wrapper.findAll('.quick-action-item')[2]!.trigger('click')
+    const buttons = wrapper.findAll('button')
+    const screenButton = buttons.find((item) => item.text() === '查看大屏')
 
-    expect(push).toHaveBeenCalledWith({ path: '/rag', query: { status: 'FAILED', source: 'dashboard' } })
-  })
+    await screenButton?.trigger('click')
 
-  it('opens rag page from rag summary card', async () => {
-    const store = useMonitorStore()
-    store.auditLogs = []
-    store.loadDashboardData = vi.fn().mockResolvedValue(undefined) as never
-    store.startRealtimeUpdates = vi.fn() as never
-    store.stopRealtimeUpdates = vi.fn() as never
-
-    const wrapper = mount(DashboardView)
-    const ragSummaryLink = wrapper.findAll('.summary-card')[2]!.get('.summary-link')
-    await ragSummaryLink.trigger('click')
-
-    expect(push).toHaveBeenCalledWith({ path: '/rag', query: { status: 'PROCESSING', source: 'dashboard' } })
-  })
-
-  it('renders focus actions and opens top priority suggestion', async () => {
-    const store = useMonitorStore()
-    store.agentStats = [
-      { agent_type: 'assistant', count: 16, avg_latency: 240, errors: 3 }
-    ] as never
-    store.auditLogs = [
-      { id: '1', user_id: 'alice', agent_type: 'assistant', success: false, created_at: '2026-03-25T10:00:00Z' } as never
-    ]
-    store.loadDashboardData = vi.fn().mockResolvedValue(undefined) as never
-    store.startRealtimeUpdates = vi.fn() as never
-    store.stopRealtimeUpdates = vi.fn() as never
-
-    const wrapper = mount(DashboardView)
-    expect(wrapper.text()).toContain('今日处理建议')
-
-    await wrapper.findAll('.focus-item')[0]!.trigger('click')
-
-    expect(push).toHaveBeenCalledWith({ path: '/rag', query: { status: 'FAILED', source: 'dashboard' } })
+    expect(push).toHaveBeenCalledWith('/screen')
   })
 })

@@ -20,6 +20,8 @@ public class AuthViewAssembler {
                 .userId(user.getUserId())
                 .username(user.getUsername())
                 .department(user.getDepartment())
+                .province(user.getProvince())
+                .city(user.getCity())
                 .employeeId(user.getEmployeeId())
                 .roles(user.getRoles())
                 .enabled(user.isEnabled())

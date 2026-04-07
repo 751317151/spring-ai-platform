@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as gatewayApi from '@/api/gateway'
 import * as monitorApi from '@/api/monitor'
+import { ENABLE_SCREEN_MOCK } from '@/config/app-config'
 import type {
   AlertEvent,
   AlertWorkflowHistory,
@@ -11,10 +12,12 @@ import type {
   FailureSample,
   FeedbackOverview,
   FeedbackSample,
+  GatewayModelsResponse,
   HourlyStat,
   ModelInfo,
   ModelStat,
   MonitorOverview,
+  MonitorScreenSnapshot,
   SlowRequestSample,
   ToolAudit,
   TopUser
@@ -28,8 +31,212 @@ type ExportType =
   | 'top-users'
   | 'gateway-models'
 
+function buildMockScreenSnapshot(): MonitorScreenSnapshot {
+  const now = new Date()
+  const currentHour = now.getHours()
+  const hourlyStats: HourlyStat[] = Array.from({ length: 24 }, (_, index) => {
+    const hour = (currentHour - 23 + index + 24) % 24
+    const total = 120 + ((index * 37) % 180)
+    const errors = Math.max(3, Math.round(total * (0.04 + (index % 5) * 0.008)))
+    return {
+      hour,
+      total,
+      errors,
+      avg_latency: 680 + (index % 6) * 55,
+      p50: 420 + (index % 5) * 32,
+      p95: 1080 + (index % 4) * 95
+    }
+  })
+
+  const agentStats: AgentStat[] = [
+    { agent_type: 'multi', count: 328, avg_latency: 1320, errors: 16 },
+    { agent_type: 'rd', count: 286, avg_latency: 910, errors: 9 },
+    { agent_type: 'data-analysis', count: 223, avg_latency: 1180, errors: 7 },
+    { agent_type: 'search', count: 198, avg_latency: 760, errors: 6 },
+    { agent_type: 'finance', count: 154, avg_latency: 840, errors: 4 },
+    { agent_type: 'hr', count: 127, avg_latency: 690, errors: 3 }
+  ]
+
+  const topUsers: TopUser[] = [
+    { user_id: 'admin', agent_type: 'multi', calls: 96, avg_latency: 1220 },
+    { user_id: 'rd001', agent_type: 'rd', calls: 82, avg_latency: 910 },
+    { user_id: 'finance01', agent_type: 'finance', calls: 65, avg_latency: 840 },
+    { user_id: 'sales01', agent_type: 'search', calls: 61, avg_latency: 770 },
+    { user_id: 'hr01', agent_type: 'hr', calls: 43, avg_latency: 680 },
+    { user_id: 'ops01', agent_type: 'multi', calls: 38, avg_latency: 1350 }
+  ]
+
+  const regionHeat = [
+    { province: '北京', city: '北京', regionName: '北京 / 北京', calls: 162, errors: 8, avgLatencyMs: 820, successRate: 0.951 },
+    { province: '上海', city: '上海', regionName: '上海 / 上海', calls: 145, errors: 6, avgLatencyMs: 790, successRate: 0.959 },
+    { province: '广东', city: '深圳', regionName: '广东 / 深圳', calls: 188, errors: 11, avgLatencyMs: 870, successRate: 0.941 },
+    { province: '广东', city: '广州', regionName: '广东 / 广州', calls: 133, errors: 5, avgLatencyMs: 760, successRate: 0.962 },
+    { province: '浙江', city: '杭州', regionName: '浙江 / 杭州', calls: 126, errors: 4, avgLatencyMs: 730, successRate: 0.968 },
+    { province: '江苏', city: '南京', regionName: '江苏 / 南京', calls: 118, errors: 5, avgLatencyMs: 750, successRate: 0.958 },
+    { province: '四川', city: '成都', regionName: '四川 / 成都', calls: 109, errors: 6, avgLatencyMs: 890, successRate: 0.945 },
+    { province: '湖北', city: '武汉', regionName: '湖北 / 武汉', calls: 94, errors: 4, avgLatencyMs: 810, successRate: 0.957 },
+    { province: '陕西', city: '西安', regionName: '陕西 / 西安', calls: 88, errors: 3, avgLatencyMs: 845, successRate: 0.966 },
+    { province: '重庆', city: '重庆', regionName: '重庆 / 重庆', calls: 79, errors: 5, avgLatencyMs: 930, successRate: 0.937 }
+  ]
+
+  const failureSamples: FailureSample[] = [
+    {
+      id: 'mock-fail-1',
+      user_id: 'admin',
+      agent_type: 'multi',
+      model_id: 'qwen-max',
+      error_message: '下游工具响应超时，已触发自动重试',
+      latency_ms: 3821,
+      session_id: 'screen-mock-session-1',
+      trace_id: 'screen-mock-trace-1',
+      created_at: now.toISOString()
+    },
+    {
+      id: 'mock-fail-2',
+      user_id: 'rd001',
+      agent_type: 'rd',
+      model_id: 'deepseek-chat',
+      error_message: '代码检索结果为空，建议补充仓库索引',
+      latency_ms: 2410,
+      session_id: 'screen-mock-session-2',
+      trace_id: 'screen-mock-trace-2',
+      created_at: new Date(now.getTime() - 8 * 60 * 1000).toISOString()
+    },
+    {
+      id: 'mock-fail-3',
+      user_id: 'finance01',
+      agent_type: 'data-analysis',
+      model_id: 'qwen-plus',
+      error_message: 'SQL 执行计划扫描行数过大，已阻断执行',
+      latency_ms: 1978,
+      session_id: 'screen-mock-session-3',
+      trace_id: 'screen-mock-trace-3',
+      created_at: new Date(now.getTime() - 19 * 60 * 1000).toISOString()
+    }
+  ]
+
+  const alerts: AlertEvent[] = [
+    {
+      level: 'WARN',
+      type: 'TOOL_TIMEOUT',
+      message: '多智能体链路近 10 分钟工具超时率上升',
+      time: now.toISOString(),
+      source: 'agent-service',
+      status: 'firing',
+      fingerprint: 'mock-alert-1'
+    },
+    {
+      level: 'INFO',
+      type: 'MODEL_DEGRADED',
+      message: 'qwen-max 延迟波动，已切换到降级观察状态',
+      time: new Date(now.getTime() - 15 * 60 * 1000).toISOString(),
+      source: 'gateway-service',
+      status: 'watching',
+      fingerprint: 'mock-alert-2'
+    }
+  ]
+
+  return {
+    overview: {
+      totalRequests: 2856,
+      errorRequests: 96,
+      successRate: 0.9664,
+      avgLatencyMs: 812,
+      p95LatencyMs: 1680,
+      p99LatencyMs: 2410,
+      totalPromptTokens: 864200,
+      totalCompletionTokens: 498600,
+      totalTokens: 1362800,
+      activeRequests: 29
+    },
+    hourlyStats,
+    agentStats,
+    topUsers,
+    regionHeat,
+    failureSamples,
+    feedbackOverview: {
+      totalCount: 426,
+      positiveCount: 379,
+      negativeCount: 47,
+      positiveRate: 0.8897
+    },
+    alerts: {
+      activeAlerts: alerts.filter((item) => ['WARN', 'ERROR', 'CRITICAL'].includes(item.level)).length,
+      alerts
+    }
+  }
+}
+
+function buildMockGatewayModels(): GatewayModelsResponse {
+  return {
+    count: 4,
+    loadBalanceStrategy: 'round-robin',
+    sceneRoutes: {
+      default: ['qwen-max', 'deepseek-chat'],
+      multi: ['qwen-max'],
+      search: ['qwen-plus'],
+      'data-analysis': ['deepseek-chat']
+    },
+    models: [
+      {
+        id: 'qwen-max',
+        name: 'Qwen Max',
+        provider: 'alibaba',
+        enabled: true,
+        weight: 10,
+        capabilities: ['chat', 'reasoning'],
+        healthStatus: 'healthy',
+        totalCalls: 1280,
+        successCalls: 1248,
+        avgLatencyMs: 860,
+        successRate: 97.5
+      },
+      {
+        id: 'deepseek-chat',
+        name: 'DeepSeek Chat',
+        provider: 'deepseek',
+        enabled: true,
+        weight: 8,
+        capabilities: ['chat', 'code'],
+        healthStatus: 'healthy',
+        totalCalls: 942,
+        successCalls: 919,
+        avgLatencyMs: 920,
+        successRate: 97.6
+      },
+      {
+        id: 'qwen-plus',
+        name: 'Qwen Plus',
+        provider: 'alibaba',
+        enabled: true,
+        weight: 6,
+        capabilities: ['chat', 'search'],
+        healthStatus: 'degraded',
+        totalCalls: 615,
+        successCalls: 580,
+        avgLatencyMs: 1180,
+        successRate: 94.3
+      },
+      {
+        id: 'embedding-v1',
+        name: 'Embedding V1',
+        provider: 'alibaba',
+        enabled: true,
+        weight: 4,
+        capabilities: ['embedding'],
+        healthStatus: 'healthy',
+        totalCalls: 386,
+        successCalls: 384,
+        avgLatencyMs: 210,
+        successRate: 99.5
+      }
+    ]
+  }
+}
+
 export const useMonitorStore = defineStore('monitor', () => {
   const overview = ref<MonitorOverview | null>(null)
+  const screenSnapshot = ref<MonitorScreenSnapshot | null>(null)
   const hourlyStats = ref<HourlyStat[]>([])
   const agentStats = ref<AgentStat[]>([])
   const topUsers = ref<TopUser[]>([])
@@ -50,6 +257,23 @@ export const useMonitorStore = defineStore('monitor', () => {
   const error = ref('')
   const exportingType = ref<ExportType | ''>('')
   let intervalId: ReturnType<typeof setInterval> | null = null
+
+  function applyScreenSnapshot(snapshot: MonitorScreenSnapshot | null) {
+    screenSnapshot.value = snapshot
+    overview.value = snapshot?.overview ?? null
+    hourlyStats.value = snapshot?.hourlyStats || []
+    agentStats.value = snapshot?.agentStats || []
+    topUsers.value = snapshot?.topUsers || []
+    failureSamples.value = snapshot?.failureSamples || []
+    feedbackOverview.value = snapshot?.feedbackOverview || null
+    alerts.value = snapshot?.alerts?.alerts || []
+  }
+
+  function applyGatewayModels(response: GatewayModelsResponse | null) {
+    models.value = response?.models || []
+    gatewayLoadBalanceStrategy.value = response?.loadBalanceStrategy || ''
+    gatewaySceneRoutes.value = response?.sceneRoutes || {}
+  }
 
   function getToolAuditsSafely(limit = 20, userId?: string, agentType?: string, toolName?: string) {
     try {
@@ -83,6 +307,29 @@ export const useMonitorStore = defineStore('monitor', () => {
     }
   }
 
+  async function loadScreenData() {
+    loading.value = true
+    error.value = ''
+    try {
+      if (ENABLE_SCREEN_MOCK) {
+        applyScreenSnapshot(buildMockScreenSnapshot())
+        applyGatewayModels(buildMockGatewayModels())
+        return
+      }
+
+      const [screen, gatewayModelsResponse] = await Promise.all([
+        monitorApi.getScreenSnapshot(),
+        gatewayApi.getModels().catch(() => null)
+      ])
+      applyScreenSnapshot(screen)
+      applyGatewayModels(gatewayModelsResponse)
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '大屏数据加载失败'
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function loadMonitorData() {
     loading.value = true
     error.value = ''
@@ -100,7 +347,7 @@ export const useMonitorStore = defineStore('monitor', () => {
         feedbackStats,
         feedbackList,
         evidenceFeedbackList,
-        gatewayModels
+        gatewayModelsResponse
       ] = await Promise.all([
         monitorApi.getOverview(),
         monitorApi.getTokenTopUsers(),
@@ -129,9 +376,9 @@ export const useMonitorStore = defineStore('monitor', () => {
       feedbackOverview.value = feedbackStats
       recentFeedback.value = feedbackList
       recentEvidenceFeedback.value = evidenceFeedbackList
-      models.value = gatewayModels?.models || []
-      gatewayLoadBalanceStrategy.value = gatewayModels?.loadBalanceStrategy || ''
-      gatewaySceneRoutes.value = gatewayModels?.sceneRoutes || {}
+      models.value = gatewayModelsResponse?.models || []
+      gatewayLoadBalanceStrategy.value = gatewayModelsResponse?.loadBalanceStrategy || ''
+      gatewaySceneRoutes.value = gatewayModelsResponse?.sceneRoutes || {}
     } catch (err) {
       error.value = err instanceof Error ? err.message : '监控数据加载失败'
     } finally {
@@ -233,6 +480,7 @@ export const useMonitorStore = defineStore('monitor', () => {
 
   return {
     overview,
+    screenSnapshot,
     hourlyStats,
     agentStats,
     topUsers,
@@ -253,6 +501,7 @@ export const useMonitorStore = defineStore('monitor', () => {
     error,
     exportingType,
     loadDashboardData,
+    loadScreenData,
     loadMonitorData,
     startRealtimeUpdates,
     stopRealtimeUpdates,

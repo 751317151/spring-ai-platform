@@ -12,6 +12,7 @@ import com.huah.ai.platform.monitor.model.FeedbackSampleResponse;
 import com.huah.ai.platform.monitor.model.HourlyStatResponse;
 import com.huah.ai.platform.monitor.model.ModelStatResponse;
 import com.huah.ai.platform.monitor.model.MonitorOverviewResponse;
+import com.huah.ai.platform.monitor.model.MonitorScreenResponse;
 import com.huah.ai.platform.monitor.model.AlertWorkflowUpdateRequest;
 import com.huah.ai.platform.monitor.model.SlowRequestResponse;
 import com.huah.ai.platform.monitor.model.TraceDetailResponse;
@@ -19,6 +20,7 @@ import com.huah.ai.platform.monitor.model.TokenUsageResponse;
 import com.huah.ai.platform.monitor.model.TopUserResponse;
 import com.huah.ai.platform.monitor.model.ToolAuditResponse;
 import com.huah.ai.platform.monitor.service.MonitorQueryService;
+import com.huah.ai.platform.monitor.service.MonitorScreenService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -41,10 +43,16 @@ import java.util.List;
 public class MonitorController {
 
     private final MonitorQueryService monitorQueryService;
+    private final MonitorScreenService monitorScreenService;
 
     @GetMapping("/overview")
     public Result<MonitorOverviewResponse> overview() {
         return Result.ok(monitorQueryService.getOverview());
+    }
+
+    @GetMapping("/screen")
+    public Result<MonitorScreenResponse> screen() {
+        return Result.ok(monitorScreenService.getScreenSnapshot());
     }
 
     @GetMapping("/by-agent")

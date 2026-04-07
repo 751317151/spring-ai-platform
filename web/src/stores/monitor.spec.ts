@@ -4,8 +4,14 @@ import { useMonitorStore } from './monitor'
 import * as monitorApi from '@/api/monitor'
 import * as gatewayApi from '@/api/gateway'
 
+vi.mock('@/config/app-config', () => ({
+  DEMO_MODE_ENABLED: false,
+  ENABLE_SCREEN_MOCK: false
+}))
+
 vi.mock('@/api/monitor', () => ({
   getOverview: vi.fn(),
+  getScreenSnapshot: vi.fn(),
   getHourlyStats: vi.fn(),
   getByAgent: vi.fn(),
   getAuditLogs: vi.fn(),
@@ -74,5 +80,51 @@ describe('monitor store', () => {
 
     expect(store.error).toBe('boom')
     expect(store.loading).toBe(false)
+  })
+
+  it('loads screen data from backend without merging frontend mock data', async () => {
+    vi.mocked(monitorApi.getScreenSnapshot).mockResolvedValue({
+      overview: {
+        totalRequests: 5,
+        errorRequests: 1,
+        successRate: 0.8,
+        avgLatencyMs: 120,
+        p95LatencyMs: 220,
+        p99LatencyMs: 320,
+        totalPromptTokens: 100,
+        totalCompletionTokens: 50,
+        totalTokens: 150,
+        activeRequests: 2
+      },
+      hourlyStats: [],
+      agentStats: [],
+      topUsers: [],
+      regionHeat: [],
+      failureSamples: [],
+      feedbackOverview: {
+        totalCount: 0,
+        positiveCount: 0,
+        negativeCount: 0,
+        positiveRate: 0
+      },
+      alerts: {
+        activeAlerts: 0,
+        alerts: []
+      }
+    } as never)
+    vi.mocked(gatewayApi.getModels).mockResolvedValue({
+      models: [],
+      count: 0,
+      sceneRoutes: {},
+      loadBalanceStrategy: ''
+    } as never)
+
+    const store = useMonitorStore()
+    await store.loadScreenData()
+
+    expect(store.error).toBe('')
+    expect(store.screenSnapshot?.overview.totalRequests).toBe(5)
+    expect(store.screenSnapshot?.regionHeat).toEqual([])
+    expect(store.topUsers).toEqual([])
   })
 })

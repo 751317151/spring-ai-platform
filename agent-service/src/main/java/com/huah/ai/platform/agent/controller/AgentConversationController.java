@@ -8,6 +8,7 @@ import com.huah.ai.platform.agent.security.AgentAccessChecker;
 import com.huah.ai.platform.agent.service.AgentConversationOrchestrator;
 import com.huah.ai.platform.agent.service.AgentRuntimeIsolationService;
 import com.huah.ai.platform.common.dto.Result;
+import com.huah.ai.platform.common.web.RequestOrigin;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +44,7 @@ public class AgentConversationController {
                     defaultValue = AgentApiConstants.DEFAULT_SESSION_ID) String sessionId,
             HttpServletRequest request) {
         AgentRequestContext context = controllerSupport.resolveContext(request);
+        RequestOrigin requestOrigin = controllerSupport.resolveOrigin(request);
         String userId = context.getUserId();
 
         Result<AgentChatResponse> accessFailure = validateChatAccess(agentType, context, userId);
@@ -67,7 +69,7 @@ public class AgentConversationController {
                 agentType, userId, controllerSupport.truncate(message, 500));
 
         try {
-            return Result.ok(conversationOrchestrator.executeChat(agentType, userId, sessionId, message));
+            return Result.ok(conversationOrchestrator.executeChat(agentType, userId, sessionId, message, requestOrigin));
         } catch (Exception e) {
             return Result.fail(AgentApiConstants.HTTP_INTERNAL_SERVER_ERROR, AgentApiConstants.MESSAGE_AI_UNAVAILABLE);
         } finally {
@@ -85,6 +87,7 @@ public class AgentConversationController {
         long streamTimeoutMs = agentRuntimeIsolationService.getStreamTimeoutMs(agentType, 180_000L);
         SseEmitter emitter = new SseEmitter(streamTimeoutMs);
         AgentRequestContext context = controllerSupport.resolveContext(request);
+        RequestOrigin requestOrigin = controllerSupport.resolveOrigin(request);
         String userId = context.getUserId();
 
         String accessFailure = validateStreamAccess(agentType, context, userId);
@@ -116,7 +119,7 @@ public class AgentConversationController {
         log.info("[Stream] input agent={}, userId={}, message={}",
                 agentType, userId, controllerSupport.truncate(message, 500));
 
-        conversationOrchestrator.executeStream(agentType, userId, sessionId, message, emitter);
+        conversationOrchestrator.executeStream(agentType, userId, sessionId, message, requestOrigin, emitter);
 
         emitter.onTimeout(() -> {
             log.warn("[Stream] timeout agent={}, userId={}", agentType, userId);

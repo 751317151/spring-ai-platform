@@ -67,6 +67,10 @@ public class FeedbackSchemaInitializer {
                     )
                     """);
             jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_alert_workflow_history_fp ON ai_alert_workflow_history (fingerprint, created_at DESC)");
+            jdbcTemplate.execute("ALTER TABLE ai_audit_logs ADD COLUMN IF NOT EXISTS client_ip VARCHAR(64)");
+            jdbcTemplate.execute("ALTER TABLE ai_audit_logs ADD COLUMN IF NOT EXISTS country VARCHAR(64)");
+            jdbcTemplate.execute("ALTER TABLE ai_audit_logs ADD COLUMN IF NOT EXISTS province VARCHAR(64)");
+            jdbcTemplate.execute("ALTER TABLE ai_audit_logs ADD COLUMN IF NOT EXISTS city VARCHAR(64)");
             jdbcTemplate.execute("ALTER TABLE ai_audit_logs ADD COLUMN IF NOT EXISTS phase_breakdown_json TEXT");
             jdbcTemplate.execute("""
                     CREATE TABLE IF NOT EXISTS ai_tool_audit_logs (

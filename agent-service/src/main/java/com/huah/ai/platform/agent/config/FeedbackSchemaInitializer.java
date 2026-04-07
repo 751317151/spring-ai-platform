@@ -34,6 +34,10 @@ public class FeedbackSchemaInitializer {
                     """);
             statement.execute("CREATE INDEX IF NOT EXISTS idx_feedback_created ON ai_response_feedback (created_at DESC)");
             statement.execute("CREATE INDEX IF NOT EXISTS idx_feedback_source ON ai_response_feedback (source_type, feedback)");
+            statement.execute("ALTER TABLE ai_audit_logs ADD COLUMN IF NOT EXISTS client_ip VARCHAR(64)");
+            statement.execute("ALTER TABLE ai_audit_logs ADD COLUMN IF NOT EXISTS country VARCHAR(64)");
+            statement.execute("ALTER TABLE ai_audit_logs ADD COLUMN IF NOT EXISTS province VARCHAR(64)");
+            statement.execute("ALTER TABLE ai_audit_logs ADD COLUMN IF NOT EXISTS city VARCHAR(64)");
             statement.execute("ALTER TABLE ai_audit_logs ADD COLUMN IF NOT EXISTS trace_id VARCHAR(64)");
             statement.execute("ALTER TABLE ai_audit_logs ADD COLUMN IF NOT EXISTS phase_breakdown_json TEXT");
             statement.execute("CREATE INDEX IF NOT EXISTS idx_audit_trace_id ON ai_audit_logs (trace_id)");

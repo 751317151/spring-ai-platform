@@ -36,6 +36,9 @@ public class AiAuditLogEntity {
     private Boolean success;
     private String errorMessage;
     private String clientIp;
+    private String country;
+    private String province;
+    private String city;
     private String sessionId;
     private String traceId;
     private String phaseBreakdownJson;

@@ -1,10 +1,14 @@
 import client, { buildHeaders } from './client'
-import type { MonitorOverview, HourlyStat, AgentStat, TopUser, AuditLog, AlertEvent, AlertWorkflowHistory, FailureSample, ModelStat, SlowRequestSample, FeedbackOverview, FeedbackSample, EvidenceFeedbackSample, TraceDetail, TokenUsage, ToolAudit } from './types'
+import type { MonitorOverview, HourlyStat, AgentStat, TopUser, AuditLog, AlertEvent, AlertWorkflowHistory, FailureSample, ModelStat, SlowRequestSample, FeedbackOverview, FeedbackSample, EvidenceFeedbackSample, TraceDetail, TokenUsage, ToolAudit, MonitorScreenSnapshot } from './types'
 
 const BASE = '/api/v1/monitor'
 
 export function getOverview(): Promise<MonitorOverview> {
   return client.get(`${BASE}/overview`)
+}
+
+export function getScreenSnapshot(): Promise<MonitorScreenSnapshot> {
+  return client.get(`${BASE}/screen`)
 }
 
 export function getByAgent(): Promise<AgentStat[]> {

@@ -95,15 +95,16 @@ const displayRole = computed(() => {
 const primaryNav = [
   { to: '/chat', label: 'AI 助手', desc: '直接进入对话工作区', icon: 'AI' },
   { to: '/rag', label: '知识库', desc: '选库并围绕知识提问', icon: 'KB' },
-  { to: '/dashboard', label: '工作台', desc: '查看常用入口与概览', icon: 'WS' },
+  { to: '/dashboard', label: '工作台', desc: '查看常用入口与概要', icon: 'WS' },
   { to: '/learning', label: '学习中心', desc: '沉淀常用内容与笔记', icon: 'LC' }
 ]
 
 const adminNav = [
+  { to: '/screen', label: '大屏指挥台', desc: '全屏展示平台运行核心指标', icon: 'SC' },
   { to: '/monitor', label: '运行监控', desc: '查看系统状态与审计', icon: 'MO' },
   { to: '/gateway', label: '模型网关', desc: '管理模型路由与健康', icon: 'GW' },
   { to: '/agents', label: 'Agent 工作台', desc: '智能体执行与治理', icon: 'AG' },
-  { to: '/mcp', label: 'MCP 管理', desc: '工具接入与可用性', icon: 'MC' },
+  { to: '/mcp', label: 'MCP 管理', desc: '工具接入与可用态', icon: 'MC' },
   { to: '/users', label: '用户权限', desc: '账号与角色管理', icon: 'UR' }
 ]
 

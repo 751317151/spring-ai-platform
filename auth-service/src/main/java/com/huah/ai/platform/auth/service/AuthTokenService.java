@@ -71,7 +71,9 @@ public class AuthTokenService {
 
         String roles = defaultString(user.getRoles(), "ROLE_USER");
         String department = defaultString(user.getDepartment(), "");
-        TokenResponse payload = buildTokenPayload(user.getUserId(), user.getUsername(), department, roles);
+        String province = defaultString(user.getProvince(), "");
+        String city = defaultString(user.getCity(), "");
+        TokenResponse payload = buildTokenPayload(user.getUserId(), user.getUsername(), department, province, city, roles);
         log.info("Login success: userId={}, roles={}", user.getUserId(), roles);
         return Result.ok(payload);
     }
@@ -100,10 +102,12 @@ public class AuthTokenService {
         String userId = jwtUtil.getSubject(refreshToken);
         String username = stringify(jwtUtil.getClaim(refreshToken, "username"));
         String department = stringify(jwtUtil.getClaim(refreshToken, "department"));
+        String province = stringify(jwtUtil.getClaim(refreshToken, "province"));
+        String city = stringify(jwtUtil.getClaim(refreshToken, "city"));
         String roles = stringify(jwtUtil.getClaim(refreshToken, "roles"));
 
         blacklistToken(refreshToken);
-        return Result.ok(buildTokenPayload(userId, username, department, roles));
+        return Result.ok(buildTokenPayload(userId, username, department, province, city, roles));
     }
 
     public Result<TokenValidationResponse> validate(String authorization) {
@@ -145,11 +149,19 @@ public class AuthTokenService {
         return Result.ok(available);
     }
 
-    private TokenResponse buildTokenPayload(String userId, String username, String department, String roles) {
+    private TokenResponse buildTokenPayload(
+            String userId,
+            String username,
+            String department,
+            String province,
+            String city,
+            String roles) {
         Map<String, Object> claims = Map.of(
                 "userId", userId,
                 "username", defaultString(username, userId),
                 "department", defaultString(department, ""),
+                "province", defaultString(province, ""),
+                "city", defaultString(city, ""),
                 "roles", defaultString(roles, ""));
 
         String accessToken =
@@ -167,6 +179,8 @@ public class AuthTokenService {
                 .username(defaultString(username, userId))
                 .roles(roles)
                 .department(department)
+                .province(province)
+                .city(city)
                 .build();
     }
 

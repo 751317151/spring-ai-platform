@@ -30,9 +30,9 @@ public class MonitorTraceQueryService {
     public List<AuditLogResponse> getAuditLogs(int limit, String userId) {
         try {
             String sql = userId != null
-                    ? "SELECT id, user_id, agent_type, model_id, error_message, session_id, trace_id, latency_ms, success, created_at " +
+                    ? "SELECT id, user_id, agent_type, model_id, error_message, client_ip, country, province, city, session_id, trace_id, latency_ms, success, created_at " +
                     "FROM ai_audit_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?"
-                    : "SELECT id, user_id, agent_type, model_id, error_message, session_id, trace_id, latency_ms, success, created_at " +
+                    : "SELECT id, user_id, agent_type, model_id, error_message, client_ip, country, province, city, session_id, trace_id, latency_ms, success, created_at " +
                     "FROM ai_audit_logs ORDER BY created_at DESC LIMIT ?";
             return userId != null
                     ? jdbcTemplate.query(sql, this::mapAuditLog, userId, limit)
@@ -117,6 +117,10 @@ public class MonitorTraceQueryService {
                 .agentType(rs.getString("agent_type"))
                 .modelId(rs.getString("model_id"))
                 .errorMessage(rs.getString("error_message"))
+                .clientIp(rs.getString("client_ip"))
+                .country(rs.getString("country"))
+                .province(rs.getString("province"))
+                .city(rs.getString("city"))
                 .sessionId(rs.getString("session_id"))
                 .traceId(rs.getString("trace_id"))
                 .latencyMs(rs.getLong("latency_ms"))

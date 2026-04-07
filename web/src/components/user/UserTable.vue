@@ -5,6 +5,7 @@
         <tr>
           <th>用户</th>
           <th>部门</th>
+          <th>省市</th>
           <th>角色</th>
           <th>状态</th>
           <th>最近登录</th>
@@ -23,6 +24,7 @@
             </div>
           </td>
           <td>{{ user.department || '-' }}</td>
+          <td>{{ formatLocation(user.province, user.city) }}</td>
           <td>
             <div class="tag-list">
               <span v-for="role in splitCsv(user.roles)" :key="role" class="tag">{{ role }}</span>
@@ -66,6 +68,11 @@ const emit = defineEmits<{ edit: [userId: string]; delete: [userId: string, user
 function splitCsv(value?: string): string[] {
   if (!value) return []
   return value.split(',').map((item) => item.trim()).filter(Boolean)
+}
+
+function formatLocation(province?: string, city?: string): string {
+  const values = [province, city].map((item) => item?.trim()).filter(Boolean)
+  return values.length ? values.join(' / ') : '-'
 }
 </script>
 

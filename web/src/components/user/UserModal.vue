@@ -4,7 +4,7 @@
       <div class="modal-header">
         <div>
           <div class="modal-title">{{ isEdit ? '编辑用户' : '新建用户' }}</div>
-          <div class="modal-subtitle">维护用户基础信息，并为用户分配角色。</div>
+          <div class="modal-subtitle">维护用户基础信息，并为用户分配角色与省市归属。</div>
         </div>
       </div>
 
@@ -12,7 +12,12 @@
         <div class="modal-grid">
           <div class="modal-field">
             <label class="modal-label">用户 ID</label>
-            <input v-model.trim="form.userId" class="form-input" :disabled="isEdit" placeholder="例如：admin / rd_user">
+            <input
+              v-model.trim="form.userId"
+              class="form-input"
+              :disabled="isEdit"
+              placeholder="例如：admin / rd_user"
+            >
           </div>
           <div class="modal-field">
             <label class="modal-label">用户名</label>
@@ -39,6 +44,17 @@
         <div class="modal-field">
           <label class="modal-label">所属部门</label>
           <input v-model.trim="form.department" class="form-input" placeholder="例如：系统管理 / 研发中心">
+        </div>
+
+        <div class="modal-grid">
+          <div class="modal-field">
+            <label class="modal-label">省份</label>
+            <input v-model.trim="form.province" class="form-input" placeholder="例如：北京 / 广东 / 浙江">
+          </div>
+          <div class="modal-field">
+            <label class="modal-label">城市</label>
+            <input v-model.trim="form.city" class="form-input" placeholder="例如：北京 / 深圳 / 杭州">
+          </div>
         </div>
 
         <div class="modal-field">
@@ -84,7 +100,16 @@ const userStore = useUserStore()
 const { showToast } = useToast()
 const saving = ref(false)
 const selectedRoles = ref<string[]>([])
-const form = reactive({ userId: '', username: '', password: '', employeeId: '', department: '', enabled: true })
+const form = reactive({
+  userId: '',
+  username: '',
+  password: '',
+  employeeId: '',
+  department: '',
+  province: '',
+  city: '',
+  enabled: true
+})
 
 const isEdit = computed(() => Boolean(props.userId))
 const roleOptions = computed<RoleOption[]>(() => userStore.roles)
@@ -93,7 +118,9 @@ onMounted(async () => {
   if (!userStore.roles.length) {
     await userStore.loadRoles()
   }
-  if (!props.userId) return
+  if (!props.userId) {
+    return
+  }
 
   try {
     const user = await getUser(props.userId)
@@ -101,6 +128,8 @@ onMounted(async () => {
     form.username = user.username || ''
     form.employeeId = user.employeeId || ''
     form.department = user.department || ''
+    form.province = user.province || ''
+    form.city = user.city || ''
     form.enabled = user.enabled !== false
     selectedRoles.value = splitCsv(user.roles)
   } catch (error) {
@@ -121,10 +150,14 @@ async function handleSave() {
     password: form.password.trim() || undefined,
     employeeId: form.employeeId.trim(),
     department: form.department.trim(),
+    province: form.province.trim(),
+    city: form.city.trim(),
     roles: selectedRoles.value.join(','),
     enabled: String(form.enabled)
   }
-  const success = isEdit.value ? await userStore.updateUser(props.userId!, payload) : await userStore.createUser(payload)
+  const success = isEdit.value
+    ? await userStore.updateUser(props.userId!, payload)
+    : await userStore.createUser(payload)
   saving.value = false
 
   if (success) {

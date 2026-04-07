@@ -1,5 +1,6 @@
 import { computed, reactive } from 'vue'
 import { defineStore } from 'pinia'
+import { DEMO_MODE_ENABLED } from '@/config/app-config'
 
 export type BackendServiceKey = 'chat' | 'rag'
 
@@ -23,7 +24,7 @@ function createInitialStatus(): Record<BackendServiceKey, BackendStatus> {
 
 export const useRuntimeStore = defineStore('runtime', () => {
   const services = reactive(createInitialStatus())
-  const demoMode = computed(() => import.meta.env.VITE_DEMO_MODE === 'true')
+  const demoMode = computed(() => DEMO_MODE_ENABLED)
 
   function markServiceAvailable(service: BackendServiceKey) {
     services[service].available = true

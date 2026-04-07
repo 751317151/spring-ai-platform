@@ -5,12 +5,13 @@
         <div class="eyebrow">工作台</div>
         <h1 class="hero-title">从主任务开始，不再先看复杂看板</h1>
         <p class="hero-subtitle">
-          这里保留最常用的入口和必要摘要。日常使用优先进入 AI 助手与知识库，管理信息只做轻量提示。
+          这里保留最高频入口和必要摘要。日常优先进入 AI 助手与知识库，只有管理员才需要进一步进入运行监控和大屏指挥台。
         </p>
       </div>
       <div class="hero-actions">
         <button class="btn btn-primary" type="button" @click="router.push('/chat')">进入 AI 助手</button>
         <button class="btn btn-ghost" type="button" @click="router.push('/rag')">进入知识库</button>
+        <button v-if="isAdmin" class="btn btn-ghost" type="button" @click="router.push('/screen')">查看大屏</button>
       </div>
     </section>
 
@@ -53,16 +54,17 @@
       <div class="snapshot-card card">
         <div class="snapshot-label">系统状态</div>
         <div class="snapshot-value">{{ overview ? '在线' : '待加载' }}</div>
-        <div class="snapshot-subtitle">这里只保留简要状态，不再默认展示复杂图表</div>
+        <div class="snapshot-subtitle">这里只保留简要状态，不再默认展示复杂图表。</div>
       </div>
     </section>
 
     <section v-if="isAdmin" class="admin-strip card">
       <div>
         <div class="card-title">管理员入口</div>
-        <div class="card-subtitle">只有需要时再进入监控、网关和权限管理。</div>
+        <div class="card-subtitle">需要观察全局运行态时，再进入大屏、监控、网关和权限管理。</div>
       </div>
       <div class="admin-actions">
+        <button class="btn btn-ghost" type="button" @click="router.push('/screen')">大屏指挥台</button>
         <button class="btn btn-ghost" type="button" @click="router.push('/monitor')">运行监控</button>
         <button class="btn btn-ghost" type="button" @click="router.push('/gateway')">模型网关</button>
         <button class="btn btn-ghost" type="button" @click="router.push('/users')">用户权限</button>

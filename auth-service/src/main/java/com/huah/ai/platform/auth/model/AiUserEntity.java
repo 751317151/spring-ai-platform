@@ -26,6 +26,8 @@ public class AiUserEntity {
     private String username;
     private String passwordHash;
     private String department;
+    private String province;
+    private String city;
     private String employeeId;
 
     @TableField(exist = false)

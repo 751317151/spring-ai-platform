@@ -14,6 +14,7 @@ import com.huah.ai.platform.monitor.model.FeedbackSampleResponse;
 import com.huah.ai.platform.monitor.model.HourlyStatResponse;
 import com.huah.ai.platform.monitor.model.ModelStatResponse;
 import com.huah.ai.platform.monitor.model.MonitorOverviewResponse;
+import com.huah.ai.platform.monitor.model.RegionHeatResponse;
 import com.huah.ai.platform.monitor.model.SlowRequestResponse;
 import com.huah.ai.platform.monitor.model.TokenUsageResponse;
 import com.huah.ai.platform.monitor.model.TopUserResponse;
@@ -62,6 +63,10 @@ public class MonitorQueryService {
 
     public List<TopUserResponse> getTopUsers() {
         return monitorMetricsQueryService.getTopUsers();
+    }
+
+    public List<RegionHeatResponse> getRegionHeat() {
+        return monitorMetricsQueryService.getRegionHeat();
     }
 
     public List<SlowRequestResponse> getSlowRequests(int limit) {

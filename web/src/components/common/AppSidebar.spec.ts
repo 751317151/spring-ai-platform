@@ -19,20 +19,16 @@ vi.mock('vue-router', async (importOriginal) => {
 describe('AppSidebar', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    localStorage.clear()
     routeState.path = '/dashboard'
   })
 
-  it('renders only main navigation for regular users', () => {
+  it('renders main navigation for regular users', () => {
     const authStore = useAuthStore()
     authStore.username = '张三'
     authStore.roles = 'ROLE_USER'
 
     const wrapper = mount(AppSidebar, {
-      props: {
-        collapsed: false,
-        recentViews: [{ title: '最近聊天', to: '/chat' }]
-      },
+      props: { collapsed: false },
       global: {
         stubs: {
           RouterLink: {
@@ -43,29 +39,25 @@ describe('AppSidebar', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('控制台')
+    expect(wrapper.text()).toContain('AI 智能平台')
     expect(wrapper.text()).toContain('AI 助手')
     expect(wrapper.text()).toContain('知识库')
+    expect(wrapper.text()).toContain('工作台')
     expect(wrapper.text()).toContain('学习中心')
-    expect(wrapper.text()).toContain('当前工作区')
-    expect(wrapper.text()).toContain('最近访问')
-    expect(wrapper.text()).not.toContain('平台管理')
+    expect(wrapper.text()).not.toContain('大屏指挥台')
     expect(wrapper.text()).toContain('张三')
-    expect(wrapper.text()).toContain('普通用户')
-    expect(wrapper.find('.avatar').text()).toBe('张')
+    expect(wrapper.text()).toContain('平台用户')
+    expect(wrapper.find('.user-badge').text()).toBe('张')
   })
 
-  it('renders admin section for admin users', () => {
+  it('renders admin navigation including screen entry', () => {
     const authStore = useAuthStore()
     authStore.username = 'admin'
     authStore.roles = 'ROLE_ADMIN'
-    routeState.path = '/monitor'
+    routeState.path = '/screen'
 
     const wrapper = mount(AppSidebar, {
-      props: {
-        collapsed: false,
-        recentViews: []
-      },
+      props: { collapsed: false },
       global: {
         stubs: {
           RouterLink: {
@@ -76,13 +68,12 @@ describe('AppSidebar', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('平台管理')
+    expect(wrapper.text()).toContain('大屏指挥台')
+    expect(wrapper.text()).toContain('运行监控')
     expect(wrapper.text()).toContain('模型网关')
     expect(wrapper.text()).toContain('MCP 管理')
-    expect(wrapper.text()).toContain('运行监控')
-    expect(wrapper.text()).toContain('用户与权限')
-    expect(wrapper.text()).toContain('管理员模式')
+    expect(wrapper.text()).toContain('用户权限')
     expect(wrapper.text()).toContain('管理员')
-    expect(wrapper.find('.avatar').text()).toBe('A')
+    expect(wrapper.find('.user-badge').text()).toBe('A')
   })
 })

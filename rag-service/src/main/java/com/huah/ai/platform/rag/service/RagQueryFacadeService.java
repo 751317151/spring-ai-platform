@@ -1,5 +1,6 @@
 package com.huah.ai.platform.rag.service;
 
+import com.huah.ai.platform.common.web.RequestOrigin;
 import com.huah.ai.platform.rag.model.RagEvaluationOverview;
 import com.huah.ai.platform.rag.model.RagEvaluationSample;
 import com.huah.ai.platform.rag.model.RagQueryRequest;
@@ -29,7 +30,10 @@ public class RagQueryFacadeService {
     private final ExecutorService executor;
 
     public RagQueryResponse query(
-            RagQueryRequest request, String userId, DocumentMetaService.AccessContext accessContext) {
+            RagQueryRequest request,
+            String userId,
+            DocumentMetaService.AccessContext accessContext,
+            RequestOrigin requestOrigin) {
         long start = System.currentTimeMillis();
         int topK = resolveTopK(request);
         try {
@@ -45,7 +49,8 @@ public class RagQueryFacadeService {
                     answer,
                     latency,
                     true,
-                    null);
+                    null,
+                    requestOrigin);
             return RagQueryResponse.builder()
                     .responseId(responseId)
                     .answer(answer)
@@ -60,15 +65,19 @@ public class RagQueryFacadeService {
                     null,
                     System.currentTimeMillis() - start,
                     false,
-                    ex.getMessage());
+                    ex.getMessage(),
+                    requestOrigin);
             throw ex;
         }
     }
 
     public SseEmitter queryStream(
-            RagQueryRequest request, String userId, DocumentMetaService.AccessContext accessContext) {
+            RagQueryRequest request,
+            String userId,
+            DocumentMetaService.AccessContext accessContext,
+            RequestOrigin requestOrigin) {
         SseEmitter emitter = new SseEmitter(STREAM_TIMEOUT_MS);
-        executor.submit(() -> executeStream(request, userId, accessContext, emitter));
+        executor.submit(() -> executeStream(request, userId, accessContext, requestOrigin, emitter));
         return emitter;
     }
 
@@ -99,6 +108,7 @@ public class RagQueryFacadeService {
             RagQueryRequest request,
             String userId,
             DocumentMetaService.AccessContext accessContext,
+            RequestOrigin requestOrigin,
             SseEmitter emitter) {
         int topK = resolveTopK(request);
         long start = System.currentTimeMillis();
@@ -109,12 +119,19 @@ public class RagQueryFacadeService {
             List<String> chunks = new ArrayList<>();
             ragService.queryStream(request.getQuestion(), request.getKnowledgeBaseId(), topK)
                     .doOnNext(chunk -> handleStreamChunk(emitter, chunks, chunk))
-                    .doOnComplete(() -> completeStream(emitter, request, userId, start, chunks, sources))
-                    .doOnError(error -> failStream(emitter, request, userId, start, error))
+                    .doOnComplete(() -> completeStream(emitter, request, userId, start, chunks, sources, requestOrigin))
+                    .doOnError(error -> failStream(emitter, request, userId, start, error, requestOrigin))
                     .subscribe();
         } catch (Exception ex) {
             ragAuditService.saveQueryLog(
-                    userId, request.getKnowledgeBaseId(), request.getQuestion(), null, 0, false, ex.getMessage());
+                    userId,
+                    request.getKnowledgeBaseId(),
+                    request.getQuestion(),
+                    null,
+                    0,
+                    false,
+                    ex.getMessage(),
+                    requestOrigin);
             emitter.completeWithError(ex);
         }
     }
@@ -134,7 +151,8 @@ public class RagQueryFacadeService {
             String userId,
             long start,
             List<String> chunks,
-            List<RagQueryResponse.SourceDocument> sources) {
+            List<RagQueryResponse.SourceDocument> sources,
+            RequestOrigin requestOrigin) {
         try {
             String answer = String.join("", chunks);
             Long responseId = ragAuditService.saveQueryLog(
@@ -144,7 +162,8 @@ public class RagQueryFacadeService {
                     answer,
                     System.currentTimeMillis() - start,
                     true,
-                    null);
+                    null,
+                    requestOrigin);
             emitter.send(SseEmitter.event().data(Map.of(
                     "chunk", "",
                     "done", true,
@@ -157,7 +176,12 @@ public class RagQueryFacadeService {
     }
 
     private void failStream(
-            SseEmitter emitter, RagQueryRequest request, String userId, long start, Throwable error) {
+            SseEmitter emitter,
+            RagQueryRequest request,
+            String userId,
+            long start,
+            Throwable error,
+            RequestOrigin requestOrigin) {
         ragAuditService.saveQueryLog(
                 userId,
                 request.getKnowledgeBaseId(),
@@ -165,7 +189,8 @@ public class RagQueryFacadeService {
                 null,
                 System.currentTimeMillis() - start,
                 false,
-                error.getMessage());
+                error.getMessage(),
+                requestOrigin);
         emitter.completeWithError(error);
     }
 

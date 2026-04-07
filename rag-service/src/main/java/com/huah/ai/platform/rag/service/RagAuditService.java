@@ -3,6 +3,7 @@ package com.huah.ai.platform.rag.service;
 import com.huah.ai.platform.common.exception.BizException;
 import com.huah.ai.platform.common.trace.TraceIdContext;
 import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
+import com.huah.ai.platform.common.web.RequestOrigin;
 import com.huah.ai.platform.rag.model.RagEvaluationOverview;
 import com.huah.ai.platform.rag.model.RagEvaluationSample;
 import lombok.RequiredArgsConstructor;
@@ -28,11 +29,12 @@ public class RagAuditService {
                                String answer,
                                long latencyMs,
                                boolean success,
-                               String errorMessage) {
+                               String errorMessage,
+                               RequestOrigin requestOrigin) {
         Long responseId = snowflakeIdGenerator.nextLongId();
         jdbcTemplate.update(
-                "INSERT INTO ai_audit_logs (id, user_id, agent_type, user_message, ai_response, latency_ms, success, error_message, session_id, trace_id, created_at) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO ai_audit_logs (id, user_id, agent_type, user_message, ai_response, latency_ms, success, error_message, client_ip, country, province, city, session_id, trace_id, created_at) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 responseId,
                 userId,
                 "rag",
@@ -41,6 +43,10 @@ public class RagAuditService {
                 latencyMs,
                 success,
                 errorMessage,
+                requestOrigin != null ? requestOrigin.getClientIp() : null,
+                requestOrigin != null ? requestOrigin.getCountry() : null,
+                requestOrigin != null ? requestOrigin.getProvince() : null,
+                requestOrigin != null ? requestOrigin.getCity() : null,
                 knowledgeBaseId,
                 TraceIdContext.currentTraceId(),
                 Timestamp.valueOf(LocalDateTime.now())

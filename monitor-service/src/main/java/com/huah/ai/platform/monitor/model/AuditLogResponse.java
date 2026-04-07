@@ -18,6 +18,11 @@ public class AuditLogResponse {
     String modelId;
     @JsonProperty("error_message")
     String errorMessage;
+    @JsonProperty("client_ip")
+    String clientIp;
+    String country;
+    String province;
+    String city;
     @JsonProperty("session_id")
     String sessionId;
     @JsonProperty("trace_id")

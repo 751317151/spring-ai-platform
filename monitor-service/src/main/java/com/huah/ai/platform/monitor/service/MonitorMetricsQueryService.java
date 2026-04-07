@@ -6,21 +6,21 @@ import com.huah.ai.platform.monitor.model.FailureSampleResponse;
 import com.huah.ai.platform.monitor.model.HourlyStatResponse;
 import com.huah.ai.platform.monitor.model.ModelStatResponse;
 import com.huah.ai.platform.monitor.model.MonitorOverviewResponse;
+import com.huah.ai.platform.monitor.model.RegionHeatResponse;
 import com.huah.ai.platform.monitor.model.SlowRequestResponse;
 import com.huah.ai.platform.monitor.model.TokenUsageResponse;
 import com.huah.ai.platform.monitor.model.TopUserResponse;
 import io.micrometer.core.instrument.MeterRegistry;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Service;
-
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
@@ -35,16 +35,15 @@ public class MonitorMetricsQueryService {
         try {
             String today = LocalDate.now().toString();
             var todayStats = jdbcTemplate.queryForMap(
-                    "SELECT COUNT(*) as total, " +
-                            "COUNT(*) FILTER (WHERE success = false) as errors, " +
-                            "COALESCE(AVG(latency_ms), 0) as avg_latency, " +
-                            "COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms), 0) as p95_latency, " +
-                            "COALESCE(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY latency_ms), 0) as p99_latency, " +
-                            "COALESCE(SUM(COALESCE(prompt_tokens, 0)), 0) as prompt_tokens, " +
-                            "COALESCE(SUM(COALESCE(completion_tokens, 0)), 0) as completion_tokens " +
-                            "FROM ai_audit_logs WHERE created_at >= ?::date",
-                    today
-            );
+                    "SELECT COUNT(*) as total, "
+                            + "COUNT(*) FILTER (WHERE success = false) as errors, "
+                            + "COALESCE(AVG(latency_ms), 0) as avg_latency, "
+                            + "COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms), 0) as p95_latency, "
+                            + "COALESCE(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY latency_ms), 0) as p99_latency, "
+                            + "COALESCE(SUM(COALESCE(prompt_tokens, 0)), 0) as prompt_tokens, "
+                            + "COALESCE(SUM(COALESCE(completion_tokens, 0)), 0) as completion_tokens "
+                            + "FROM ai_audit_logs WHERE created_at >= ?::date",
+                    today);
 
             long total = ((Number) todayStats.get("total")).longValue();
             long errors = ((Number) todayStats.get("errors")).longValue();
@@ -84,19 +83,18 @@ public class MonitorMetricsQueryService {
         try {
             String today = LocalDate.now().toString();
             return jdbcTemplate.query(
-                    "SELECT agent_type, COUNT(*) as count, " +
-                            "COALESCE(AVG(latency_ms), 0) as avg_latency, " +
-                            "COUNT(*) FILTER (WHERE success = false) as errors " +
-                            "FROM ai_audit_logs WHERE created_at >= ?::date " +
-                            "GROUP BY agent_type ORDER BY count DESC",
+                    "SELECT agent_type, COUNT(*) as count, "
+                            + "COALESCE(AVG(latency_ms), 0) as avg_latency, "
+                            + "COUNT(*) FILTER (WHERE success = false) as errors "
+                            + "FROM ai_audit_logs WHERE created_at >= ?::date "
+                            + "GROUP BY agent_type ORDER BY count DESC",
                     (rs, rowNum) -> AgentStatResponse.builder()
                             .agentType(rs.getString("agent_type"))
                             .count(rs.getLong("count"))
                             .avgLatency(rs.getLong("avg_latency"))
                             .errors(rs.getLong("errors"))
                             .build(),
-                    today
-            );
+                    today);
         } catch (RuntimeException e) {
             log.warn("Failed to load agent stats: {}", e.getMessage());
             return Collections.emptyList();
@@ -107,19 +105,18 @@ public class MonitorMetricsQueryService {
         try {
             String today = LocalDate.now().toString();
             return jdbcTemplate.query(
-                    "SELECT COALESCE(model_id, 'unknown') as model_id, COUNT(*) as count, " +
-                            "COALESCE(AVG(latency_ms), 0) as avg_latency, " +
-                            "COUNT(*) FILTER (WHERE success = false) as errors " +
-                            "FROM ai_audit_logs WHERE created_at >= ?::date " +
-                            "GROUP BY COALESCE(model_id, 'unknown') ORDER BY count DESC",
+                    "SELECT COALESCE(model_id, 'unknown') as model_id, COUNT(*) as count, "
+                            + "COALESCE(AVG(latency_ms), 0) as avg_latency, "
+                            + "COUNT(*) FILTER (WHERE success = false) as errors "
+                            + "FROM ai_audit_logs WHERE created_at >= ?::date "
+                            + "GROUP BY COALESCE(model_id, 'unknown') ORDER BY count DESC",
                     (rs, rowNum) -> ModelStatResponse.builder()
                             .modelId(rs.getString("model_id"))
                             .count(rs.getLong("count"))
                             .avgLatency(rs.getLong("avg_latency"))
                             .errors(rs.getLong("errors"))
                             .build(),
-                    today
-            );
+                    today);
         } catch (RuntimeException e) {
             log.warn("Failed to load model stats: {}", e.getMessage());
             return Collections.emptyList();
@@ -139,11 +136,12 @@ public class MonitorMetricsQueryService {
 
     public List<TopUserResponse> getTopUsers() {
         try {
-            String sql = "SELECT user_id, agent_type, COUNT(*) as calls, " +
-                    "AVG(latency_ms) as avg_latency " +
-                    "FROM ai_audit_logs WHERE created_at > ? " +
-                    "GROUP BY user_id, agent_type ORDER BY calls DESC LIMIT 10";
-            return jdbcTemplate.query(sql,
+            String sql = "SELECT user_id, agent_type, COUNT(*) as calls, "
+                    + "AVG(latency_ms) as avg_latency "
+                    + "FROM ai_audit_logs WHERE created_at > ? "
+                    + "GROUP BY user_id, agent_type ORDER BY calls DESC LIMIT 10";
+            return jdbcTemplate.query(
+                    sql,
                     (rs, rowNum) -> TopUserResponse.builder()
                             .userId(rs.getString("user_id"))
                             .agentType(rs.getString("agent_type"))
@@ -157,11 +155,47 @@ public class MonitorMetricsQueryService {
         }
     }
 
+    public List<RegionHeatResponse> getRegionHeat() {
+        try {
+            String sql = "SELECT COALESCE(NULLIF(l.province, ''), '未设置省份') as province, "
+                    + "COALESCE(NULLIF(l.city, ''), '未设置城市') as city, "
+                    + "COUNT(*) as calls, "
+                    + "COUNT(*) FILTER (WHERE l.success = false) as errors, "
+                    + "COALESCE(AVG(l.latency_ms), 0) as avg_latency "
+                    + "FROM ai_audit_logs l "
+                    + "WHERE l.created_at > ? "
+                    + "GROUP BY COALESCE(NULLIF(l.province, ''), '未设置省份'), "
+                    + "COALESCE(NULLIF(l.city, ''), '未设置城市') "
+                    + "ORDER BY calls DESC LIMIT 8";
+            return jdbcTemplate.query(
+                    sql,
+                    (rs, rowNum) -> {
+                        long calls = rs.getLong("calls");
+                        long errors = rs.getLong("errors");
+                        String province = rs.getString("province");
+                        String city = rs.getString("city");
+                        return RegionHeatResponse.builder()
+                                .province(province)
+                                .city(city)
+                                .regionName(province + " / " + city)
+                                .calls(calls)
+                                .errors(errors)
+                                .avgLatencyMs(rs.getLong("avg_latency"))
+                                .successRate(calls > 0 ? (double) (calls - errors) / calls : 1.0)
+                                .build();
+                    },
+                    LocalDateTime.now().minusDays(1));
+        } catch (RuntimeException e) {
+            log.warn("Failed to load region heat stats: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
     public List<SlowRequestResponse> getSlowRequests(int limit) {
         try {
             return jdbcTemplate.query(
-                    "SELECT id, user_id, agent_type, model_id, trace_id, latency_ms, success, created_at " +
-                            "FROM ai_audit_logs ORDER BY latency_ms DESC, created_at DESC LIMIT ?",
+                    "SELECT id, user_id, agent_type, model_id, trace_id, latency_ms, success, created_at "
+                            + "FROM ai_audit_logs ORDER BY latency_ms DESC, created_at DESC LIMIT ?",
                     (rs, rowNum) -> SlowRequestResponse.builder()
                             .id(rs.getString("id"))
                             .userId(rs.getString("user_id"))
@@ -172,8 +206,7 @@ public class MonitorMetricsQueryService {
                             .success(rs.getBoolean("success"))
                             .createdAt(toLocalDateTime(rs.getTimestamp("created_at")))
                             .build(),
-                    limit
-            );
+                    limit);
         } catch (RuntimeException e) {
             log.warn("Failed to load slow requests: limit={}, error={}", limit, e.getMessage());
             return Collections.emptyList();
@@ -183,8 +216,8 @@ public class MonitorMetricsQueryService {
     public List<FailureSampleResponse> getFailureSamples(int limit) {
         try {
             return jdbcTemplate.query(
-                    "SELECT id, user_id, agent_type, model_id, error_message, latency_ms, session_id, trace_id, created_at " +
-                            "FROM ai_audit_logs WHERE success = false ORDER BY created_at DESC LIMIT ?",
+                    "SELECT id, user_id, agent_type, model_id, error_message, latency_ms, session_id, trace_id, created_at "
+                            + "FROM ai_audit_logs WHERE success = false ORDER BY created_at DESC LIMIT ?",
                     (rs, rowNum) -> FailureSampleResponse.builder()
                             .id(rs.getString("id"))
                             .userId(rs.getString("user_id"))
@@ -196,8 +229,7 @@ public class MonitorMetricsQueryService {
                             .traceId(rs.getString("trace_id"))
                             .createdAt(toLocalDateTime(rs.getTimestamp("created_at")))
                             .build(),
-                    limit
-            );
+                    limit);
         } catch (RuntimeException e) {
             log.warn("Failed to load failure samples: limit={}, error={}", limit, e.getMessage());
             return Collections.emptyList();
@@ -208,14 +240,14 @@ public class MonitorMetricsQueryService {
         try {
             String today = LocalDate.now().toString();
             return jdbcTemplate.query(
-                    "SELECT EXTRACT(HOUR FROM created_at)::int as hour, " +
-                            "COUNT(*) as total, " +
-                            "COUNT(*) FILTER (WHERE success = false) as errors, " +
-                            "COALESCE(AVG(latency_ms), 0) as avg_latency, " +
-                            "COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms), 0) as p50, " +
-                            "COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms), 0) as p95 " +
-                            "FROM ai_audit_logs WHERE created_at >= ?::date " +
-                            "GROUP BY EXTRACT(HOUR FROM created_at) ORDER BY hour",
+                    "SELECT EXTRACT(HOUR FROM created_at)::int as hour, "
+                            + "COUNT(*) as total, "
+                            + "COUNT(*) FILTER (WHERE success = false) as errors, "
+                            + "COALESCE(AVG(latency_ms), 0) as avg_latency, "
+                            + "COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms), 0) as p50, "
+                            + "COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms), 0) as p95 "
+                            + "FROM ai_audit_logs WHERE created_at >= ?::date "
+                            + "GROUP BY EXTRACT(HOUR FROM created_at) ORDER BY hour",
                     (rs, rowNum) -> HourlyStatResponse.builder()
                             .hour(rs.getInt("hour"))
                             .total(rs.getLong("total"))
@@ -224,8 +256,7 @@ public class MonitorMetricsQueryService {
                             .p50(rs.getDouble("p50"))
                             .p95(rs.getDouble("p95"))
                             .build(),
-                    today
-            );
+                    today);
         } catch (RuntimeException e) {
             log.warn("Failed to load hourly stats: {}", e.getMessage());
             return Collections.emptyList();
@@ -236,12 +267,11 @@ public class MonitorMetricsQueryService {
         try {
             String today = LocalDate.now().toString();
             var todayStats = jdbcTemplate.queryForMap(
-                    "SELECT COUNT(*) as total, " +
-                            "COUNT(*) FILTER (WHERE success = false) as errors, " +
-                            "COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms), 0) as p95_latency " +
-                            "FROM ai_audit_logs WHERE created_at >= ?::date",
-                    today
-            );
+                    "SELECT COUNT(*) as total, "
+                            + "COUNT(*) FILTER (WHERE success = false) as errors, "
+                            + "COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms), 0) as p95_latency "
+                            + "FROM ai_audit_logs WHERE created_at >= ?::date",
+                    today);
 
             long total = ((Number) todayStats.get("total")).longValue();
             long errors = ((Number) todayStats.get("errors")).longValue();
@@ -280,4 +310,3 @@ public class MonitorMetricsQueryService {
         return gauge != null ? gauge.value() : 0;
     }
 }
-

@@ -8,6 +8,8 @@
         u.username,
         u.password_hash,
         u.department,
+        u.province,
+        u.city,
         u.employee_id,
         u.enabled,
         u.created_at,
@@ -26,7 +28,7 @@
         <include refid="UserColumns"/>
         <include refid="UserJoin"/>
         WHERE u.userid = #{userId}
-        GROUP BY u.userid, u.username, u.password_hash, u.department, u.employee_id,
+        GROUP BY u.userid, u.username, u.password_hash, u.department, u.province, u.city, u.employee_id,
         u.enabled, u.created_at, u.last_login_at
     </select>
 
@@ -36,7 +38,7 @@
         <include refid="UserJoin"/>
         WHERE u.userid = #{userId}
           AND u.enabled = true
-        GROUP BY u.userid, u.username, u.password_hash, u.department, u.employee_id,
+        GROUP BY u.userid, u.username, u.password_hash, u.department, u.province, u.city, u.employee_id,
         u.enabled, u.created_at, u.last_login_at
     </select>
 
@@ -45,7 +47,7 @@
         <include refid="UserColumns"/>
         <include refid="UserJoin"/>
         WHERE u.username = #{username}
-        GROUP BY u.userid, u.username, u.password_hash, u.department, u.employee_id,
+        GROUP BY u.userid, u.username, u.password_hash, u.department, u.province, u.city, u.employee_id,
         u.enabled, u.created_at, u.last_login_at
     </select>
 
@@ -55,7 +57,7 @@
         <include refid="UserJoin"/>
         WHERE u.username = #{username}
           AND u.enabled = true
-        GROUP BY u.userid, u.username, u.password_hash, u.department, u.employee_id,
+        GROUP BY u.userid, u.username, u.password_hash, u.department, u.province, u.city, u.employee_id,
         u.enabled, u.created_at, u.last_login_at
     </select>
 
@@ -64,7 +66,7 @@
         <include refid="UserColumns"/>
         <include refid="UserJoin"/>
         WHERE u.userid = #{userId}
-        GROUP BY u.userid, u.username, u.password_hash, u.department, u.employee_id,
+        GROUP BY u.userid, u.username, u.password_hash, u.department, u.province, u.city, u.employee_id,
         u.enabled, u.created_at, u.last_login_at
     </select>
 
@@ -72,7 +74,7 @@
         SELECT
         <include refid="UserColumns"/>
         <include refid="UserJoin"/>
-        GROUP BY u.userid, u.username, u.password_hash, u.department, u.employee_id,
+        GROUP BY u.userid, u.username, u.password_hash, u.department, u.province, u.city, u.employee_id,
         u.enabled, u.created_at, u.last_login_at
         ORDER BY u.created_at DESC, u.userid ASC
     </select>
