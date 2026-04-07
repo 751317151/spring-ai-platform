@@ -2,6 +2,8 @@ package com.huah.ai.platform.agent.audit;
 
 import com.huah.ai.platform.agent.metrics.AiMetricsCollector;
 import com.huah.ai.platform.agent.service.AgentChatResult;
+import com.huah.ai.platform.common.persistence.audit.AiAuditLogEntity;
+import com.huah.ai.platform.common.persistence.audit.AiAuditLogMapper;
 import com.huah.ai.platform.common.trace.TraceIdContext;
 import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import lombok.RequiredArgsConstructor;

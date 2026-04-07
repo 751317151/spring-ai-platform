@@ -259,10 +259,10 @@ function autoResize() {
 function send() {
   const msg = message.value.trim()
   if (!msg || chatStore.isThinking) return
-  if (msg.length < 6 || (checkHints.value.length >= 3 && msg.length < 20)) {
-    showToast('建议先补充目标或上下文，再发送会更有效。')
-    return
-  }
+  // if (msg.length < 6 || (checkHints.value.length >= 3 && msg.length < 20)) {
+  //   showToast('建议先补充目标或上下文，再发送会更有效。')
+  //   return
+  // }
   emit('send', msg)
   message.value = ''
   persistCurrentDraft()

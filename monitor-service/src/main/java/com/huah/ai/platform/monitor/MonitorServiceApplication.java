@@ -1,5 +1,7 @@
 package com.huah.ai.platform.monitor;
 
+import org.apache.ibatis.annotations.Mapper;
+import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.ComponentScan;
@@ -17,6 +19,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @SpringBootApplication
 @EnableScheduling
 @ComponentScan(basePackages = {"com.huah.ai.platform.monitor", "com.huah.ai.platform.common"})
+@MapperScan(basePackages = "com.huah.ai.platform.common.persistence", annotationClass = Mapper.class)
 public class MonitorServiceApplication {
     public static void main(String[] args) {
         SpringApplication.run(MonitorServiceApplication.class, args);

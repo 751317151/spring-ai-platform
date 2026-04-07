@@ -2,11 +2,11 @@ package com.huah.ai.platform.agent.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.huah.ai.platform.agent.audit.AiAuditLogEntity;
-import com.huah.ai.platform.agent.audit.AiAuditLogMapper;
-import com.huah.ai.platform.agent.audit.AiToolAuditLogEntity;
-import com.huah.ai.platform.agent.audit.AiToolAuditLogMapper;
 import com.huah.ai.platform.agent.audit.TracePhaseSnapshot;
+import com.huah.ai.platform.common.persistence.audit.AiAuditLogEntity;
+import com.huah.ai.platform.common.persistence.audit.AiAuditLogMapper;
+import com.huah.ai.platform.common.persistence.audit.AiToolAuditLogEntity;
+import com.huah.ai.platform.common.persistence.audit.AiToolAuditLogMapper;
 import com.huah.ai.platform.common.trace.TraceIdContext;
 import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import com.huah.ai.platform.common.web.RequestOrigin;

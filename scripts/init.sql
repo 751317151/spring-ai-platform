@@ -143,6 +143,7 @@ CREATE TABLE IF NOT EXISTS ai_audit_logs (
     city VARCHAR(64),
     session_id VARCHAR(128),
     trace_id VARCHAR(64),
+    phase_breakdown_json TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -170,15 +171,6 @@ CREATE TABLE IF NOT EXISTS ai_evidence_feedback (
     CONSTRAINT uk_evidence_feedback UNIQUE (response_id, chunk_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_audit_user_id ON ai_audit_logs (user_id);
-CREATE INDEX IF NOT EXISTS idx_audit_created ON ai_audit_logs (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_audit_agent ON ai_audit_logs (agent_type);
-CREATE INDEX IF NOT EXISTS idx_audit_trace_id ON ai_audit_logs (trace_id);
-CREATE INDEX IF NOT EXISTS idx_feedback_created ON ai_response_feedback (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_feedback_source ON ai_response_feedback (source_type, feedback);
-CREATE INDEX IF NOT EXISTS idx_evidence_feedback_created ON ai_evidence_feedback (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_evidence_feedback_chunk ON ai_evidence_feedback (chunk_id);
-
 CREATE TABLE IF NOT EXISTS ai_tool_audit_logs (
     id BIGINT PRIMARY KEY,
     user_id VARCHAR(64),
@@ -194,6 +186,25 @@ CREATE TABLE IF NOT EXISTS ai_tool_audit_logs (
     denied_resource VARCHAR(255),
     latency_ms BIGINT,
     trace_id VARCHAR(64),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ai_alert_workflow (
+    fingerprint VARCHAR(128) PRIMARY KEY,
+    workflow_status VARCHAR(32) NOT NULL,
+    workflow_note VARCHAR(500),
+    silenced_until TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ai_alert_workflow_history (
+    id BIGINT PRIMARY KEY,
+    fingerprint VARCHAR(128) NOT NULL,
+    workflow_status VARCHAR(32) NOT NULL,
+    workflow_note VARCHAR(500),
+    silenced_until TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -286,8 +297,18 @@ CREATE TABLE IF NOT EXISTS learning_followup_templates (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
+CREATE INDEX IF NOT EXISTS idx_audit_user_id ON ai_audit_logs (user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_created ON ai_audit_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_agent ON ai_audit_logs (agent_type);
+CREATE INDEX IF NOT EXISTS idx_audit_trace_id ON ai_audit_logs (trace_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_created ON ai_response_feedback (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_feedback_source ON ai_response_feedback (source_type, feedback);
+CREATE INDEX IF NOT EXISTS idx_evidence_feedback_created ON ai_evidence_feedback (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_evidence_feedback_chunk ON ai_evidence_feedback (chunk_id);
 CREATE INDEX IF NOT EXISTS idx_tool_audit_created ON ai_tool_audit_logs (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tool_audit_lookup ON ai_tool_audit_logs (user_id, agent_type, tool_name);
+CREATE INDEX IF NOT EXISTS idx_alert_workflow_status ON ai_alert_workflow (workflow_status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alert_workflow_history_fp ON ai_alert_workflow_history (fingerprint, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_multi_trace_user_session ON ai_multi_agent_traces (user_id, session_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_multi_trace_status ON ai_multi_agent_traces (status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_multi_trace_steps_lookup ON ai_multi_agent_trace_steps (trace_id, step_order);
@@ -298,15 +319,19 @@ CREATE INDEX IF NOT EXISTS idx_role_token_limits_role ON ai_role_token_limits (r
 CREATE INDEX IF NOT EXISTS idx_role_token_limits_bot ON ai_role_token_limits (bot_type);
 CREATE INDEX IF NOT EXISTS idx_user_token_limits_user ON ai_user_token_limits (user_id);
 CREATE INDEX IF NOT EXISTS idx_user_token_limits_bot ON ai_user_token_limits (bot_type);
+
 CREATE UNIQUE INDEX IF NOT EXISTS uk_role_token_limits_global
     ON ai_role_token_limits (role_id)
     WHERE bot_type IS NULL;
+
 CREATE UNIQUE INDEX IF NOT EXISTS uk_role_token_limits_bot
     ON ai_role_token_limits (role_id, bot_type)
     WHERE bot_type IS NOT NULL;
+
 CREATE UNIQUE INDEX IF NOT EXISTS uk_user_token_limits_global
     ON ai_user_token_limits (user_id)
     WHERE bot_type IS NULL;
+
 CREATE UNIQUE INDEX IF NOT EXISTS uk_user_token_limits_bot
     ON ai_user_token_limits (user_id, bot_type)
     WHERE bot_type IS NOT NULL;
@@ -327,7 +352,7 @@ INSERT INTO ai_roles (id, role_name, description) VALUES
     (1001, 'ROLE_ADMIN', '系统管理员'),
     (1002, 'ROLE_RD', '研发工程师'),
     (1003, 'ROLE_SALES', '销售人员'),
-    (1004, 'ROLE_HR', 'HR'),
+    (1004, 'ROLE_HR', '人力资源'),
     (1005, 'ROLE_FINANCE', '财务人员'),
     (1006, 'ROLE_USER', '普通用户')
 ON CONFLICT DO NOTHING;
@@ -342,7 +367,8 @@ INSERT INTO ai_users (
     employee_id,
     roles,
     enabled,
-    created_at
+    created_at,
+    updated_at
 ) VALUES (
     'admin',
     '管理员',
@@ -353,6 +379,7 @@ INSERT INTO ai_users (
     'EMP0001',
     'ROLE_ADMIN,ROLE_RD,ROLE_SALES,ROLE_HR,ROLE_FINANCE,ROLE_USER',
     TRUE,
+    NOW(),
     NOW()
 )
 ON CONFLICT DO NOTHING;
@@ -373,20 +400,22 @@ INSERT INTO ai_bot_permissions (
     allowed_departments,
     data_scope,
     daily_token_limit,
-    enabled
+    enabled,
+    created_at,
+    updated_at
 ) VALUES
-    (2001, 'rd', 'ROLE_RD,ROLE_ADMIN', '研发中心,系统管理', 'DEPARTMENT', 200000, TRUE),
-    (2002, 'sales', 'ROLE_SALES,ROLE_ADMIN', '销售部,系统管理', 'DEPARTMENT', 150000, TRUE),
-    (2003, 'hr', 'ROLE_HR,ROLE_ADMIN', '人力资源部,系统管理', 'DEPARTMENT', 100000, TRUE),
-    (2004, 'finance', 'ROLE_FINANCE,ROLE_ADMIN', '财务部,系统管理', 'DEPARTMENT', 100000, TRUE),
-    (2005, 'supply-chain', 'ROLE_USER,ROLE_ADMIN', NULL, 'DEPARTMENT', 100000, TRUE),
-    (2006, 'qc', 'ROLE_USER,ROLE_ADMIN', NULL, 'DEPARTMENT', 100000, TRUE),
-    (2007, 'multi', 'ROLE_ADMIN', '系统管理', 'DEPARTMENT', 500000, TRUE),
-    (2008, 'weather', 'ROLE_USER,ROLE_ADMIN', NULL, 'DEPARTMENT', 100000, TRUE),
-    (2009, 'search', 'ROLE_USER,ROLE_ADMIN', NULL, 'DEPARTMENT', 100000, TRUE),
-    (2010, 'data-analysis', 'ROLE_RD,ROLE_FINANCE,ROLE_ADMIN', '研发中心,财务部,系统管理', 'DEPARTMENT', 200000, TRUE),
-    (2011, 'code', 'ROLE_RD,ROLE_ADMIN', '研发中心,系统管理', 'DEPARTMENT', 200000, TRUE),
-    (2012, 'mcp', 'ROLE_ADMIN', '系统管理', 'DEPARTMENT', 500000, TRUE)
+    (2001, 'rd', 'ROLE_RD,ROLE_ADMIN', '研发中心,系统管理', 'DEPARTMENT', 200000, TRUE, NOW(), NOW()),
+    (2002, 'sales', 'ROLE_SALES,ROLE_ADMIN', '销售部,系统管理', 'DEPARTMENT', 150000, TRUE, NOW(), NOW()),
+    (2003, 'hr', 'ROLE_HR,ROLE_ADMIN', '人力资源部,系统管理', 'DEPARTMENT', 100000, TRUE, NOW(), NOW()),
+    (2004, 'finance', 'ROLE_FINANCE,ROLE_ADMIN', '财务部,系统管理', 'DEPARTMENT', 100000, TRUE, NOW(), NOW()),
+    (2005, 'supply-chain', 'ROLE_USER,ROLE_ADMIN', NULL, 'DEPARTMENT', 100000, TRUE, NOW(), NOW()),
+    (2006, 'qc', 'ROLE_USER,ROLE_ADMIN', NULL, 'DEPARTMENT', 100000, TRUE, NOW(), NOW()),
+    (2007, 'multi', 'ROLE_ADMIN', '系统管理', 'DEPARTMENT', 500000, TRUE, NOW(), NOW()),
+    (2008, 'weather', 'ROLE_USER,ROLE_ADMIN', NULL, 'DEPARTMENT', 100000, TRUE, NOW(), NOW()),
+    (2009, 'search', 'ROLE_USER,ROLE_ADMIN', NULL, 'DEPARTMENT', 100000, TRUE, NOW(), NOW()),
+    (2010, 'data-analysis', 'ROLE_RD,ROLE_FINANCE,ROLE_ADMIN', '研发中心,财务部,系统管理', 'DEPARTMENT', 200000, TRUE, NOW(), NOW()),
+    (2011, 'code', 'ROLE_RD,ROLE_ADMIN', '研发中心,系统管理', 'DEPARTMENT', 200000, TRUE, NOW(), NOW()),
+    (2012, 'mcp', 'ROLE_ADMIN', '系统管理', 'DEPARTMENT', 500000, TRUE, NOW(), NOW())
 ON CONFLICT DO NOTHING;
 
 INSERT INTO ai_bot_permission_roles (id, permission_id, role_id) VALUES
@@ -427,9 +456,10 @@ INSERT INTO knowledge_bases (
     status,
     document_count,
     total_chunks,
-    created_at
+    created_at,
+    updated_at
 ) VALUES
-    (3001, '企业通用知识库', '公司政策、HR 规定、行政制度等通用知识', '全公司', 'PUBLIC', 'system', 1000, 200, 'ACTIVE', 0, 0, NOW()),
-    (3002, '研发技术知识库', '技术规范、API 文档、架构设计、代码规范', '研发中心', 'DEPARTMENT', 'system', 1000, 200, 'ACTIVE', 0, 0, NOW()),
-    (3003, '销售产品知识库', '产品手册、报价策略、客户案例、竞品分析', '销售部', 'DEPARTMENT', 'system', 1000, 200, 'ACTIVE', 0, 0, NOW())
+    (3001, '企业通用知识库', '公司政策、HR 规定、行政制度等通用知识', '全公司', 'PUBLIC', 'system', 1000, 200, 'ACTIVE', 0, 0, NOW(), NOW()),
+    (3002, '研发技术知识库', '技术规范、API 文档、架构设计、代码规范', '研发中心', 'DEPARTMENT', 'system', 1000, 200, 'ACTIVE', 0, 0, NOW(), NOW()),
+    (3003, '销售产品知识库', '产品手册、报价策略、客户案例、竞品分析', '销售部', 'DEPARTMENT', 'system', 1000, 200, 'ACTIVE', 0, 0, NOW(), NOW())
 ON CONFLICT DO NOTHING;

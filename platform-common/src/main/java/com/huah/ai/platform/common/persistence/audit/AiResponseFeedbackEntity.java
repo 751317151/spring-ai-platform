@@ -1,4 +1,4 @@
-package com.huah.ai.platform.agent.audit;
+package com.huah.ai.platform.common.persistence.audit;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -17,8 +17,9 @@ import java.time.LocalDateTime;
 @TableName("ai_response_feedback")
 public class AiResponseFeedbackEntity {
 
-    @TableId(type = IdType.ASSIGN_ID)
+    @TableId(type = IdType.INPUT)
     private Long id;
+
     private Long responseId;
     private String sourceType;
     private Long knowledgeBaseId;
@@ -27,4 +28,3 @@ public class AiResponseFeedbackEntity {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
-

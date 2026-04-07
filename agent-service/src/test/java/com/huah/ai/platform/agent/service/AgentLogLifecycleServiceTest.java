@@ -1,13 +1,13 @@
 package com.huah.ai.platform.agent.service;
 
-import com.huah.ai.platform.agent.audit.AiAuditLogMapper;
-import com.huah.ai.platform.agent.audit.AiToolAuditLogMapper;
 import com.huah.ai.platform.agent.config.AgentLifecycleProperties;
 import com.huah.ai.platform.agent.dto.AgentLogArchiveManifestInfo;
 import com.huah.ai.platform.agent.dto.AgentLogCleanupResponse;
 import com.huah.ai.platform.agent.dto.AgentLogLifecycleSummaryResponse;
 import com.huah.ai.platform.agent.multi.MultiAgentExecutionStepMapper;
 import com.huah.ai.platform.agent.multi.MultiAgentExecutionTraceMapper;
+import com.huah.ai.platform.common.persistence.audit.AiAuditLogMapper;
+import com.huah.ai.platform.common.persistence.audit.AiToolAuditLogMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;

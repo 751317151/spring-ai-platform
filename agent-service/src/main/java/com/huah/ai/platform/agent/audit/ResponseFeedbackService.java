@@ -1,6 +1,10 @@
 package com.huah.ai.platform.agent.audit;
 
 import com.huah.ai.platform.common.exception.BizException;
+import com.huah.ai.platform.common.persistence.audit.AiAuditLogEntity;
+import com.huah.ai.platform.common.persistence.audit.AiAuditLogMapper;
+import com.huah.ai.platform.common.persistence.audit.AiResponseFeedbackEntity;
+import com.huah.ai.platform.common.persistence.audit.AiResponseFeedbackMapper;
 import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

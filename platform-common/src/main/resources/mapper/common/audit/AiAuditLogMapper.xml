@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.huah.ai.platform.common.persistence.audit.AiAuditLogMapper">
+    <select id="selectByUserIdOrderByCreatedAtDesc" resultType="com.huah.ai.platform.common.persistence.audit.AiAuditLogEntity">
+        SELECT * FROM ai_audit_logs
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+    </select>
+    <select id="selectByAgentTypeAfter" resultType="com.huah.ai.platform.common.persistence.audit.AiAuditLogEntity">
+        SELECT * FROM ai_audit_logs
+        WHERE agent_type = #{agentType}
+          AND created_at &gt; #{after}
+        ORDER BY created_at DESC
+    </select>
+    <select id="statsGroupByAgent" resultType="map">
+        SELECT agent_type AS agentType, COUNT(*) AS cnt, AVG(latency_ms) AS avgLatency
+        FROM ai_audit_logs
+        WHERE created_at &gt; #{since}
+        GROUP BY agent_type
+    </select>
+    <select id="topTokenUsersSince" resultType="map">
+        SELECT user_id AS userId,
+               SUM(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)) AS totalTokens
+        FROM ai_audit_logs
+        WHERE created_at &gt; #{since}
+        GROUP BY user_id
+        ORDER BY totalTokens DESC
+    </select>
+    <select id="countByUserIdAfter" resultType="long">
+        SELECT COUNT(*) FROM ai_audit_logs
+        WHERE user_id = #{userId}
+          AND created_at &gt; #{after}
+    </select>
+    <select id="countByAgentType" resultType="long">
+        SELECT COUNT(*) FROM ai_audit_logs WHERE agent_type = #{agentType}
+    </select>
+    <select id="countByAgentTypeBefore" resultType="long">
+        SELECT COUNT(*) FROM ai_audit_logs
+        WHERE agent_type = #{agentType}
+          AND created_at &lt; #{before}
+    </select>
+    <select id="selectArchiveCandidates" resultType="com.huah.ai.platform.common.persistence.audit.AiAuditLogEntity">
+        SELECT * FROM ai_audit_logs
+        WHERE agent_type = #{agentType}
+          AND created_at &lt; #{before}
+        ORDER BY created_at ASC
+        LIMIT #{limit}
+    </select>
+    <select id="selectArchiveCandidatesBatch" resultType="com.huah.ai.platform.common.persistence.audit.AiAuditLogEntity">
+        SELECT * FROM ai_audit_logs
+        WHERE agent_type = #{agentType}
+          AND created_at &lt; #{before}
+        ORDER BY created_at ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+    <delete id="deleteByAgentTypeBefore">
+        DELETE FROM ai_audit_logs
+        WHERE agent_type = #{agentType}
+          AND created_at &lt; #{before}
+    </delete>
+    <select id="countRagQueries" resultType="long">
+        SELECT COUNT(*)
+        FROM ai_audit_logs
+        WHERE agent_type = 'rag'
+        <if test="knowledgeBaseId != null">
+            AND session_id = CAST(#{knowledgeBaseId} AS VARCHAR)
+        </if>
+    </select>
+    <select id="selectLowRatedRagSamples" resultType="map">
+        SELECT
+            a.id AS responseId,
+            a.user_id AS userId,
+            CAST(COALESCE(r.knowledge_base_id, e.knowledge_base_id, a.session_id) AS BIGINT) AS knowledgeBaseId,
+            a.user_message AS question,
+            a.ai_response AS answer,
+            COALESCE(r.feedback, 'down') AS feedback,
+            COALESCE(r.comment, '') AS comment,
+            COALESCE(e.negative_evidence_count, 0) AS evidenceNegativeCount,
+            a.created_at AS createdAt
+        FROM ai_audit_logs a
+        LEFT JOIN ai_response_feedback r
+            ON r.response_id = a.id
+           AND r.source_type = 'rag'
+        LEFT JOIN (
+            SELECT response_id,
+                   knowledge_base_id,
+                   COUNT(*) FILTER (WHERE feedback = 'down') AS negative_evidence_count
+            FROM ai_evidence_feedback
+            GROUP BY response_id, knowledge_base_id
+        ) e ON e.response_id = a.id
+        WHERE a.agent_type = 'rag'
+          AND (COALESCE(r.feedback, '') = 'down' OR COALESCE(e.negative_evidence_count, 0) &gt; 0)
+        <if test="knowledgeBaseId != null">
+            AND COALESCE(r.knowledge_base_id, e.knowledge_base_id, CAST(a.session_id AS BIGINT)) = #{knowledgeBaseId}
+        </if>
+        ORDER BY a.created_at DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

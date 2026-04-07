@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.huah.ai.platform.common.persistence.audit.AiAlertWorkflowHistoryMapper">
+    <select id="selectByFingerprintLimit" resultType="com.huah.ai.platform.common.persistence.audit.AiAlertWorkflowHistoryEntity">
+        SELECT * FROM ai_alert_workflow_history
+        WHERE fingerprint = #{fingerprint}
+        ORDER BY created_at DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

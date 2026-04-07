@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.huah.ai.platform.common.persistence.audit.AiResponseFeedbackMapper">
+    <select id="selectByResponseId" resultType="com.huah.ai.platform.common.persistence.audit.AiResponseFeedbackEntity">
+        SELECT * FROM ai_response_feedback WHERE response_id = #{responseId}
+    </select>
+    <select id="countStatsBySourceTypeAndKnowledgeBaseId" resultType="map">
+        SELECT
+            COUNT(*) AS total,
+            COUNT(*) FILTER (WHERE feedback = 'up') AS positive,
+            COUNT(*) FILTER (WHERE feedback = 'down') AS negative
+        FROM ai_response_feedback
+        WHERE source_type = #{sourceType}
+        <if test="knowledgeBaseId != null">
+            AND knowledge_base_id = #{knowledgeBaseId}
+        </if>
+    </select>
+</mapper>

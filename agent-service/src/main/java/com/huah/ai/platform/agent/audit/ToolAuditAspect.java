@@ -3,6 +3,8 @@ package com.huah.ai.platform.agent.audit;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.huah.ai.platform.agent.security.ToolAccessDeniedException;
 import com.huah.ai.platform.agent.security.ToolSecurityService;
+import com.huah.ai.platform.common.persistence.audit.AiToolAuditLogEntity;
+import com.huah.ai.platform.common.persistence.audit.AiToolAuditLogMapper;
 import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +20,7 @@ import java.lang.reflect.Parameter;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
+
 @Slf4j
 @Aspect
 @Component

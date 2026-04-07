@@ -1,14 +1,14 @@
 package com.huah.ai.platform.agent.service;
 
-import com.huah.ai.platform.agent.audit.AiAuditLogEntity;
-import com.huah.ai.platform.agent.audit.AiAuditLogMapper;
-import com.huah.ai.platform.agent.audit.AiToolAuditLogEntity;
-import com.huah.ai.platform.agent.audit.AiToolAuditLogMapper;
 import com.huah.ai.platform.agent.dto.AgentWorkbenchCompareResponse;
 import com.huah.ai.platform.agent.dto.AgentWorkbenchErrorTypeItem;
 import com.huah.ai.platform.agent.dto.AgentWorkbenchSummaryResponse;
 import com.huah.ai.platform.agent.multi.MultiAgentExecutionTrace;
 import com.huah.ai.platform.agent.multi.MultiAgentExecutionTraceMapper;
+import com.huah.ai.platform.common.persistence.audit.AiAuditLogEntity;
+import com.huah.ai.platform.common.persistence.audit.AiAuditLogMapper;
+import com.huah.ai.platform.common.persistence.audit.AiToolAuditLogEntity;
+import com.huah.ai.platform.common.persistence.audit.AiToolAuditLogMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

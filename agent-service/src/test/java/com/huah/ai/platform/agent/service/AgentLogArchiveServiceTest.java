@@ -1,10 +1,6 @@
 package com.huah.ai.platform.agent.service;
 
 import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.huah.ai.platform.agent.audit.AiAuditLogEntity;
-import com.huah.ai.platform.agent.audit.AiAuditLogMapper;
-import com.huah.ai.platform.agent.audit.AiToolAuditLogEntity;
-import com.huah.ai.platform.agent.audit.AiToolAuditLogMapper;
 import com.huah.ai.platform.agent.config.AgentLifecycleProperties;
 import com.huah.ai.platform.agent.dto.AgentArchivedTraceLookupResponse;
 import com.huah.ai.platform.agent.dto.AgentLogArchiveDetailResponse;
@@ -14,6 +10,10 @@ import com.huah.ai.platform.agent.dto.AgentLogArchivePreviewResponse;
 import com.huah.ai.platform.agent.dto.AgentLogLifecycleSummaryResponse;
 import com.huah.ai.platform.agent.multi.MultiAgentExecutionTrace;
 import com.huah.ai.platform.agent.multi.MultiAgentExecutionTraceMapper;
+import com.huah.ai.platform.common.persistence.audit.AiAuditLogEntity;
+import com.huah.ai.platform.common.persistence.audit.AiAuditLogMapper;
+import com.huah.ai.platform.common.persistence.audit.AiToolAuditLogEntity;
+import com.huah.ai.platform.common.persistence.audit.AiToolAuditLogMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

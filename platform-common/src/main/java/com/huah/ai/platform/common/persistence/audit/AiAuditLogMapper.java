@@ -1,4 +1,4 @@
-package com.huah.ai.platform.agent.audit;
+package com.huah.ai.platform.common.persistence.audit;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.annotations.Mapper;
@@ -25,15 +25,22 @@ public interface AiAuditLogMapper extends BaseMapper<AiAuditLogEntity> {
 
     long countByAgentTypeBefore(@Param("agentType") String agentType, @Param("before") LocalDateTime before);
 
-    List<AiAuditLogEntity> selectArchiveCandidates(@Param("agentType") String agentType,
-                                             @Param("before") LocalDateTime before,
-                                             @Param("limit") int limit);
+    List<AiAuditLogEntity> selectArchiveCandidates(
+            @Param("agentType") String agentType,
+            @Param("before") LocalDateTime before,
+            @Param("limit") int limit);
 
-    List<AiAuditLogEntity> selectArchiveCandidatesBatch(@Param("agentType") String agentType,
-                                                  @Param("before") LocalDateTime before,
-                                                  @Param("limit") int limit,
-                                                  @Param("offset") long offset);
+    List<AiAuditLogEntity> selectArchiveCandidatesBatch(
+            @Param("agentType") String agentType,
+            @Param("before") LocalDateTime before,
+            @Param("limit") int limit,
+            @Param("offset") long offset);
 
     int deleteByAgentTypeBefore(@Param("agentType") String agentType, @Param("before") LocalDateTime before);
-}
 
+    long countRagQueries(@Param("knowledgeBaseId") Long knowledgeBaseId);
+
+    List<Map<String, Object>> selectLowRatedRagSamples(
+            @Param("knowledgeBaseId") Long knowledgeBaseId,
+            @Param("limit") int limit);
+}

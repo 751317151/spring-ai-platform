@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.huah.ai.platform.common.persistence.audit.AiAlertWorkflowMapper">
+    <select id="selectByFingerprints" resultType="com.huah.ai.platform.common.persistence.audit.AiAlertWorkflowEntity">
+        SELECT * FROM ai_alert_workflow
+        WHERE fingerprint IN
+        <foreach collection="fingerprints" item="fingerprint" open="(" separator="," close=")">
+            #{fingerprint}
+        </foreach>
+    </select>
+    <insert id="upsert" parameterType="com.huah.ai.platform.common.persistence.audit.AiAlertWorkflowEntity">
+        INSERT INTO ai_alert_workflow (
+            fingerprint,
+            workflow_status,
+            workflow_note,
+            silenced_until,
+            created_at,
+            updated_at
+        ) VALUES (
+            #{fingerprint},
+            #{workflowStatus},
+            #{workflowNote},
+            #{silencedUntil},
+            COALESCE(#{createdAt}, NOW()),
+            COALESCE(#{updatedAt}, NOW())
+        )
+        ON CONFLICT (fingerprint) DO UPDATE SET
+            workflow_status = EXCLUDED.workflow_status,
+            workflow_note = EXCLUDED.workflow_note,
+            silenced_until = EXCLUDED.silenced_until,
+            updated_at = EXCLUDED.updated_at
+    </insert>
+</mapper>

@@ -14,7 +14,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 @EnableConfigurationProperties
 @ComponentScan(basePackages = {"com.huah.ai.platform.agent", "com.huah.ai.platform.common"})
-@MapperScan(basePackages = "com.huah.ai.platform.agent", annotationClass = Mapper.class)
+@MapperScan(
+        basePackages = {"com.huah.ai.platform.agent", "com.huah.ai.platform.common.persistence"},
+        annotationClass = Mapper.class)
 public class AgentServiceApplication {
     public static void main(String[] args) {
         SpringApplication.run(AgentServiceApplication.class, args);

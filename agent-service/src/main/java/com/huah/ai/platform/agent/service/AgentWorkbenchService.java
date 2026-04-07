@@ -1,9 +1,5 @@
 package com.huah.ai.platform.agent.service;
 
-import com.huah.ai.platform.agent.audit.AiAuditLogEntity;
-import com.huah.ai.platform.agent.audit.AiAuditLogMapper;
-import com.huah.ai.platform.agent.audit.AiToolAuditLogEntity;
-import com.huah.ai.platform.agent.audit.AiToolAuditLogMapper;
 import com.huah.ai.platform.agent.dto.AgentWorkbenchChangeItem;
 import com.huah.ai.platform.agent.dto.AgentWorkbenchCompareInsight;
 import com.huah.ai.platform.agent.dto.AgentWorkbenchCompareAgentDetail;
@@ -18,6 +14,10 @@ import com.huah.ai.platform.agent.dto.AgentWorkbenchToolRankItem;
 import com.huah.ai.platform.agent.dto.AgentWorkbenchTrendPoint;
 import com.huah.ai.platform.agent.multi.MultiAgentExecutionTrace;
 import com.huah.ai.platform.agent.multi.MultiAgentExecutionTraceMapper;
+import com.huah.ai.platform.common.persistence.audit.AiAuditLogEntity;
+import com.huah.ai.platform.common.persistence.audit.AiAuditLogMapper;
+import com.huah.ai.platform.common.persistence.audit.AiToolAuditLogEntity;
+import com.huah.ai.platform.common.persistence.audit.AiToolAuditLogMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

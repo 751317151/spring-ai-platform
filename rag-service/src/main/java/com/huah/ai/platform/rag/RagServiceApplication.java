@@ -12,7 +12,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableAsync
 @EnableScheduling
 @ComponentScan(basePackages = {"com.huah.ai.platform.rag", "com.huah.ai.platform.common"})
-@MapperScan(basePackages = "com.huah.ai.platform.rag.mapper", annotationClass = Mapper.class)
+@MapperScan(
+        basePackages = {"com.huah.ai.platform.rag.mapper", "com.huah.ai.platform.common.persistence"},
+        annotationClass = Mapper.class)
 public class RagServiceApplication {
     public static void main(String[] args) {
         SpringApplication.run(RagServiceApplication.class, args);

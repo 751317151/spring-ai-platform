@@ -1,114 +1,117 @@
 package com.huah.ai.platform.rag.service;
 
 import com.huah.ai.platform.common.exception.BizException;
+import com.huah.ai.platform.common.persistence.audit.AiAuditLogEntity;
+import com.huah.ai.platform.common.persistence.audit.AiAuditLogMapper;
+import com.huah.ai.platform.common.persistence.audit.AiEvidenceFeedbackEntity;
+import com.huah.ai.platform.common.persistence.audit.AiEvidenceFeedbackMapper;
+import com.huah.ai.platform.common.persistence.audit.AiResponseFeedbackEntity;
+import com.huah.ai.platform.common.persistence.audit.AiResponseFeedbackMapper;
 import com.huah.ai.platform.common.trace.TraceIdContext;
 import com.huah.ai.platform.common.util.SnowflakeIdGenerator;
 import com.huah.ai.platform.common.web.RequestOrigin;
 import com.huah.ai.platform.rag.model.RagEvaluationOverview;
 import com.huah.ai.platform.rag.model.RagEvaluationSample;
 import lombok.RequiredArgsConstructor;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
-import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
 public class RagAuditService {
 
-    private final JdbcTemplate jdbcTemplate;
+    private final AiAuditLogMapper auditLogMapper;
+    private final AiResponseFeedbackMapper responseFeedbackMapper;
+    private final AiEvidenceFeedbackMapper evidenceFeedbackMapper;
     private final SnowflakeIdGenerator snowflakeIdGenerator;
 
-    public Long saveQueryLog(String userId,
-                               Long knowledgeBaseId,
-                               String question,
-                               String answer,
-                               long latencyMs,
-                               boolean success,
-                               String errorMessage,
-                               RequestOrigin requestOrigin) {
+    public Long saveQueryLog(
+            String userId,
+            Long knowledgeBaseId,
+            String question,
+            String answer,
+            long latencyMs,
+            boolean success,
+            String errorMessage,
+            RequestOrigin requestOrigin) {
         Long responseId = snowflakeIdGenerator.nextLongId();
-        jdbcTemplate.update(
-                "INSERT INTO ai_audit_logs (id, user_id, agent_type, user_message, ai_response, latency_ms, success, error_message, client_ip, country, province, city, session_id, trace_id, created_at) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                responseId,
-                userId,
-                "rag",
-                truncate(question, 500),
-                truncate(answer, 500),
-                latencyMs,
-                success,
-                errorMessage,
-                requestOrigin != null ? requestOrigin.getClientIp() : null,
-                requestOrigin != null ? requestOrigin.getCountry() : null,
-                requestOrigin != null ? requestOrigin.getProvince() : null,
-                requestOrigin != null ? requestOrigin.getCity() : null,
-                knowledgeBaseId,
-                TraceIdContext.currentTraceId(),
-                Timestamp.valueOf(LocalDateTime.now())
-        );
+        LocalDateTime now = LocalDateTime.now();
+        auditLogMapper.insert(AiAuditLogEntity.builder()
+                .id(responseId)
+                .userId(userId)
+                .agentType("rag")
+                .userMessage(truncate(question, 500))
+                .aiResponse(truncate(answer, 500))
+                .latencyMs(latencyMs)
+                .success(success)
+                .errorMessage(errorMessage)
+                .clientIp(requestOrigin != null ? requestOrigin.getClientIp() : null)
+                .country(requestOrigin != null ? requestOrigin.getCountry() : null)
+                .province(requestOrigin != null ? requestOrigin.getProvince() : null)
+                .city(requestOrigin != null ? requestOrigin.getCity() : null)
+                .sessionId(knowledgeBaseId != null ? String.valueOf(knowledgeBaseId) : null)
+                .traceId(TraceIdContext.currentTraceId())
+                .createdAt(now)
+                .updatedAt(now)
+                .build());
         return responseId;
     }
 
-    public void submitFeedback(String userId,
-                               Long responseId,
-                               Long knowledgeBaseId,
-                               String feedback,
-                               String comment) {
+    public void submitFeedback(
+            String userId,
+            Long responseId,
+            Long knowledgeBaseId,
+            String feedback,
+            String comment) {
         if (responseId == null) {
             throw new BizException("responseId不能为空");
         }
 
-        String owner = jdbcTemplate.query(
-                "SELECT user_id FROM ai_audit_logs WHERE id = ?",
-                rs -> rs.next() ? rs.getString(1) : null,
-                responseId
-        );
-        if (owner == null) {
+        AiAuditLogEntity log = auditLogMapper.selectById(responseId);
+        if (log == null) {
             throw new BizException("未找到对应回答记录");
         }
-        if (owner != null && !owner.equals(userId)) {
+        if (log.getUserId() != null && !log.getUserId().equals(userId)) {
             throw new BizException("无权提交该回答反馈");
         }
 
         String normalizedFeedback = normalizeFeedback(feedback);
-        Integer updated = jdbcTemplate.update(
-                "UPDATE ai_response_feedback SET feedback = ?, comment = ?, updated_at = ?, knowledge_base_id = ? WHERE response_id = ?",
-                normalizedFeedback,
-                trimComment(comment),
-                Timestamp.valueOf(LocalDateTime.now()),
-                knowledgeBaseId,
-                responseId
-        );
-        if (updated != null && updated > 0) {
+        String normalizedComment = trimComment(comment);
+        LocalDateTime now = LocalDateTime.now();
+        AiResponseFeedbackEntity existing = responseFeedbackMapper.selectByResponseId(responseId);
+        if (existing == null) {
+            responseFeedbackMapper.insert(AiResponseFeedbackEntity.builder()
+                    .id(snowflakeIdGenerator.nextLongId())
+                    .responseId(responseId)
+                    .sourceType("rag")
+                    .knowledgeBaseId(knowledgeBaseId)
+                    .feedback(normalizedFeedback)
+                    .comment(normalizedComment)
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .build());
             return;
         }
 
-        LocalDateTime now = LocalDateTime.now();
-        jdbcTemplate.update(
-                "INSERT INTO ai_response_feedback (id, response_id, source_type, knowledge_base_id, feedback, comment, created_at, updated_at) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                snowflakeIdGenerator.nextLongId(),
-                responseId,
-                "rag",
-                knowledgeBaseId,
-                normalizedFeedback,
-                trimComment(comment),
-                Timestamp.valueOf(now),
-                Timestamp.valueOf(now)
-        );
+        existing.setKnowledgeBaseId(knowledgeBaseId);
+        existing.setFeedback(normalizedFeedback);
+        existing.setComment(normalizedComment);
+        existing.setUpdatedAt(now);
+        responseFeedbackMapper.updateById(existing);
     }
 
-    public void submitEvidenceFeedback(String userId,
-                                       Long responseId,
-                                       String chunkId,
-                                       Long knowledgeBaseId,
-                                       String feedback,
-                                       String comment) {
+    public void submitEvidenceFeedback(
+            String userId,
+            Long responseId,
+            String chunkId,
+            Long knowledgeBaseId,
+            String feedback,
+            String comment) {
         if (responseId == null) {
             throw new BizException("responseId不能为空");
         }
@@ -116,77 +119,45 @@ public class RagAuditService {
             throw new BizException("chunkId不能为空");
         }
 
-        String owner = jdbcTemplate.query(
-                "SELECT user_id FROM ai_audit_logs WHERE id = ?",
-                rs -> rs.next() ? rs.getString(1) : null,
-                responseId
-        );
-        if (owner == null) {
+        AiAuditLogEntity log = auditLogMapper.selectById(responseId);
+        if (log == null) {
             throw new BizException("未找到对应回答记录");
         }
-        if (!owner.equals(userId)) {
+        if (!userId.equals(log.getUserId())) {
             throw new BizException("无权提交该证据反馈");
         }
 
         String normalizedFeedback = normalizeFeedback(feedback);
-        int updated = jdbcTemplate.update(
-                "UPDATE ai_evidence_feedback SET feedback = ?, comment = ?, knowledge_base_id = ?, updated_at = ? WHERE response_id = ? AND chunk_id = ?",
-                normalizedFeedback,
-                trimComment(comment),
-                knowledgeBaseId,
-                Timestamp.valueOf(LocalDateTime.now()),
-                responseId,
-                chunkId
-        );
-        if (updated > 0) {
+        String normalizedComment = trimComment(comment);
+        LocalDateTime now = LocalDateTime.now();
+        AiEvidenceFeedbackEntity existing = evidenceFeedbackMapper.selectByResponseIdAndChunkId(responseId, chunkId);
+        if (existing == null) {
+            evidenceFeedbackMapper.insert(AiEvidenceFeedbackEntity.builder()
+                    .id(snowflakeIdGenerator.nextLongId())
+                    .responseId(responseId)
+                    .chunkId(chunkId)
+                    .knowledgeBaseId(knowledgeBaseId)
+                    .feedback(normalizedFeedback)
+                    .comment(normalizedComment)
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .build());
             return;
         }
 
-        LocalDateTime now = LocalDateTime.now();
-        jdbcTemplate.update(
-                "INSERT INTO ai_evidence_feedback (id, response_id, chunk_id, knowledge_base_id, feedback, comment, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                snowflakeIdGenerator.nextLongId(),
-                responseId,
-                chunkId,
-                knowledgeBaseId,
-                normalizedFeedback,
-                trimComment(comment),
-                Timestamp.valueOf(now),
-                Timestamp.valueOf(now)
-        );
+        existing.setKnowledgeBaseId(knowledgeBaseId);
+        existing.setFeedback(normalizedFeedback);
+        existing.setComment(normalizedComment);
+        existing.setUpdatedAt(now);
+        evidenceFeedbackMapper.updateById(existing);
     }
 
     public RagEvaluationOverview getEvaluationOverview(Long knowledgeBaseId) {
         try {
-            String querySql = knowledgeBaseId == null
-                    ? "SELECT COUNT(*) FROM ai_audit_logs WHERE agent_type = 'rag'"
-                    : "SELECT COUNT(*) FROM ai_audit_logs WHERE agent_type = 'rag' AND session_id = ?";
-            long totalQueries = (knowledgeBaseId == null)
-                    ? jdbcTemplate.queryForObject(querySql, Long.class)
-                    : jdbcTemplate.queryForObject(querySql, Long.class, String.valueOf(knowledgeBaseId));
-
-            String feedbackSql = """
-                    SELECT
-                        COUNT(*) AS total,
-                        COUNT(*) FILTER (WHERE feedback = 'up') AS positive,
-                        COUNT(*) FILTER (WHERE feedback = 'down') AS negative
-                    FROM ai_response_feedback
-                    WHERE source_type = 'rag'
-                    """ + (knowledgeBaseId == null ? "" : " AND knowledge_base_id = ?");
-            var feedbackStats = (knowledgeBaseId == null)
-                    ? jdbcTemplate.queryForMap(feedbackSql)
-                    : jdbcTemplate.queryForMap(feedbackSql, knowledgeBaseId);
-
-            String evidenceSql = """
-                    SELECT
-                        COUNT(*) AS total,
-                        COUNT(*) FILTER (WHERE feedback = 'up') AS positive,
-                        COUNT(*) FILTER (WHERE feedback = 'down') AS negative
-                    FROM ai_evidence_feedback
-                    """ + (knowledgeBaseId == null ? "" : " WHERE knowledge_base_id = ?");
-            var evidenceStats = (knowledgeBaseId == null)
-                    ? jdbcTemplate.queryForMap(evidenceSql)
-                    : jdbcTemplate.queryForMap(evidenceSql, knowledgeBaseId);
+            long totalQueries = auditLogMapper.countRagQueries(knowledgeBaseId);
+            Map<String, Object> feedbackStats =
+                    responseFeedbackMapper.countStatsBySourceTypeAndKnowledgeBaseId("rag", knowledgeBaseId);
+            Map<String, Object> evidenceStats = evidenceFeedbackMapper.countStatsByKnowledgeBaseId(knowledgeBaseId);
 
             long feedbackCount = getLong(feedbackStats, "total");
             long positiveFeedback = getLong(feedbackStats, "positive");
@@ -214,48 +185,29 @@ public class RagAuditService {
 
     public List<RagEvaluationSample> getLowRatedSamples(Long knowledgeBaseId, int limit) {
         try {
-            String sql = """
-                    SELECT
-                        a.id AS response_id,
-                        a.user_id,
-                        COALESCE(r.knowledge_base_id, e.knowledge_base_id, a.session_id) AS knowledge_base_id,
-                        a.user_message,
-                        a.ai_response,
-                        COALESCE(r.feedback, 'down') AS feedback,
-                        COALESCE(r.comment, '') AS comment,
-                        COALESCE(e.negative_evidence_count, 0) AS evidence_negative_count,
-                        a.created_at
-                    FROM ai_audit_logs a
-                    LEFT JOIN ai_response_feedback r ON r.response_id = a.id AND r.source_type = 'rag'
-                    LEFT JOIN (
-                        SELECT response_id, knowledge_base_id,
-                               COUNT(*) FILTER (WHERE feedback = 'down') AS negative_evidence_count
-                        FROM ai_evidence_feedback
-                        GROUP BY response_id, knowledge_base_id
-                    ) e ON e.response_id = a.id
-                    WHERE a.agent_type = 'rag'
-                      AND (COALESCE(r.feedback, '') = 'down' OR COALESCE(e.negative_evidence_count, 0) > 0)
-                    """ + (knowledgeBaseId == null ? "" : " AND COALESCE(r.knowledge_base_id, e.knowledge_base_id, a.session_id) = ?") +
-                    " ORDER BY a.created_at DESC LIMIT ?";
-            Object[] args = (knowledgeBaseId == null)
-                    ? new Object[]{limit}
-                    : new Object[]{knowledgeBaseId, limit};
-            return jdbcTemplate.query(sql,
-                    (rs, rowNum) -> RagEvaluationSample.builder()
-                            .responseId(rs.getLong("response_id"))
-                            .userId(rs.getString("user_id"))
-                            .knowledgeBaseId(rs.getLong("knowledge_base_id"))
-                            .question(rs.getString("user_message"))
-                            .answer(rs.getString("ai_response"))
-                            .feedback(rs.getString("feedback"))
-                            .comment(rs.getString("comment"))
-                            .evidenceNegativeCount(rs.getLong("evidence_negative_count"))
-                            .createdAt(rs.getTimestamp("created_at").toLocalDateTime())
-                            .build(),
-                    args);
+            return auditLogMapper.selectLowRatedRagSamples(knowledgeBaseId, limit).stream()
+                    .map(this::toSample)
+                    .toList();
         } catch (Exception e) {
             return Collections.emptyList();
         }
+    }
+
+    private RagEvaluationSample toSample(Map<String, Object> row) {
+        Object createdAt = row.get("createdAt");
+        LocalDateTime createdAtValue =
+                createdAt instanceof LocalDateTime localDateTime ? localDateTime : null;
+        return RagEvaluationSample.builder()
+                .responseId(getLong(row, "responseId"))
+                .userId(stringValue(row.get("userId")))
+                .knowledgeBaseId(getNullableLong(row, "knowledgeBaseId"))
+                .question(stringValue(row.get("question")))
+                .answer(stringValue(row.get("answer")))
+                .feedback(stringValue(row.get("feedback")))
+                .comment(stringValue(row.get("comment")))
+                .evidenceNegativeCount(getLong(row, "evidenceNegativeCount"))
+                .createdAt(createdAtValue)
+                .build();
     }
 
     private String normalizeFeedback(String feedback) {
@@ -284,7 +236,16 @@ public class RagAuditService {
         return value.length() > maxLength ? value.substring(0, maxLength) : value;
     }
 
-    private long getLong(java.util.Map<String, Object> map, String key) {
+    private String stringValue(Object value) {
+        return value != null ? String.valueOf(value) : null;
+    }
+
+    private Long getNullableLong(Map<String, Object> map, String key) {
+        Object value = map.get(key);
+        return value instanceof Number number ? number.longValue() : null;
+    }
+
+    private long getLong(Map<String, Object> map, String key) {
         Object value = map.get(key);
         return value instanceof Number number ? number.longValue() : 0L;
     }
