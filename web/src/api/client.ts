@@ -90,6 +90,7 @@ function clearAuth() {
   localStorage.removeItem('auth_username')
   localStorage.removeItem('auth_roles')
   localStorage.removeItem('auth_department')
+  localStorage.removeItem('auth_mode')
   localStorage.removeItem(ACCESS_TOKEN_EXPIRES_AT_KEY)
   localStorage.removeItem(REFRESH_TOKEN_EXPIRES_AT_KEY)
 }

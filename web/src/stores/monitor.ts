@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import * as gatewayApi from '@/api/gateway'
 import * as monitorApi from '@/api/monitor'
 import { ENABLE_SCREEN_MOCK } from '@/config/app-config'
+import { useRuntimeStore } from './runtime'
 import type {
   AlertEvent,
   AlertWorkflowHistory,
@@ -67,16 +68,16 @@ function buildMockScreenSnapshot(): MonitorScreenSnapshot {
   ]
 
   const regionHeat = [
-    { province: '北京', city: '北京', regionName: '北京 / 北京', calls: 162, errors: 8, avgLatencyMs: 820, successRate: 0.951 },
-    { province: '上海', city: '上海', regionName: '上海 / 上海', calls: 145, errors: 6, avgLatencyMs: 790, successRate: 0.959 },
-    { province: '广东', city: '深圳', regionName: '广东 / 深圳', calls: 188, errors: 11, avgLatencyMs: 870, successRate: 0.941 },
-    { province: '广东', city: '广州', regionName: '广东 / 广州', calls: 133, errors: 5, avgLatencyMs: 760, successRate: 0.962 },
-    { province: '浙江', city: '杭州', regionName: '浙江 / 杭州', calls: 126, errors: 4, avgLatencyMs: 730, successRate: 0.968 },
-    { province: '江苏', city: '南京', regionName: '江苏 / 南京', calls: 118, errors: 5, avgLatencyMs: 750, successRate: 0.958 },
-    { province: '四川', city: '成都', regionName: '四川 / 成都', calls: 109, errors: 6, avgLatencyMs: 890, successRate: 0.945 },
-    { province: '湖北', city: '武汉', regionName: '湖北 / 武汉', calls: 94, errors: 4, avgLatencyMs: 810, successRate: 0.957 },
-    { province: '陕西', city: '西安', regionName: '陕西 / 西安', calls: 88, errors: 3, avgLatencyMs: 845, successRate: 0.966 },
-    { province: '重庆', city: '重庆', regionName: '重庆 / 重庆', calls: 79, errors: 5, avgLatencyMs: 930, successRate: 0.937 }
+    { province: '北京市', city: '北京市', regionName: '北京 / 北京', calls: 162, errors: 8, avgLatencyMs: 820, successRate: 0.951 },
+    { province: '上海市', city: '上海市', regionName: '上海 / 上海', calls: 145, errors: 6, avgLatencyMs: 790, successRate: 0.959 },
+    { province: '广东省', city: '深圳市', regionName: '广东 / 深圳', calls: 188, errors: 11, avgLatencyMs: 870, successRate: 0.941 },
+    { province: '广东省', city: '广州市', regionName: '广东 / 广州', calls: 133, errors: 5, avgLatencyMs: 760, successRate: 0.962 },
+    { province: '浙江省', city: '杭州市', regionName: '浙江 / 杭州', calls: 126, errors: 4, avgLatencyMs: 730, successRate: 0.968 },
+    { province: '江苏省', city: '南京市', regionName: '江苏 / 南京', calls: 118, errors: 5, avgLatencyMs: 750, successRate: 0.958 },
+    { province: '四川省', city: '成都市', regionName: '四川 / 成都', calls: 109, errors: 6, avgLatencyMs: 890, successRate: 0.945 },
+    { province: '湖北省', city: '武汉市', regionName: '湖北 / 武汉', calls: 94, errors: 4, avgLatencyMs: 810, successRate: 0.957 },
+    { province: '陕西省', city: '西安市', regionName: '陕西 / 西安', calls: 88, errors: 3, avgLatencyMs: 845, successRate: 0.966 },
+    { province: '重庆市', city: '重庆市', regionName: '重庆 / 重庆', calls: 79, errors: 5, avgLatencyMs: 930, successRate: 0.937 }
   ]
 
   const failureSamples: FailureSample[] = [
@@ -235,6 +236,7 @@ function buildMockGatewayModels(): GatewayModelsResponse {
 }
 
 export const useMonitorStore = defineStore('monitor', () => {
+  const runtimeStore = useRuntimeStore()
   const overview = ref<MonitorOverview | null>(null)
   const screenSnapshot = ref<MonitorScreenSnapshot | null>(null)
   const hourlyStats = ref<HourlyStat[]>([])
@@ -279,7 +281,12 @@ export const useMonitorStore = defineStore('monitor', () => {
     try {
       const toolAuditFn = (monitorApi as unknown as Record<string, unknown>).getToolAudits
       return typeof toolAuditFn === 'function'
-        ? (toolAuditFn as (limit?: number, userId?: string, agentType?: string, toolName?: string) => Promise<ToolAudit[]>)(limit, userId, agentType, toolName)
+        ? (toolAuditFn as (
+            limit?: number,
+            userId?: string,
+            agentType?: string,
+            toolName?: string
+          ) => Promise<ToolAudit[]>)(limit, userId, agentType, toolName)
         : Promise.resolve([])
     } catch {
       return Promise.resolve([])
@@ -287,6 +294,46 @@ export const useMonitorStore = defineStore('monitor', () => {
   }
 
   async function loadDashboardData() {
+    if (runtimeStore.demoMode) {
+      const snapshot = buildMockScreenSnapshot()
+      applyScreenSnapshot(snapshot)
+      applyGatewayModels(buildMockGatewayModels())
+      modelStats.value = snapshot.agentStats.map((item) => ({
+        model_id: `${item.agent_type}-model`,
+        count: item.count,
+        avg_latency: item.avg_latency,
+        errors: item.errors
+      }))
+      auditLogs.value = snapshot.failureSamples.map((item) => ({
+        id: item.id,
+        user_id: item.user_id,
+        agent_type: item.agent_type,
+        model_id: item.model_id,
+        error_message: item.error_message,
+        session_id: item.session_id,
+        trace_id: item.trace_id,
+        latency_ms: item.latency_ms,
+        success: false,
+        created_at: item.created_at
+      }))
+      toolAudits.value = snapshot.failureSamples.map((item, index) => ({
+        id: `tool-${index + 1}`,
+        user_id: item.user_id,
+        session_id: item.session_id,
+        agent_type: item.agent_type,
+        tool_name: ['webSearch', 'queryKnowledgeBase', 'routeDecision'][index] || 'mockTool',
+        tool_class: 'GuestMockTool',
+        input_summary: '游客模式演示输入',
+        output_summary: '游客模式演示输出',
+        success: index % 2 === 0,
+        error_message: index % 2 === 0 ? '' : '演示超时',
+        latency_ms: 260 + index * 90,
+        trace_id: item.trace_id,
+        created_at: item.created_at
+      }))
+      return
+    }
+
     try {
       const [ov, hourly, agents, modelsData, logs, toolAuditRows] = await Promise.all([
         monitorApi.getOverview().catch(() => null),
@@ -311,7 +358,7 @@ export const useMonitorStore = defineStore('monitor', () => {
     loading.value = true
     error.value = ''
     try {
-      if (ENABLE_SCREEN_MOCK) {
+      if (ENABLE_SCREEN_MOCK || runtimeStore.demoMode) {
         applyScreenSnapshot(buildMockScreenSnapshot())
         applyGatewayModels(buildMockGatewayModels())
         return
@@ -334,6 +381,46 @@ export const useMonitorStore = defineStore('monitor', () => {
     loading.value = true
     error.value = ''
     try {
+      if (runtimeStore.demoMode) {
+        const snapshot = buildMockScreenSnapshot()
+        applyScreenSnapshot(snapshot)
+        applyGatewayModels(buildMockGatewayModels())
+        modelStats.value = snapshot.agentStats.map((item) => ({
+          model_id: `${item.agent_type}-model`,
+          count: item.count,
+          avg_latency: item.avg_latency,
+          errors: item.errors
+        }))
+        toolAudits.value = snapshot.failureSamples.map((item, index) => ({
+          id: `tool-${index + 1}`,
+          user_id: item.user_id,
+          session_id: item.session_id,
+          agent_type: item.agent_type,
+          tool_name: ['webSearch', 'queryKnowledgeBase', 'routeDecision'][index] || 'mockTool',
+          tool_class: 'GuestMockTool',
+          input_summary: '游客模式演示输入',
+          output_summary: '游客模式演示输出',
+          success: index % 2 === 0,
+          error_message: index % 2 === 0 ? '' : '演示超时',
+          latency_ms: 260 + index * 90,
+          trace_id: item.trace_id,
+          created_at: item.created_at
+        }))
+        slowRequests.value = snapshot.failureSamples.map((item) => ({
+          id: item.id,
+          trace_id: item.trace_id || '',
+          user_id: item.user_id,
+          agent_type: item.agent_type,
+          model_id: item.model_id,
+          latency_ms: item.latency_ms,
+          success: false,
+          created_at: item.created_at
+        }))
+        recentFeedback.value = []
+        recentEvidenceFeedback.value = []
+        return
+      }
+
       const [
         ov,
         users,
@@ -409,11 +496,22 @@ export const useMonitorStore = defineStore('monitor', () => {
     return exportingType.value === type
   }
 
-  async function updateAlertWorkflow(fingerprint: string, workflowStatus: string, workflowNote = '', silencedUntil = '') {
+  async function updateAlertWorkflow(
+    fingerprint: string,
+    workflowStatus: string,
+    workflowNote = '',
+    silencedUntil = ''
+  ) {
     await monitorApi.updateAlertWorkflow(fingerprint, workflowStatus, workflowNote, silencedUntil)
     alerts.value = alerts.value.map((item) =>
       item.fingerprint === fingerprint
-        ? { ...item, workflowStatus, workflowNote, workflowUpdatedAt: new Date().toISOString(), silencedUntil: silencedUntil || undefined }
+        ? {
+            ...item,
+            workflowStatus,
+            workflowNote,
+            workflowUpdatedAt: new Date().toISOString(),
+            silencedUntil: silencedUntil || undefined
+          }
         : item
     )
     if (alertHistories.value[fingerprint]) {

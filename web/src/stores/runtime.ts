@@ -1,6 +1,7 @@
 import { computed, reactive } from 'vue'
 import { defineStore } from 'pinia'
 import { DEMO_MODE_ENABLED } from '@/config/app-config'
+import { GUEST_AUTH_MODE } from '@/utils/guest-mock'
 
 export type BackendServiceKey = 'chat' | 'rag'
 
@@ -24,7 +25,16 @@ function createInitialStatus(): Record<BackendServiceKey, BackendStatus> {
 
 export const useRuntimeStore = defineStore('runtime', () => {
   const services = reactive(createInitialStatus())
-  const demoMode = computed(() => DEMO_MODE_ENABLED)
+  const authMode = computed(() => localStorage.getItem('auth_mode') || 'live')
+  const demoMode = computed(() => DEMO_MODE_ENABLED || authMode.value === GUEST_AUTH_MODE)
+
+  function setAuthMode(mode: string) {
+    if (mode) {
+      localStorage.setItem('auth_mode', mode)
+      return
+    }
+    localStorage.removeItem('auth_mode')
+  }
 
   function markServiceAvailable(service: BackendServiceKey) {
     services[service].available = true
@@ -44,7 +54,9 @@ export const useRuntimeStore = defineStore('runtime', () => {
 
   return {
     demoMode,
+    authMode,
     services,
+    setAuthMode,
     markServiceAvailable,
     markServiceUnavailable,
     getServiceStatus

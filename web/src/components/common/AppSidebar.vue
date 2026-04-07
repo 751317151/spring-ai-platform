@@ -11,6 +11,11 @@
       </button>
     </div>
 
+    <div v-if="!collapsed && authStore.isGuest" class="guest-panel">
+      <div class="guest-panel-title">游客模式</div>
+      <div class="guest-panel-desc">当前页面仅使用前端本地 mock 数据，不依赖后端服务。</div>
+    </div>
+
     <nav class="sidebar-nav">
       <div class="sidebar-group">
         <div v-if="!collapsed" class="group-label">核心工作区</div>
@@ -19,6 +24,24 @@
           :key="item.to"
           :to="item.to"
           class="nav-item"
+          :class="{ active: isRouteActive(item.to) }"
+          :title="collapsed ? item.label : undefined"
+        >
+          <span class="nav-icon">{{ item.icon }}</span>
+          <span v-if="!collapsed" class="nav-copy">
+            <span class="nav-label">{{ item.label }}</span>
+            <span class="nav-desc">{{ item.desc }}</span>
+          </span>
+        </router-link>
+      </div>
+
+      <div v-if="canViewObserver" class="sidebar-group">
+        <div v-if="!collapsed" class="group-label">观察与态势</div>
+        <router-link
+          v-for="item in observerNav"
+          :key="item.to"
+          :to="item.to"
+          class="nav-item nav-item-secondary"
           :class="{ active: isRouteActive(item.to) }"
           :title="collapsed ? item.label : undefined"
         >
@@ -76,6 +99,7 @@ const authStore = useAuthStore()
 const route = useRoute()
 
 const isAdmin = computed(() => (authStore.roles || '').includes('ROLE_ADMIN'))
+const canViewObserver = computed(() => isAdmin.value || authStore.isGuest)
 
 const displayChar = computed(() => {
   const name = authStore.username || '用户'
@@ -83,7 +107,12 @@ const displayChar = computed(() => {
 })
 
 const displayRole = computed(() => {
-  const roles = (authStore.roles || '').split(',').map((item) => item.trim()).filter(Boolean)
+  const roles = (authStore.roles || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  if (authStore.isGuest) return '游客体验'
   if (roles.includes('ROLE_ADMIN')) return '管理员'
   if (roles.includes('ROLE_RD')) return '研发'
   if (roles.includes('ROLE_SALES')) return '销售'
@@ -94,17 +123,20 @@ const displayRole = computed(() => {
 
 const primaryNav = [
   { to: '/chat', label: 'AI 助手', desc: '直接进入对话工作区', icon: 'AI' },
-  { to: '/rag', label: '知识库', desc: '选库并围绕知识提问', icon: 'KB' },
-  { to: '/dashboard', label: '工作台', desc: '查看常用入口与概要', icon: 'WS' },
+  { to: '/rag', label: '知识库', desc: '选择知识库并进行问答', icon: 'KB' },
+  { to: '/dashboard', label: '工作台', desc: '查看常用入口与概览', icon: 'WS' },
   { to: '/learning', label: '学习中心', desc: '沉淀常用内容与笔记', icon: 'LC' }
 ]
 
+const observerNav = [
+  { to: '/screen', label: '大屏指挥台', desc: '查看平台全局态势大屏', icon: 'SC' },
+  { to: '/monitor', label: '运行监控', desc: '查看请求、异常与模型状态', icon: 'MO' }
+]
+
 const adminNav = [
-  { to: '/screen', label: '大屏指挥台', desc: '全屏展示平台运行核心指标', icon: 'SC' },
-  { to: '/monitor', label: '运行监控', desc: '查看系统状态与审计', icon: 'MO' },
   { to: '/gateway', label: '模型网关', desc: '管理模型路由与健康', icon: 'GW' },
   { to: '/agents', label: 'Agent 工作台', desc: '智能体执行与治理', icon: 'AG' },
-  { to: '/mcp', label: 'MCP 管理', desc: '工具接入与可用态', icon: 'MC' },
+  { to: '/mcp', label: 'MCP 管理', desc: '工具接入与可用性', icon: 'MC' },
   { to: '/users', label: '用户权限', desc: '账号与角色管理', icon: 'UR' }
 ]
 
@@ -200,6 +232,27 @@ function isRouteActive(target: string) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.guest-panel {
+  margin-bottom: 14px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(16, 185, 129, 0.16);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.guest-panel-title {
+  color: #d1fae5;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.guest-panel-desc {
+  margin-top: 6px;
+  color: rgba(209, 250, 229, 0.82);
+  font-size: 11px;
+  line-height: 1.6;
 }
 
 .collapse-btn {

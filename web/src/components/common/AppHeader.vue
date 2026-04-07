@@ -11,6 +11,8 @@
     </div>
 
     <div class="header-right">
+      <div v-if="authStore.isGuest" class="guest-badge">游客模式</div>
+
       <div class="header-user">
         <div class="header-user-name">{{ authStore.username || '当前用户' }}</div>
         <div class="header-user-role">{{ displayRole }}</div>
@@ -41,6 +43,7 @@ const authStore = useAuthStore()
 const isAdmin = computed(() => (authStore.roles || '').includes('ROLE_ADMIN'))
 const currentTitle = computed(() => (route.meta.title as string) || 'AI 助手')
 const displayRole = computed(() => {
+  if (authStore.isGuest) return '游客体验'
   if (isAdmin.value) return '管理员'
   if ((authStore.roles || '').includes('ROLE_RD')) return '研发'
   if ((authStore.roles || '').includes('ROLE_SALES')) return '销售'
@@ -89,6 +92,19 @@ async function handleLogout() {
   font-size: 18px;
   font-weight: 700;
   color: var(--text);
+}
+
+.guest-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.26);
+  color: #9ae6b4;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .header-user {

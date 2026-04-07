@@ -1,9 +1,19 @@
 <template>
-  <div class="app-shell" :class="{ 'app-shell-collapsed': sidebarCollapsed }">
+  <div
+    class="app-shell"
+    :class="{
+      'app-shell-collapsed': sidebarCollapsed,
+      'app-shell-screen': isScreenRoute
+    }"
+  >
     <AppSidebar :collapsed="sidebarCollapsed" @toggle-collapse="toggleSidebar" />
     <div class="app-main">
-      <AppHeader :collapsed="sidebarCollapsed" @toggle-collapse="toggleSidebar" />
-      <main class="app-content">
+      <AppHeader
+        v-if="!isScreenRoute"
+        :collapsed="sidebarCollapsed"
+        @toggle-collapse="toggleSidebar"
+      />
+      <main class="app-content" :class="{ 'app-content-screen': isScreenRoute }">
         <router-view v-slot="{ Component }">
           <transition name="page-fade" mode="out-in">
             <Suspense>
@@ -25,7 +35,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppSidebar from '@/components/common/AppSidebar.vue'
 import AppHeader from '@/components/common/AppHeader.vue'
@@ -35,6 +45,7 @@ import ToastNotification from '@/components/common/ToastNotification.vue'
 const route = useRoute()
 const router = useRouter()
 const sidebarCollapsed = ref(localStorage.getItem('layout_sidebar_collapsed') === '1')
+const isScreenRoute = computed(() => route.name === 'screen')
 
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
@@ -60,11 +71,18 @@ function handleGlobalShortcuts(event: KeyboardEvent) {
 
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault()
-    dispatchShortcut('app:focus-header-search')
+    if (!isScreenRoute.value) {
+      dispatchShortcut('app:focus-header-search')
+    }
     return
   }
 
-  if (route.path === '/chat' && (event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'n') {
+  if (
+    route.path === '/chat' &&
+    (event.ctrlKey || event.metaKey) &&
+    event.shiftKey &&
+    event.key.toLowerCase() === 'n'
+  ) {
     event.preventDefault()
     dispatchShortcut('app:new-chat')
     return
@@ -120,6 +138,10 @@ onUnmounted(() => {
   grid-template-columns: 72px minmax(0, 1fr);
 }
 
+.app-shell-screen {
+  background: #030712;
+}
+
 .app-main {
   min-width: 0;
   min-height: 0;
@@ -135,6 +157,12 @@ onUnmounted(() => {
   padding: 18px 20px 22px;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.app-content-screen {
+  padding: 0;
+  overflow: hidden;
+  background: #030712;
 }
 
 .route-fallback {
@@ -165,6 +193,10 @@ onUnmounted(() => {
 
   .app-content {
     padding: 14px 14px 18px;
+  }
+
+  .app-content-screen {
+    padding: 0;
   }
 }
 </style>

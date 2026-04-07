@@ -5,13 +5,15 @@
         <div class="eyebrow">工作台</div>
         <h1 class="hero-title">从主任务开始，不再先看复杂看板</h1>
         <p class="hero-subtitle">
-          这里保留最高频入口和必要摘要。日常优先进入 AI 助手与知识库，只有管理员才需要进一步进入运行监控和大屏指挥台。
+          这里保留最高频入口和必要摘要。日常优先进入 AI 助手与知识库；
+          游客模式下也可以直接查看运行监控和大屏，体验完整前端演示链路。
         </p>
       </div>
       <div class="hero-actions">
         <button class="btn btn-primary" type="button" @click="router.push('/chat')">进入 AI 助手</button>
         <button class="btn btn-ghost" type="button" @click="router.push('/rag')">进入知识库</button>
-        <button v-if="isAdmin" class="btn btn-ghost" type="button" @click="router.push('/screen')">查看大屏</button>
+        <button v-if="canViewObserver" class="btn btn-ghost" type="button" @click="router.push('/monitor')">查看监控</button>
+        <button v-if="canViewObserver" class="btn btn-ghost" type="button" @click="router.push('/screen')">查看大屏</button>
       </div>
     </section>
 
@@ -36,6 +38,20 @@
         <span class="workspace-title">学习中心</span>
         <span class="workspace-desc">收藏有用回答、整理模板和个人笔记。</span>
       </button>
+
+      <button v-if="canViewObserver" class="workspace-card" type="button" @click="router.push('/monitor')">
+        <span class="workspace-icon">MO</span>
+        <span class="workspace-kicker">运行态势</span>
+        <span class="workspace-title">运行监控</span>
+        <span class="workspace-desc">查看请求趋势、失败样本、工具审计和异常定位信息。</span>
+      </button>
+
+      <button v-if="canViewObserver" class="workspace-card" type="button" @click="router.push('/screen')">
+        <span class="workspace-icon">SC</span>
+        <span class="workspace-kicker">大屏总览</span>
+        <span class="workspace-title">大屏指挥台</span>
+        <span class="workspace-desc">查看全局态势、中国区域热力和模型健康概览。</span>
+      </button>
     </section>
 
     <section class="snapshot-grid">
@@ -54,20 +70,20 @@
       <div class="snapshot-card card">
         <div class="snapshot-label">系统状态</div>
         <div class="snapshot-value">{{ overview ? '在线' : '待加载' }}</div>
-        <div class="snapshot-subtitle">这里只保留简要状态，不再默认展示复杂图表。</div>
+        <div class="snapshot-subtitle">这里只保留简要状态，不默认展示复杂图表。</div>
       </div>
     </section>
 
-    <section v-if="isAdmin" class="admin-strip card">
+    <section v-if="canViewObserver" class="admin-strip card">
       <div>
-        <div class="card-title">管理员入口</div>
-        <div class="card-subtitle">需要观察全局运行态时，再进入大屏、监控、网关和权限管理。</div>
+        <div class="card-title">观察入口</div>
+        <div class="card-subtitle">需要看全局态势时，可直接进入大屏与监控页面。</div>
       </div>
       <div class="admin-actions">
         <button class="btn btn-ghost" type="button" @click="router.push('/screen')">大屏指挥台</button>
         <button class="btn btn-ghost" type="button" @click="router.push('/monitor')">运行监控</button>
-        <button class="btn btn-ghost" type="button" @click="router.push('/gateway')">模型网关</button>
-        <button class="btn btn-ghost" type="button" @click="router.push('/users')">用户权限</button>
+        <button v-if="isAdmin" class="btn btn-ghost" type="button" @click="router.push('/gateway')">模型网关</button>
+        <button v-if="isAdmin" class="btn btn-ghost" type="button" @click="router.push('/users')">用户权限</button>
       </div>
     </section>
   </div>
@@ -86,16 +102,14 @@ const monitorStore = useMonitorStore()
 const ragStore = useRagStore()
 
 const isAdmin = computed(() => (authStore.roles || '').includes('ROLE_ADMIN'))
+const canViewObserver = computed(() => isAdmin.value || authStore.isGuest)
 const overview = computed(() => monitorStore.overview)
 const totalDocuments = computed(() =>
   ragStore.knowledgeBases.reduce((sum, kb) => sum + (kb.documentCount ?? 0), 0)
 )
 
 onMounted(async () => {
-  await Promise.all([
-    ragStore.loadKnowledgeBases(),
-    monitorStore.loadDashboardData()
-  ])
+  await Promise.all([ragStore.loadKnowledgeBases(), monitorStore.loadDashboardData()])
 })
 </script>
 

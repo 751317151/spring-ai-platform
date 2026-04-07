@@ -60,13 +60,13 @@ const router = createRouter({
           path: 'monitor',
           name: 'monitor',
           component: () => import('@/views/MonitorView.vue'),
-          meta: { title: '运行监控', requiresAdmin: true }
+          meta: { title: '运行监控', requiresAdmin: true, allowGuest: true }
         },
         {
           path: 'screen',
           name: 'screen',
           component: () => import('@/views/ScreenView.vue'),
-          meta: { title: '大屏指挥台', requiresAdmin: true }
+          meta: { title: '大屏指挥台', requiresAdmin: true, allowGuest: true }
         },
         {
           path: 'mcp',
@@ -87,6 +87,8 @@ const router = createRouter({
 
 router.beforeEach((to, _from, next) => {
   const token = localStorage.getItem('auth_token')
+  const authMode = localStorage.getItem('auth_mode') || 'live'
+  const isGuest = authMode === 'guest'
 
   if (to.name !== 'login' && !token) {
     next({
@@ -106,7 +108,9 @@ router.beforeEach((to, _from, next) => {
 
   if (to.meta?.requiresAdmin) {
     const roles = localStorage.getItem('auth_roles') || ''
-    if (!roles.includes('ROLE_ADMIN')) {
+    const allowGuest = Boolean(to.meta?.allowGuest)
+    const hasAdminRole = roles.includes('ROLE_ADMIN')
+    if (!hasAdminRole && !(allowGuest && isGuest)) {
       next({ name: 'chat' })
       return
     }

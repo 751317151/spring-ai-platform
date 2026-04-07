@@ -14,8 +14,10 @@ import type {
   UserTokenLimitUpsertRequest,
   UserUpsertRequest
 } from './types'
+import { createGuestBots, GUEST_AUTH_MODE } from '@/utils/guest-mock'
 
 const BASE = '/api/v1/auth'
+const isGuestMode = () => localStorage.getItem('auth_mode') === GUEST_AUTH_MODE
 
 export function login(data: LoginRequest): Promise<LoginResponse> {
   return client.post(`${BASE}/login`, data)
@@ -122,5 +124,8 @@ export function deleteUserTokenLimit(id: string): Promise<void> {
 }
 
 export function getMyBots(): Promise<BotPermission[]> {
+  if (isGuestMode()) {
+    return Promise.resolve(createGuestBots())
+  }
   return client.get(`${BASE}/my-bots`)
 }

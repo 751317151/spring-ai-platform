@@ -40,6 +40,17 @@ describe('auth store', () => {
     expect(Number(localStorage.getItem('auth_refresh_token_expires_at'))).toBeGreaterThan(Date.now())
   })
 
+  it('supports guest login without backend request', async () => {
+    const store = useAuthStore()
+
+    await expect(store.loginAsGuest()).resolves.toBe(true)
+
+    expect(store.isGuest).toBe(true)
+    expect(store.userId).toBe('guest')
+    expect(localStorage.getItem('auth_mode')).toBe('guest')
+    expect(authApi.login).not.toHaveBeenCalled()
+  })
+
   it('clears state and storage when logout completes', async () => {
     const store = useAuthStore()
     store.setAuth({

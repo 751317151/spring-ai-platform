@@ -2,7 +2,15 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import * as agentApi from '@/api/agent'
 import * as authApi from '@/api/auth'
-import type { AgentType, BotPermission, ChatMessage, SendMessageOptions, SessionConfig, SessionInfo, SSEChunk } from '@/api/types'
+import type {
+  AgentType,
+  BotPermission,
+  ChatMessage,
+  SendMessageOptions,
+  SessionConfig,
+  SessionInfo,
+  SSEChunk
+} from '@/api/types'
 import { AGENT_CONFIG, MOCK_RESPONSES } from '@/utils/constants'
 import type { AgentConfig } from '@/utils/constants'
 import { useAgentMetadata } from '@/composables/useAgentMetadata'
@@ -23,6 +31,7 @@ export const useChatStore = defineStore('chat', () => {
   const currentSessionId = ref<string | null>(null)
   const sessionList = ref<SessionInfo[]>([])
   const chatHistory = ref<ChatMessage[]>([])
+  const sessionHistories = ref<Record<string, ChatMessage[]>>({})
   const sessionDrafts = ref<Record<string, string>>({})
   const sessionConfig = ref<SessionConfig>({ ...DEFAULT_SESSION_CONFIG })
   const isThinking = ref(false)
@@ -32,23 +41,30 @@ export const useChatStore = defineStore('chat', () => {
 
   const authStore = useAuthStore()
   const runtimeStore = useRuntimeStore()
-  const { agentList: metadataAgentList, getAgentConfig: getMetadataAgentConfig, loadAgentMetadata } = useAgentMetadata()
+  const {
+    agentList: metadataAgentList,
+    getAgentConfig: getMetadataAgentConfig,
+    loadAgentMetadata
+  } = useAgentMetadata()
 
   function normalizeSessionConfig(config?: SessionConfig | null): SessionConfig {
-    const temperature = typeof config?.temperature === 'number'
-      ? Math.min(1, Math.max(0, Number(config.temperature)))
-      : DEFAULT_SESSION_CONFIG.temperature
-    const maxContextMessages = typeof config?.maxContextMessages === 'number'
-      ? Math.min(20, Math.max(1, Math.round(config.maxContextMessages)))
-      : DEFAULT_SESSION_CONFIG.maxContextMessages
+    const temperature =
+      typeof config?.temperature === 'number'
+        ? Math.min(1, Math.max(0, Number(config.temperature)))
+        : DEFAULT_SESSION_CONFIG.temperature
+    const maxContextMessages =
+      typeof config?.maxContextMessages === 'number'
+        ? Math.min(20, Math.max(1, Math.round(config.maxContextMessages)))
+        : DEFAULT_SESSION_CONFIG.maxContextMessages
 
     return {
       model: config?.model?.trim() ? config.model.trim() : DEFAULT_SESSION_CONFIG.model,
       temperature,
       maxContextMessages,
-      knowledgeEnabled: typeof config?.knowledgeEnabled === 'boolean'
-        ? config.knowledgeEnabled
-        : DEFAULT_SESSION_CONFIG.knowledgeEnabled,
+      knowledgeEnabled:
+        typeof config?.knowledgeEnabled === 'boolean'
+          ? config.knowledgeEnabled
+          : DEFAULT_SESSION_CONFIG.knowledgeEnabled,
       systemPromptTemplate: config?.systemPromptTemplate?.trim() || '',
       updatedAt: config?.updatedAt ?? null
     }
@@ -82,7 +98,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sessionStorage.setItem(getDraftStorageKey(), JSON.stringify(sessionDrafts.value))
     } catch {
-      // ignore persistence failures
+      // ignore
     }
   }
 
@@ -94,7 +110,7 @@ export const useChatStore = defineStore('chat', () => {
             name: item.name,
             icon: item.icon,
             color: item.color,
-            desc: item.desc
+            desc: item.description
           }))
         : Object.entries(AGENT_CONFIG).map(([type, config]) => ({
             type,
@@ -109,7 +125,7 @@ export const useChatStore = defineStore('chat', () => {
         name: staticConfig?.name || bot.botType,
         icon: staticConfig?.icon || 'AI',
         color: staticConfig?.color || '#6b7280',
-        desc: staticConfig?.desc || ''
+        desc: staticConfig?.desc || staticConfig?.description || ''
       }
     })
   })
@@ -122,12 +138,13 @@ export const useChatStore = defineStore('chat', () => {
     if (found) {
       return { name: found.name, icon: found.icon, color: found.color, desc: found.desc }
     }
+
     const metadataConfig = getMetadataAgentConfig(currentAgent.value)
     return {
       name: metadataConfig.name,
       icon: metadataConfig.icon,
       color: metadataConfig.color,
-      desc: metadataConfig.desc
+      desc: metadataConfig.desc || metadataConfig.description
     }
   }
 
@@ -162,7 +179,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function loadSessionConfig(sessionId: string | null = currentSessionId.value) {
-    if (!sessionId) {
+    if (runtimeStore.demoMode || !sessionId) {
       resetSessionConfig()
       return
     }
@@ -187,6 +204,10 @@ export const useChatStore = defineStore('chat', () => {
       ...partial
     })
 
+    if (runtimeStore.demoMode) {
+      return true
+    }
+
     try {
       await agentApi.saveSessionConfig(currentAgent.value, sessionId, sessionConfig.value)
       runtimeStore.markServiceAvailable('chat')
@@ -199,6 +220,11 @@ export const useChatStore = defineStore('chat', () => {
 
   async function loadAvailableBots() {
     void loadAgentMetadata()
+    if (runtimeStore.demoMode) {
+      availableBots.value = await authApi.getMyBots()
+      return
+    }
+
     try {
       const bots = await authApi.getMyBots()
       availableBots.value = bots || []
@@ -208,12 +234,7 @@ export const useChatStore = defineStore('chat', () => {
       }
     } catch {
       availableBots.value = []
-      runtimeStore.markServiceUnavailable(
-        'chat',
-        runtimeStore.demoMode
-          ? '助手权限接口不可用，当前使用演示配置。'
-          : '助手权限接口不可用，当前无法展示真实可用助手列表。'
-      )
+      runtimeStore.markServiceUnavailable('chat', '助手权限接口不可用，当前无法展示真实可用助手列表。')
     }
   }
 
@@ -234,6 +255,22 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function loadSessions() {
+    if (runtimeStore.demoMode) {
+      if (!sessionList.value.length) {
+        createNewSession()
+      } else if (
+        currentSessionId.value &&
+        sessionList.value.find((item) => item.sessionId === currentSessionId.value)
+      ) {
+        await switchSession(currentSessionId.value)
+      } else if (activeSessions.value.length > 0) {
+        await switchSession(activeSessions.value[0].sessionId)
+      } else if (sessionList.value[0]) {
+        await switchSession(sessionList.value[0].sessionId)
+      }
+      return
+    }
+
     try {
       const data = await agentApi.getSessions(currentAgent.value)
       sessionList.value = sortSessions(data || [])
@@ -246,12 +283,7 @@ export const useChatStore = defineStore('chat', () => {
         createNewSession()
       }
     } catch {
-      runtimeStore.markServiceUnavailable(
-        'chat',
-        runtimeStore.demoMode
-          ? '会话服务不可用，当前使用本地演示会话。'
-          : '会话服务不可用，当前仅保留本地临时会话。'
-      )
+      runtimeStore.markServiceUnavailable('chat', '会话服务不可用，当前仅保留本地临时会话。')
       createNewSession()
     }
   }
@@ -262,9 +294,16 @@ export const useChatStore = defineStore('chat', () => {
     }
     currentSessionId.value = sessionId
     chatHistory.value = []
+
+    if (runtimeStore.demoMode) {
+      chatHistory.value = [...(sessionHistories.value[sessionId] || [])]
+      resetSessionConfig()
+      return
+    }
+
     try {
       const data = await agentApi.getHistory(currentAgent.value, sessionId)
-      if (data && Array.isArray(data)) {
+      if (Array.isArray(data)) {
         chatHistory.value = data.map((item) => normalizeChatMessage(item))
       }
       await loadSessionConfig(sessionId)
@@ -279,6 +318,7 @@ export const useChatStore = defineStore('chat', () => {
     const sid = generateSessionId()
     currentSessionId.value = sid
     chatHistory.value = []
+    sessionHistories.value[sid] = []
     resetSessionConfig()
 
     if (!sessionDrafts.value[sid]) {
@@ -311,6 +351,10 @@ export const useChatStore = defineStore('chat', () => {
       sessionList.value = sortSessions(sessionList.value)
     }
 
+    if (runtimeStore.demoMode) {
+      return
+    }
+
     try {
       await agentApi.renameSessionTitle(currentAgent.value, sessionId, normalizedTitle)
       runtimeStore.markServiceAvailable('chat')
@@ -330,6 +374,10 @@ export const useChatStore = defineStore('chat', () => {
     session.pinned = !currentPinned
     session.updatedAt = String(Date.now())
     sessionList.value = sortSessions(sessionList.value)
+
+    if (runtimeStore.demoMode) {
+      return
+    }
 
     try {
       await agentApi.pinSession(currentAgent.value, sessionId, !currentPinned)
@@ -360,6 +408,10 @@ export const useChatStore = defineStore('chat', () => {
       }
     }
 
+    if (runtimeStore.demoMode) {
+      return
+    }
+
     try {
       await agentApi.archiveSession(currentAgent.value, sessionId, !currentArchived)
       runtimeStore.markServiceAvailable('chat')
@@ -370,6 +422,26 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function deleteSession(sessionId: string) {
+    if (runtimeStore.demoMode) {
+      sessionList.value = sessionList.value.filter((item) => item.sessionId !== sessionId)
+      delete sessionHistories.value[sessionId]
+      if (sessionId in sessionDrafts.value) {
+        delete sessionDrafts.value[sessionId]
+        persistDrafts()
+      }
+      if (currentSessionId.value === sessionId) {
+        chatHistory.value = []
+        currentSessionId.value = null
+        resetSessionConfig()
+        if (sessionList.value.length > 0) {
+          await switchSession(sessionList.value[0].sessionId)
+        } else {
+          createNewSession()
+        }
+      }
+      return
+    }
+
     try {
       await agentApi.deleteSession(currentAgent.value, sessionId)
       sessionList.value = sessionList.value.filter((item) => item.sessionId !== sessionId)
@@ -407,8 +479,15 @@ export const useChatStore = defineStore('chat', () => {
       return ''
     }
 
-    const effectiveConfig = normalizeSessionConfig(options?.sessionConfigOverride ?? sessionConfig.value)
+    const effectiveConfig = normalizeSessionConfig(
+      options?.sessionConfigOverride ?? sessionConfig.value
+    )
     const derivedFrom = options?.derivedFrom ?? null
+
+    const sessionId = currentSessionId.value || generateSessionId()
+    if (!currentSessionId.value) {
+      currentSessionId.value = sessionId
+    }
 
     chatHistory.value.push({
       role: 'user',
@@ -416,18 +495,14 @@ export const useChatStore = defineStore('chat', () => {
       sessionConfigSnapshot: effectiveConfig,
       derivedFrom
     })
+    sessionHistories.value[sessionId] = [...chatHistory.value]
     isThinking.value = true
-
-    const sessionId = currentSessionId.value || generateSessionId()
-    if (!currentSessionId.value) {
-      currentSessionId.value = sessionId
-    }
     clearDraft(sessionId)
 
     const session = sessionList.value.find((item) => item.sessionId === sessionId)
     if (session) {
       if (session.summary === DEFAULT_SESSION_TITLE) {
-        session.summary = message.slice(0, 20) + (message.length > 20 ? '...' : '')
+        session.summary = `${message.slice(0, 20)}${message.length > 20 ? '...' : ''}`
       }
       session.updatedAt = String(Date.now())
       session.archived = false
@@ -438,6 +513,27 @@ export const useChatStore = defineStore('chat', () => {
 
     let fullResponse = ''
     let messageIndex = -1
+
+    if (runtimeStore.demoMode) {
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 320))
+        const mockFn = MOCK_RESPONSES[currentAgent.value] || MOCK_RESPONSES.rd
+        fullResponse = mockFn(message)
+        chatHistory.value.push({
+          role: 'assistant',
+          content: fullResponse,
+          responseId: `mock-response-${Date.now()}`,
+          feedback: null,
+          sessionConfigSnapshot: effectiveConfig,
+          derivedFrom
+        })
+        sessionHistories.value[sessionId] = [...chatHistory.value]
+        return fullResponse
+      } finally {
+        activeStreamAbort.value = null
+        isThinking.value = false
+      }
+    }
 
     try {
       const { response, abort } = agentApi.chatStream(
@@ -533,34 +629,16 @@ export const useChatStore = defineStore('chat', () => {
         return fullResponse
       }
 
-      runtimeStore.markServiceUnavailable(
-        'chat',
-        runtimeStore.demoMode
-          ? '聊天后端不可用，当前返回的是本地演示回答。'
-          : '聊天后端不可用，请检查 agent-service 或网关状态。'
-      )
-
-      if (runtimeStore.demoMode) {
-        const mockFn = MOCK_RESPONSES[currentAgent.value] || MOCK_RESPONSES.rd
-        fullResponse = mockFn(message)
-        await new Promise((resolve) => setTimeout(resolve, 500))
-        chatHistory.value.push({
-          role: 'assistant',
-          content: fullResponse,
-          feedback: null,
-          sessionConfigSnapshot: effectiveConfig,
-          derivedFrom
-        })
-      } else {
-        chatHistory.value.push({
-          role: 'assistant',
-          content: '聊天服务暂不可用，请稍后重试。当前页面不会自动切换到模拟回答。',
-          feedback: null,
-          sessionConfigSnapshot: effectiveConfig,
-          derivedFrom
-        })
-      }
+      runtimeStore.markServiceUnavailable('chat', '聊天后端不可用，请检查 agent-service 或网关状态。')
+      chatHistory.value.push({
+        role: 'assistant',
+        content: '聊天服务暂不可用，请稍后重试。',
+        feedback: null,
+        sessionConfigSnapshot: effectiveConfig,
+        derivedFrom
+      })
     } finally {
+      sessionHistories.value[sessionId] = [...chatHistory.value]
       activeStreamAbort.value = null
       isThinking.value = false
     }
@@ -570,7 +648,22 @@ export const useChatStore = defineStore('chat', () => {
 
   async function submitFeedback(messageIndex: number, feedback: 'up' | 'down') {
     const message = chatHistory.value[messageIndex]
-    if (!message?.responseId) {
+    if (!message) {
+      return false
+    }
+
+    if (runtimeStore.demoMode) {
+      chatHistory.value[messageIndex] = {
+        ...message,
+        feedback
+      }
+      if (currentSessionId.value) {
+        sessionHistories.value[currentSessionId.value] = [...chatHistory.value]
+      }
+      return true
+    }
+
+    if (!message.responseId) {
       return false
     }
 
@@ -583,6 +676,15 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function clearChat() {
+    if (runtimeStore.demoMode) {
+      if (currentSessionId.value) {
+        sessionHistories.value[currentSessionId.value] = []
+      }
+      chatHistory.value = []
+      createNewSession()
+      return
+    }
+
     try {
       if (currentSessionId.value) {
         await agentApi.clearMemory(currentAgent.value, currentSessionId.value)
@@ -590,6 +692,7 @@ export const useChatStore = defineStore('chat', () => {
     } catch {
       runtimeStore.markServiceUnavailable('chat', '清空会话失败，请稍后重试。')
     }
+
     chatHistory.value = []
     createNewSession()
   }

@@ -10,9 +10,18 @@ import type {
   SourceDocument,
   SSEChunk
 } from '@/api/types'
-import { DEMO_KNOWLEDGE_BASES, MOCK_RAG_RESPONSES, MOCK_RAG_SOURCES } from '@/utils/constants'
+import { DEMO_KNOWLEDGE_BASES } from '@/utils/constants'
 import { useAuthStore } from './auth'
 import { useRuntimeStore } from './runtime'
+import {
+  createGuestDocumentChunks,
+  createGuestDocumentsByKnowledgeBase,
+  createGuestEvaluationOverview,
+  createGuestEvaluationSamples,
+  createGuestKnowledgeBases,
+  createGuestRagAnswer,
+  createGuestRagSources
+} from '@/utils/guest-mock'
 
 const DEFAULT_EVALUATION: RagEvaluationOverview = {
   totalQueries: 0,
@@ -28,6 +37,10 @@ const DEFAULT_EVALUATION: RagEvaluationOverview = {
 }
 
 export const useRagStore = defineStore('rag', () => {
+  const guestKnowledgeBaseState = ref<KnowledgeBase[]>(createGuestKnowledgeBases())
+  const guestDocumentsByKb = ref<Record<string, DocumentMeta[]>>(
+    createGuestDocumentsByKnowledgeBase(guestKnowledgeBaseState.value)
+  )
   const knowledgeBases = ref<KnowledgeBase[]>([])
   const currentKb = ref('kb-001')
   const currentKbName = ref('')
@@ -53,6 +66,19 @@ export const useRagStore = defineStore('rag', () => {
   const runtimeStore = useRuntimeStore()
 
   async function loadKnowledgeBases() {
+    if (runtimeStore.demoMode) {
+      knowledgeBases.value = guestKnowledgeBaseState.value
+      loadingKnowledgeBases.value = false
+      knowledgeBaseError.value = ''
+      if (
+        knowledgeBases.value.length > 0 &&
+        !knowledgeBases.value.find((kb) => kb.id === currentKb.value)
+      ) {
+        selectKb(knowledgeBases.value[0].id)
+      }
+      return
+    }
+
     loadingKnowledgeBases.value = true
     knowledgeBaseError.value = ''
     try {
@@ -90,6 +116,30 @@ export const useRagStore = defineStore('rag', () => {
   }
 
   async function createKnowledgeBase(payload: Partial<KnowledgeBase>) {
+    if (runtimeStore.demoMode) {
+      const created: KnowledgeBase = {
+        id: `kb-${Date.now()}`,
+        name: payload.name || '新建演示知识库',
+        description: payload.description || '游客模式下创建的本地知识库',
+        department: payload.department || '本地演示',
+        visibilityScope: payload.visibilityScope || 'PRIVATE',
+        status: payload.status || 'ACTIVE',
+        documentCount: 0,
+        totalChunks: 0,
+        chunkSize: payload.chunkSize || 1000,
+        chunkOverlap: payload.chunkOverlap || 200,
+        chunkStrategy: payload.chunkStrategy || 'TOKEN',
+        structuredBatchSize: payload.structuredBatchSize || 20,
+        createdBy: authStore.userId,
+        createdAt: new Date().toISOString()
+      }
+      guestKnowledgeBaseState.value = [created, ...guestKnowledgeBaseState.value]
+      guestDocumentsByKb.value[created.id] = []
+      knowledgeBases.value = guestKnowledgeBaseState.value
+      selectKb(created.id)
+      return created
+    }
+
     try {
       const created = await ragApi.createKnowledgeBase(payload)
       runtimeStore.markServiceAvailable('rag')
@@ -105,6 +155,18 @@ export const useRagStore = defineStore('rag', () => {
   }
 
   async function updateKnowledgeBase(id: string, payload: Partial<KnowledgeBase>) {
+    if (runtimeStore.demoMode) {
+      guestKnowledgeBaseState.value = guestKnowledgeBaseState.value.map((item) =>
+        item.id === id ? { ...item, ...payload } : item
+      )
+      knowledgeBases.value = guestKnowledgeBaseState.value
+      if (currentKb.value === id) {
+        currentKbName.value =
+          guestKnowledgeBaseState.value.find((item) => item.id === id)?.name || currentKbName.value
+      }
+      return guestKnowledgeBaseState.value.find((item) => item.id === id) || null
+    }
+
     try {
       const updated = await ragApi.updateKnowledgeBase(id, payload)
       runtimeStore.markServiceAvailable('rag')
@@ -121,6 +183,22 @@ export const useRagStore = defineStore('rag', () => {
   }
 
   async function deleteKnowledgeBase(id: string) {
+    if (runtimeStore.demoMode) {
+      guestKnowledgeBaseState.value = guestKnowledgeBaseState.value.filter((item) => item.id !== id)
+      delete guestDocumentsByKb.value[id]
+      knowledgeBases.value = guestKnowledgeBaseState.value
+      if (currentKb.value === id) {
+        if (knowledgeBases.value.length > 0) {
+          selectKb(knowledgeBases.value[0].id)
+        } else {
+          currentKb.value = ''
+          currentKbName.value = ''
+          documents.value = []
+        }
+      }
+      return true
+    }
+
     try {
       await ragApi.deleteKnowledgeBase(id)
       runtimeStore.markServiceAvailable('rag')
@@ -149,6 +227,13 @@ export const useRagStore = defineStore('rag', () => {
       documents.value = []
       return
     }
+
+    if (runtimeStore.demoMode) {
+      documents.value = guestDocumentsByKb.value[currentKb.value] || []
+      documentError.value = ''
+      return
+    }
+
     loadingDocuments.value = true
     documentError.value = ''
     try {
@@ -157,9 +242,7 @@ export const useRagStore = defineStore('rag', () => {
       runtimeStore.markServiceAvailable('rag')
     } catch {
       documents.value = []
-      documentError.value = runtimeStore.demoMode
-        ? '文档列表接口不可用，当前仅展示知识库概览。'
-        : '文档列表加载失败，请稍后重试。'
+      documentError.value = '文档列表加载失败，请稍后重试。'
       runtimeStore.markServiceUnavailable('rag', documentError.value)
     } finally {
       loadingDocuments.value = false
@@ -172,6 +255,14 @@ export const useRagStore = defineStore('rag', () => {
       lowRatedSamples.value = []
       return
     }
+
+    if (runtimeStore.demoMode) {
+      const currentDocuments = guestDocumentsByKb.value[currentKb.value] || []
+      evaluationOverview.value = createGuestEvaluationOverview(currentDocuments)
+      lowRatedSamples.value = createGuestEvaluationSamples(currentKb.value)
+      return
+    }
+
     loadingEvaluation.value = true
     try {
       const [overview, samples] = await Promise.all([
@@ -194,6 +285,40 @@ export const useRagStore = defineStore('rag', () => {
   }
 
   async function uploadFile(file: File, replaceExisting = false): Promise<DocumentMeta | null> {
+    if (runtimeStore.demoMode) {
+      const record: DocumentMeta = {
+        id: `${currentKb.value}-doc-${Date.now()}`,
+        filename: file.name,
+        knowledgeBaseId: currentKb.value,
+        fileSize: file.size,
+        contentType: file.type || 'application/octet-stream',
+        chunkCount: Math.max(6, Math.ceil(file.size / 20480)),
+        uploadedBy: authStore.userId,
+        status: 'INDEXED',
+        createdAt: new Date().toISOString(),
+        indexedAt: new Date().toISOString()
+      }
+      const existing = guestDocumentsByKb.value[currentKb.value] || []
+      guestDocumentsByKb.value[currentKb.value] = replaceExisting
+        ? [record, ...existing.filter((item) => item.filename !== file.name)]
+        : [record, ...existing]
+      guestKnowledgeBaseState.value = guestKnowledgeBaseState.value.map((item) =>
+        item.id === currentKb.value
+          ? {
+              ...item,
+              documentCount: (guestDocumentsByKb.value[currentKb.value] || []).length,
+              totalChunks: (guestDocumentsByKb.value[currentKb.value] || []).reduce(
+                (sum, doc) => sum + (doc.chunkCount || 0),
+                0
+              )
+            }
+          : item
+      )
+      knowledgeBases.value = guestKnowledgeBaseState.value
+      documents.value = guestDocumentsByKb.value[currentKb.value] || []
+      return record
+    }
+
     try {
       const meta = await ragApi.uploadDocument(file, currentKb.value, authStore.userId, replaceExisting)
       runtimeStore.markServiceAvailable('rag')
@@ -206,6 +331,14 @@ export const useRagStore = defineStore('rag', () => {
   }
 
   async function deleteDocument(docId: string) {
+    if (runtimeStore.demoMode) {
+      guestDocumentsByKb.value[currentKb.value] = (guestDocumentsByKb.value[currentKb.value] || []).filter(
+        (item) => item.id !== docId
+      )
+      documents.value = guestDocumentsByKb.value[currentKb.value] || []
+      return true
+    }
+
     try {
       await ragApi.deleteDocument(docId)
       runtimeStore.markServiceAvailable('rag')
@@ -218,6 +351,14 @@ export const useRagStore = defineStore('rag', () => {
   }
 
   async function retryDocument(docId: string) {
+    if (runtimeStore.demoMode) {
+      guestDocumentsByKb.value[currentKb.value] = (guestDocumentsByKb.value[currentKb.value] || []).map((item) =>
+        item.id === docId ? { ...item, status: 'INDEXED', indexedAt: new Date().toISOString() } : item
+      )
+      documents.value = guestDocumentsByKb.value[currentKb.value] || []
+      return true
+    }
+
     try {
       await ragApi.retryDocument(docId)
       runtimeStore.markServiceAvailable('rag')
@@ -230,6 +371,10 @@ export const useRagStore = defineStore('rag', () => {
   }
 
   async function reindexDocument(docId: string) {
+    if (runtimeStore.demoMode) {
+      return retryDocument(docId)
+    }
+
     try {
       await ragApi.reindexDocument(docId)
       runtimeStore.markServiceAvailable('rag')
@@ -242,6 +387,20 @@ export const useRagStore = defineStore('rag', () => {
   }
 
   async function downloadDocument(docId: string, filename: string) {
+    if (runtimeStore.demoMode) {
+      const blob = new Blob(
+        [`这是游客模式下导出的演示文档：${filename}\n文档ID：${docId}\n知识库：${currentKbName.value}`],
+        { type: 'text/plain;charset=utf-8' }
+      )
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = filename
+      anchor.click()
+      URL.revokeObjectURL(url)
+      return true
+    }
+
     try {
       const blob = await ragApi.downloadDocument(docId)
       const url = URL.createObjectURL(blob)
@@ -259,6 +418,14 @@ export const useRagStore = defineStore('rag', () => {
   }
 
   async function previewDocument(docId: string) {
+    if (runtimeStore.demoMode) {
+      window.open(
+        `data:text/plain;charset=utf-8,${encodeURIComponent(`游客模式预览文档：${docId}`)}`,
+        '_blank'
+      )
+      return true
+    }
+
     try {
       const data = await ragApi.previewDocument(docId)
       if (data?.previewUrl) {
@@ -273,6 +440,12 @@ export const useRagStore = defineStore('rag', () => {
   }
 
   async function loadDocumentChunks(doc: DocumentMeta) {
+    if (runtimeStore.demoMode) {
+      activeDocumentChunks.value = createGuestDocumentChunks(doc)
+      activeChunkDocument.value = doc
+      return true
+    }
+
     try {
       const data = await ragApi.listDocumentChunks(doc.id)
       activeDocumentChunks.value = data || []
@@ -304,6 +477,18 @@ export const useRagStore = defineStore('rag', () => {
     queryError.value = ''
     isQuerying.value = true
     queryStage.value = 'retrieving'
+
+    if (runtimeStore.demoMode) {
+      await new Promise((resolve) => setTimeout(resolve, stream ? 450 : 180))
+      queryStage.value = 'answering'
+      queryResult.value = createGuestRagAnswer(question, currentKb.value)
+      querySources.value = createGuestRagSources(question, currentKb.value)
+      queryResponseId.value = `guest-rag-${Date.now()}`
+      queryFeedback.value = null
+      isQuerying.value = false
+      queryStage.value = 'idle'
+      return
+    }
 
     try {
       if (stream) {
@@ -371,23 +556,10 @@ export const useRagStore = defineStore('rag', () => {
       runtimeStore.markServiceAvailable('rag')
       await loadEvaluation()
     } catch {
-      queryError.value = runtimeStore.demoMode
-        ? '问答后端不可用，已切换为演示答案。'
-        : '知识库问答服务暂不可用，请稍后重试。'
-      runtimeStore.markServiceUnavailable(
-        'rag',
-        runtimeStore.demoMode
-          ? '知识库问答后端不可用，当前返回的是演示答案。'
-          : '知识库问答服务不可用，请检查 rag-service 状态。'
-      )
-
-      if (runtimeStore.demoMode) {
-        queryResult.value = MOCK_RAG_RESPONSES[currentKb.value] || '当前为演示模式，暂未找到对应的模拟答案。'
-        querySources.value = MOCK_RAG_SOURCES.map((item) => ({ ...item, feedback: null }))
-      } else {
-        queryResult.value = ''
-        querySources.value = []
-      }
+      queryError.value = '知识库问答服务暂不可用，请稍后重试。'
+      runtimeStore.markServiceUnavailable('rag', '知识库问答服务不可用，请检查 rag-service 状态。')
+      queryResult.value = ''
+      querySources.value = []
       queryResponseId.value = ''
       queryFeedback.value = null
     } finally {
@@ -397,6 +569,10 @@ export const useRagStore = defineStore('rag', () => {
   }
 
   async function submitQueryFeedback(feedback: 'up' | 'down') {
+    if (runtimeStore.demoMode) {
+      queryFeedback.value = feedback
+      return true
+    }
     if (!queryResponseId.value) {
       return false
     }
@@ -407,6 +583,12 @@ export const useRagStore = defineStore('rag', () => {
   }
 
   async function submitEvidenceFeedback(chunkId: string, feedback: 'up' | 'down') {
+    if (runtimeStore.demoMode) {
+      querySources.value = querySources.value.map((item) =>
+        item.chunkId === chunkId ? { ...item, feedback } : item
+      )
+      return true
+    }
     if (!queryResponseId.value || !chunkId) {
       return false
     }

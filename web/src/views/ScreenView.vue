@@ -3,14 +3,16 @@
     <div class="screen-backdrop"></div>
 
     <header class="screen-topbar">
-      <div>
+      <div class="screen-title-block">
         <div class="screen-kicker">AI PLATFORM COMMAND CENTER</div>
-        <h1>AI 平台运营指挥中心</h1>
+        <h1 class="screen-title">AI 平台运营指挥中心</h1>
       </div>
+
       <div class="screen-clock">
         <strong>{{ currentTime }}</strong>
         <span>{{ currentDate }}</span>
       </div>
+
       <div class="screen-actions">
         <button class="action-btn action-btn-primary" type="button" @click="refreshScreen">
           {{ monitorStore.loading ? '刷新中...' : '刷新数据' }}
@@ -30,7 +32,7 @@
     </section>
 
     <main class="screen-grid">
-      <section class="panel">
+      <section class="panel-column">
         <article class="panel-card stage-card">
           <div class="panel-header">
             <div>
@@ -50,7 +52,7 @@
               <strong>{{ healthyModels.length }}/{{ models.length }}</strong>
             </div>
             <div>
-              <span>反馈正向率</span>
+              <span>正向反馈率</span>
               <strong>{{ positiveRateText }}</strong>
             </div>
           </div>
@@ -75,7 +77,7 @@
           </div>
         </article>
 
-        <article class="panel-card">
+        <article class="panel-card scroll-card">
           <div class="panel-header">
             <div>
               <span class="panel-kicker">AGENT LOAD</span>
@@ -97,7 +99,7 @@
         </article>
       </section>
 
-      <section class="panel panel-center">
+      <section class="panel-column panel-center">
         <article class="panel-card map-card">
           <div class="panel-header">
             <div>
@@ -110,11 +112,11 @@
           <div ref="chartRef" class="china-chart"></div>
         </article>
 
-        <article class="panel-card">
+        <article class="panel-card scroll-card">
           <div class="panel-header">
             <div>
               <span class="panel-kicker">REGION RANK</span>
-              <h2>热点省市</h2>
+              <h2>热点区域</h2>
             </div>
           </div>
           <div class="region-list">
@@ -132,8 +134,8 @@
         </article>
       </section>
 
-      <section class="panel">
-        <article class="panel-card">
+      <section class="panel-column">
+        <article class="panel-card scroll-card">
           <div class="panel-header">
             <div>
               <span class="panel-kicker">TOP USERS</span>
@@ -152,7 +154,7 @@
           </div>
         </article>
 
-        <article class="panel-card">
+        <article class="panel-card scroll-card">
           <div class="panel-header">
             <div>
               <span class="panel-kicker">MODEL HEALTH</span>
@@ -178,7 +180,7 @@
           </div>
         </article>
 
-        <article class="panel-card">
+        <article class="panel-card scroll-card">
           <div class="panel-header">
             <div>
               <span class="panel-kicker">FAILURES</span>
@@ -188,7 +190,7 @@
           <div class="failure-list">
             <div v-for="item in failureSamples" :key="item.id" class="failure-row">
               <strong>{{ item.agent_type || 'unknown' }}</strong>
-              <small>{{ item.user_id || 'anonymous' }} · {{ formatTime(item.created_at) }}</small>
+              <small>{{ item.user_id || 'anonymous' }} / {{ formatTime(item.created_at) }}</small>
               <p>{{ item.error_message || '未记录异常详情' }}</p>
             </div>
           </div>
@@ -220,14 +222,22 @@ let resizeObserver: ResizeObserver | null = null
 let chinaMapReady = false
 
 const overview = computed(() => monitorStore.screenSnapshot?.overview ?? monitorStore.overview)
-const feedbackOverview = computed(() => monitorStore.screenSnapshot?.feedbackOverview ?? monitorStore.feedbackOverview)
-const screenAlerts = computed(() => monitorStore.screenSnapshot?.alerts ?? { activeAlerts: 0, alerts: [] })
+const feedbackOverview = computed(
+  () => monitorStore.screenSnapshot?.feedbackOverview ?? monitorStore.feedbackOverview
+)
+const screenAlerts = computed(
+  () => monitorStore.screenSnapshot?.alerts ?? { activeAlerts: 0, alerts: [] }
+)
 const topUsers = computed(() => (monitorStore.screenSnapshot?.topUsers ?? []).slice(0, 6))
-const failureSamples = computed(() => (monitorStore.screenSnapshot?.failureSamples ?? []).slice(0, 5))
+const failureSamples = computed(
+  () => (monitorStore.screenSnapshot?.failureSamples ?? []).slice(0, 5)
+)
 const regionHeat = computed(() => (monitorStore.screenSnapshot?.regionHeat ?? []).slice(0, 10))
 const models = computed(() => monitorStore.models ?? [])
 const topAgentStats = computed(() =>
-  [...(monitorStore.screenSnapshot?.agentStats ?? [])].sort((a, b) => (b.count ?? 0) - (a.count ?? 0)).slice(0, 6)
+  [...(monitorStore.screenSnapshot?.agentStats ?? [])]
+    .sort((a, b) => (b.count ?? 0) - (a.count ?? 0))
+    .slice(0, 6)
 )
 const topModels = computed(() =>
   [...models.value].sort((a, b) => (b.totalCalls ?? 0) - (a.totalCalls ?? 0)).slice(0, 6)
@@ -254,16 +264,27 @@ const trendBars = computed(() =>
   }))
 )
 const currentTime = computed(() =>
-  now.value.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  now.value.toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  })
 )
 const currentDate = computed(() =>
-  now.value.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
+  now.value.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long'
+  })
 )
+
 const stageStatus = computed(() => {
   if ((screenAlerts.value.activeAlerts || 0) > 0) return '告警观察中'
   if ((overview.value?.successRate ?? 0) < 0.95) return '波动上升'
   return '稳定运行'
 })
+
 const stageSummary = computed(() => {
   if (criticalAlerts.value.length) {
     return `当前存在 ${criticalAlerts.value.length} 条高优先级告警，建议优先处理告警流转。`
@@ -288,7 +309,9 @@ const heroCards = computed(() => [
   {
     label: 'Token 总量',
     value: formatCompactNumber(overview.value?.totalTokens ?? 0),
-    sub: `Prompt ${formatCompactNumber(overview.value?.totalPromptTokens ?? 0)} / Completion ${formatCompactNumber(overview.value?.totalCompletionTokens ?? 0)}`
+    sub: `Prompt ${formatCompactNumber(
+      overview.value?.totalPromptTokens ?? 0
+    )} / Completion ${formatCompactNumber(overview.value?.totalCompletionTokens ?? 0)}`
   },
   {
     label: '活动告警',
@@ -301,171 +324,57 @@ const heroCards = computed(() => [
     sub: '已接入模型运行状态'
   },
   {
-    label: '反馈正向率',
+    label: '正向反馈率',
     value: positiveRateText.value,
     sub: `总反馈 ${formatCompactNumber(feedbackOverview.value?.totalCount ?? 0)}`
   }
 ])
 
 const provinceCoordMap: Record<string, LonLat> = {
-  北京: [116.4, 39.9],
-  天津: [117.2, 39.12],
-  河北: [114.48, 38.03],
-  山西: [112.55, 37.87],
-  内蒙古: [111.67, 40.82],
-  辽宁: [123.43, 41.8],
-  吉林: [125.32, 43.9],
-  黑龙江: [126.64, 45.75],
-  上海: [121.47, 31.23],
-  江苏: [118.78, 32.04],
-  浙江: [120.15, 30.28],
-  安徽: [117.27, 31.86],
-  福建: [119.3, 26.08],
-  江西: [115.89, 28.68],
-  山东: [117.0, 36.65],
-  河南: [113.62, 34.75],
-  湖北: [114.31, 30.52],
-  湖南: [112.93, 28.23],
-  广东: [113.27, 23.13],
-  广西: [108.32, 22.82],
-  海南: [110.35, 20.02],
-  重庆: [106.55, 29.57],
-  四川: [104.06, 30.67],
-  贵州: [106.71, 26.57],
-  云南: [102.71, 25.04],
-  西藏: [91.11, 29.97],
-  陕西: [108.95, 34.27],
-  甘肃: [103.73, 36.03],
-  青海: [101.78, 36.62],
-  宁夏: [106.27, 38.47],
-  新疆: [87.62, 43.82],
-  香港: [114.17, 22.28],
-  澳门: [113.54, 22.19],
-  台湾: [121.51, 25.04],
+  北京市: [116.4, 39.9],
+  上海市: [121.47, 31.23],
+  广东省: [113.27, 23.13],
+  浙江省: [120.15, 30.28],
+  江苏省: [118.78, 32.04],
+  四川省: [104.06, 30.67],
+  湖北省: [114.31, 30.52],
+  陕西省: [108.95, 34.27],
+  重庆市: [106.55, 29.57],
   未设置省份: [104.19, 35.86]
 }
 
 const cityCoordMap: Record<string, LonLat> = {
-  北京: [116.4, 39.9],
-  上海: [121.47, 31.23],
-  广州: [113.27, 23.13],
-  深圳: [114.05, 22.55],
-  杭州: [120.15, 30.28],
-  南京: [118.78, 32.04],
-  苏州: [120.62, 31.32],
-  武汉: [114.31, 30.52],
-  成都: [104.06, 30.67],
-  重庆: [106.55, 29.57],
-  西安: [108.95, 34.27],
-  郑州: [113.62, 34.75],
-  长沙: [112.93, 28.23],
-  天津: [117.2, 39.12],
-  青岛: [120.38, 36.07],
-  济南: [117.0, 36.65],
-  合肥: [117.27, 31.86],
-  福州: [119.3, 26.08],
-  厦门: [118.1, 24.46],
-  南昌: [115.89, 28.68],
-  贵阳: [106.71, 26.57],
-  昆明: [102.71, 25.04],
-  南宁: [108.32, 22.82],
-  海口: [110.35, 20.02],
-  沈阳: [123.43, 41.8],
-  大连: [121.62, 38.92],
-  长春: [125.32, 43.9],
-  哈尔滨: [126.64, 45.75],
-  石家庄: [114.48, 38.03],
-  太原: [112.55, 37.87],
-  呼和浩特: [111.67, 40.82],
-  乌鲁木齐: [87.62, 43.82],
-  拉萨: [91.11, 29.97],
-  兰州: [103.73, 36.03],
-  西宁: [101.78, 36.62],
-  银川: [106.27, 38.47],
-  香港: [114.17, 22.28],
-  澳门: [113.54, 22.19],
-  台北: [121.51, 25.04],
+  北京市: [116.4, 39.9],
+  上海市: [121.47, 31.23],
+  广州市: [113.27, 23.13],
+  深圳市: [114.05, 22.55],
+  杭州市: [120.15, 30.28],
+  南京市: [118.78, 32.04],
+  成都市: [104.06, 30.67],
+  武汉市: [114.31, 30.52],
+  西安市: [108.95, 34.27],
+  重庆市: [106.55, 29.57],
   未设置城市: [104.19, 35.86]
-}
-
-const provinceNameMap: Record<string, string> = {
-  北京: '北京市',
-  天津: '天津市',
-  河北: '河北省',
-  山西: '山西省',
-  内蒙古: '内蒙古自治区',
-  辽宁: '辽宁省',
-  吉林: '吉林省',
-  黑龙江: '黑龙江省',
-  上海: '上海市',
-  江苏: '江苏省',
-  浙江: '浙江省',
-  安徽: '安徽省',
-  福建: '福建省',
-  江西: '江西省',
-  山东: '山东省',
-  河南: '河南省',
-  湖北: '湖北省',
-  湖南: '湖南省',
-  广东: '广东省',
-  广西: '广西壮族自治区',
-  海南: '海南省',
-  重庆: '重庆市',
-  四川: '四川省',
-  贵州: '贵州省',
-  云南: '云南省',
-  西藏: '西藏自治区',
-  陕西: '陕西省',
-  甘肃: '甘肃省',
-  青海: '青海省',
-  宁夏: '宁夏回族自治区',
-  新疆: '新疆维吾尔自治区',
-  台湾: '台湾省',
-  香港: '香港特别行政区',
-  澳门: '澳门特别行政区',
-  未设置省份: '未设置省份'
-}
-
-function canonicalProvinceName(name?: string) {
-  const value = String(name || '').trim()
-  if (!value) return ''
-  const directMapped = provinceNameMap[value]
-  if (directMapped) return directMapped
-  return value
-    .replace(/特别行政区$/u, '')
-    .replace(/维吾尔自治区$/u, '')
-    .replace(/壮族自治区$/u, '')
-    .replace(/回族自治区$/u, '')
-    .replace(/自治区$/u, '')
-    .replace(/省$/u, '')
-    .replace(/市$/u, '')
 }
 
 const provinceSeriesData = computed(() => {
   const grouped = new Map<string, number>()
   regionHeat.value.forEach((item) => {
-    const canonicalName = canonicalProvinceName(item.province)
-    grouped.set(canonicalName, (grouped.get(canonicalName) || 0) + item.calls)
+    const key = item.province || '未设置省份'
+    grouped.set(key, (grouped.get(key) || 0) + item.calls)
   })
   return Array.from(grouped.entries()).map(([name, value]) => ({
-    name: provinceNameMap[name] || name,
+    name,
     value
   }))
 })
 
-const provinceHeatLookup = computed(() => {
-  const lookup = new Map<string, number>()
-  provinceSeriesData.value.forEach((item) => {
-    const value = Number(item.value) || 0
-    lookup.set(item.name, value)
-    lookup.set(canonicalProvinceName(item.name), value)
-  })
-  return lookup
-})
-
 const cityScatterData = computed(() =>
   regionHeat.value.map((item) => {
-    const coord = cityCoordMap[item.city] || provinceCoordMap[item.province] || provinceCoordMap['未设置省份']
+    const coord =
+      cityCoordMap[item.city] ||
+      provinceCoordMap[item.province] ||
+      provinceCoordMap['未设置省份']
     return {
       name: item.regionName,
       value: [...coord, item.calls],
@@ -496,8 +405,12 @@ async function ensureEcharts() {
 }
 
 function buildChartOption(): EChartsCoreOption {
-  const maxProvinceValue = Math.max(1, ...provinceSeriesData.value.map((item) => Number(item.value) || 0))
+  const maxProvinceValue = Math.max(
+    1,
+    ...provinceSeriesData.value.map((item) => Number(item.value) || 0)
+  )
   const maxCityValue = Math.max(1, ...cityScatterData.value.map((item) => Number(item.value[2]) || 0))
+
   return {
     backgroundColor: 'transparent',
     tooltip: {
@@ -505,26 +418,21 @@ function buildChartOption(): EChartsCoreOption {
       backgroundColor: 'rgba(2, 6, 23, 0.92)',
       borderColor: 'rgba(56, 189, 248, 0.28)',
       textStyle: { color: '#e2e8f0' },
-        formatter: (params: any) => {
-          if (Array.isArray(params.value)) {
-            const raw = params.data.raw
-            return `<div><strong>${raw.regionName}</strong></div><div>请求 ${raw.calls} 次</div><div>成功率 ${formatPercent(raw.successRate)}</div><div>平均延迟 ${raw.avgLatencyMs} ms</div>`
-          }
-          const provinceName = String(params.name || '')
-          const provinceCalls =
-            provinceHeatLookup.value.get(provinceName) ||
-            provinceHeatLookup.value.get(canonicalProvinceName(provinceName)) ||
-            0
-          return `<div><strong>${provinceName}</strong></div><div>请求 ${provinceCalls} 次</div>`
+      formatter: (params: any) => {
+        if (Array.isArray(params.value)) {
+          const raw = params.data.raw
+          return `<div><strong>${raw.regionName}</strong></div><div>请求 ${raw.calls} 次</div><div>成功率 ${formatPercent(raw.successRate)}</div><div>平均延迟 ${raw.avgLatencyMs} ms</div>`
         }
-      },
+        return `<div><strong>${params.name}</strong></div><div>请求 ${params.value || 0} 次</div>`
+      }
+    },
     visualMap: {
       min: 0,
       max: maxProvinceValue,
       calculable: true,
       orient: 'horizontal',
-      left: 24,
-      bottom: 10,
+      left: 18,
+      bottom: 8,
       text: ['高热度', '低热度'],
       textStyle: { color: '#cbd5e1' },
       inRange: {
@@ -543,9 +451,7 @@ function buildChartOption(): EChartsCoreOption {
       },
       emphasis: {
         label: { show: false },
-        itemStyle: {
-          areaColor: '#1d4ed8'
-        }
+        itemStyle: { areaColor: '#1d4ed8' }
       }
     },
     series: [
@@ -561,15 +467,13 @@ function buildChartOption(): EChartsCoreOption {
         coordinateSystem: 'geo',
         data: cityScatterData.value,
         rippleEffect: { scale: 4, brushType: 'stroke' },
-        symbolSize: (value: number[]) => 10 + (Number(value[2]) / maxCityValue) * 18,
+        symbolSize: (value: number[]) => 8 + (Number(value[2]) / maxCityValue) * 16,
         itemStyle: {
           color: '#f97316',
           shadowBlur: 16,
           shadowColor: 'rgba(249, 115, 22, 0.65)'
         },
-        emphasis: {
-          scale: true
-        }
+        emphasis: { scale: true }
       }
     ]
   }
@@ -597,6 +501,7 @@ async function ensureChart() {
       chart = core.init(chartRef.value)
     }
     chart.setOption(buildChartOption())
+    chart.resize()
   } catch (error) {
     chartError.value = error instanceof Error ? error.message : '地图加载失败'
   }
@@ -611,7 +516,10 @@ function buildPercent(value: number, max: number) {
 }
 
 function formatCompactNumber(value: number) {
-  return new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 }).format(value || 0)
+  return new Intl.NumberFormat('zh-CN', {
+    notation: 'compact',
+    maximumFractionDigits: 1
+  }).format(value || 0)
 }
 
 function formatPercent(value: number) {
@@ -682,21 +590,25 @@ onUnmounted(() => {
 <style scoped>
 .screen-page {
   position: relative;
-  min-height: calc(100vh - 40px);
-  padding: 12px;
+  height: 100%;
+  min-height: 100%;
+  padding: clamp(10px, 1vw, 16px);
   color: #edf6ff;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: clamp(10px, 0.9vw, 14px);
 }
 
 .screen-backdrop {
   position: absolute;
   inset: 0;
-  border-radius: 30px;
+  border-radius: 0;
   background:
     radial-gradient(circle at 15% 15%, rgba(56, 189, 248, 0.18), transparent 25%),
     radial-gradient(circle at 85% 10%, rgba(45, 212, 191, 0.16), transparent 22%),
     radial-gradient(circle at 50% 100%, rgba(59, 130, 246, 0.2), transparent 35%),
     linear-gradient(135deg, #020617, #08111f 55%, #0b1220);
-  border: 1px solid rgba(148, 163, 184, 0.14);
 }
 
 .screen-topbar,
@@ -704,29 +616,28 @@ onUnmounted(() => {
 .screen-grid {
   position: relative;
   z-index: 1;
+  min-height: 0;
 }
 
 .screen-topbar {
   display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 14px;
   align-items: center;
-  margin-bottom: 16px;
 }
 
 .screen-kicker,
 .panel-kicker {
   display: block;
-  font-size: 11px;
-  letter-spacing: 0.24em;
+  font-size: clamp(10px, 0.58vw, 11px);
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   color: rgba(125, 211, 252, 0.75);
 }
 
-.screen-topbar h1,
-.panel-header h2 {
-  margin: 8px 0 0;
-  font-size: clamp(24px, 2.2vw, 34px);
+.screen-title {
+  margin: 6px 0 0;
+  font-size: clamp(22px, 1.8vw, 32px);
   line-height: 1.1;
 }
 
@@ -736,7 +647,7 @@ onUnmounted(() => {
 }
 
 .screen-clock strong {
-  font-size: clamp(26px, 2.8vw, 40px);
+  font-size: clamp(24px, 2.2vw, 38px);
 }
 
 .screen-clock span,
@@ -757,8 +668,8 @@ onUnmounted(() => {
 }
 
 .action-btn {
-  height: 40px;
-  padding: 0 16px;
+  height: 38px;
+  padding: 0 14px;
   border-radius: 14px;
   border: 1px solid rgba(148, 163, 184, 0.18);
   background: rgba(255, 255, 255, 0.04);
@@ -774,21 +685,22 @@ onUnmounted(() => {
 .hero-strip {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 14px;
-  margin-bottom: 16px;
+  gap: 12px;
 }
 
 .hero-card,
 .panel-card {
-  border-radius: 24px;
+  border-radius: 22px;
   border: 1px solid rgba(148, 163, 184, 0.14);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.02)), rgba(8, 15, 28, 0.84);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.02)),
+    rgba(8, 15, 28, 0.84);
   box-shadow: 0 18px 40px rgba(2, 6, 23, 0.24);
 }
 
 .hero-card {
-  padding: 18px;
-  min-height: 140px;
+  padding: 14px;
+  min-height: 110px;
 }
 
 .hero-label {
@@ -798,23 +710,40 @@ onUnmounted(() => {
 
 .hero-value {
   display: block;
-  margin-top: 16px;
-  font-size: clamp(30px, 3vw, 52px);
+  margin-top: 10px;
+  font-size: clamp(22px, 2vw, 42px);
 }
 
 .screen-grid {
   display: grid;
   grid-template-columns: 0.94fr 1.34fr 0.92fr;
-  gap: 16px;
+  gap: 14px;
+  overflow: hidden;
 }
 
-.panel {
+.panel-column {
+  min-height: 0;
   display: grid;
-  gap: 16px;
+  gap: 14px;
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+}
+
+.panel-center {
+  grid-template-rows: 1.25fr 0.75fr;
 }
 
 .panel-card {
-  padding: 18px;
+  min-height: 0;
+  padding: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.scroll-card :is(.rank-list, .region-list, .user-list, .model-list, .failure-list) {
+  overflow: auto;
+  min-height: 0;
+  padding-right: 4px;
 }
 
 .panel-header {
@@ -822,6 +751,13 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 12px;
   align-items: start;
+  flex: none;
+}
+
+.panel-header h2 {
+  margin: 8px 0 0;
+  font-size: clamp(17px, 1.1vw, 22px);
+  line-height: 1.1;
 }
 
 .panel-chip {
@@ -840,15 +776,16 @@ onUnmounted(() => {
 }
 
 .stage-summary {
-  margin: 16px 0 0;
-  line-height: 1.8;
+  margin: 12px 0 0;
+  line-height: 1.7;
+  font-size: 13px;
 }
 
 .stage-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 18px;
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .stage-metrics div,
@@ -856,8 +793,8 @@ onUnmounted(() => {
 .user-row,
 .model-row,
 .failure-row {
-  padding: 12px 14px;
-  border-radius: 18px;
+  padding: 10px 12px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(148, 163, 184, 0.12);
 }
@@ -870,23 +807,24 @@ onUnmounted(() => {
 
 .stage-metrics strong {
   display: block;
-  margin-top: 8px;
-  font-size: 26px;
+  margin-top: 6px;
+  font-size: clamp(18px, 1.5vw, 26px);
 }
 
 .traffic-chart {
   display: grid;
   grid-template-columns: repeat(24, minmax(0, 1fr));
-  gap: 8px;
-  height: 248px;
-  margin-top: 18px;
+  gap: 6px;
+  height: 100%;
+  min-height: 0;
+  margin-top: 12px;
   align-items: end;
 }
 
 .traffic-column {
   display: grid;
   justify-items: center;
-  gap: 8px;
+  gap: 6px;
   height: 100%;
 }
 
@@ -922,13 +860,13 @@ onUnmounted(() => {
 .model-list,
 .failure-list {
   display: grid;
-  gap: 12px;
-  margin-top: 18px;
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .rank-row {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .rank-meta,
@@ -955,16 +893,17 @@ onUnmounted(() => {
 }
 
 .map-card {
-  min-height: 720px;
+  min-height: 0;
 }
 
 .china-chart {
-  height: 620px;
-  margin-top: 16px;
+  flex: 1;
+  min-height: 0;
+  margin-top: 10px;
 }
 
 .chart-error {
-  margin-top: 16px;
+  margin-top: 10px;
   padding: 12px 14px;
   border-radius: 14px;
   background: rgba(127, 29, 29, 0.22);
@@ -1006,8 +945,9 @@ onUnmounted(() => {
 }
 
 .failure-row p {
-  margin: 8px 0 0;
-  line-height: 1.7;
+  margin: 6px 0 0;
+  line-height: 1.6;
+  font-size: 12px;
 }
 
 @media (max-width: 1600px) {
@@ -1016,11 +956,38 @@ onUnmounted(() => {
   }
 
   .screen-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .panel-center {
+    grid-column: 1 / -1;
+    grid-template-rows: 1fr;
   }
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1100px) {
+  .screen-page {
+    overflow: auto;
+    grid-template-rows: auto auto auto;
+  }
+
+  .screen-grid {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .panel-column,
+  .panel-center {
+    grid-template-rows: auto;
+  }
+
+  .panel-card,
+  .china-chart {
+    min-height: 320px;
+  }
+}
+
+@media (max-width: 768px) {
   .screen-topbar {
     grid-template-columns: 1fr;
   }
@@ -1028,10 +995,6 @@ onUnmounted(() => {
   .hero-strip,
   .stage-metrics {
     grid-template-columns: 1fr;
-  }
-
-  .china-chart {
-    height: 460px;
   }
 }
 </style>

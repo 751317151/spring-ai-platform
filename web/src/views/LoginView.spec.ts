@@ -40,6 +40,18 @@ describe('LoginView', () => {
     expect(replace).toHaveBeenCalledWith('/chat')
   })
 
+  it('supports guest login', async () => {
+    route.query = { redirect: '/chat' }
+    const authStore = useAuthStore()
+    authStore.loginAsGuest = vi.fn().mockResolvedValue(true) as never
+
+    const wrapper = mount(LoginView)
+    await wrapper.find('.login-guest').trigger('click')
+
+    expect(authStore.loginAsGuest).toHaveBeenCalled()
+    expect(replace).toHaveBeenCalledWith('/chat')
+  })
+
   it('shows error message when login fails', async () => {
     const authStore = useAuthStore()
     authStore.login = vi.fn().mockRejectedValue(new Error('认证失败')) as never
