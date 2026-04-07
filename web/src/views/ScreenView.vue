@@ -1,207 +1,224 @@
 <template>
-  <div class="screen-page">
-    <div class="screen-backdrop"></div>
+  <div ref="shellRef" class="screen-page">
+    <div
+      class="screen-stage"
+      :style="{
+        transform: `translate(-50%, -50%) scale(${stageScale})`
+      }"
+    >
+      <div class="screen-backdrop"></div>
 
-    <header class="screen-topbar">
-      <div class="screen-title-block">
-        <div class="screen-kicker">AI PLATFORM COMMAND CENTER</div>
-        <h1 class="screen-title">AI 平台运营指挥中心</h1>
-      </div>
+      <header class="screen-topbar">
+        <div class="screen-title-block">
+          <div class="screen-kicker">AI PLATFORM COMMAND CENTER</div>
+          <h1 class="screen-title">AI 平台运营指挥中心</h1>
+        </div>
 
-      <div class="screen-clock">
-        <strong>{{ currentTime }}</strong>
-        <span>{{ currentDate }}</span>
-      </div>
+        <div class="screen-clock">
+          <strong>{{ currentTime }}</strong>
+          <span>{{ currentDate }}</span>
+        </div>
 
-      <div class="screen-actions">
-        <button class="action-btn action-btn-primary" type="button" @click="refreshScreen">
-          {{ monitorStore.loading ? '刷新中...' : '刷新数据' }}
-        </button>
-        <button class="action-btn" type="button" @click="toggleFullscreen">
-          {{ isFullscreen ? '退出全屏' : '进入全屏' }}
-        </button>
-      </div>
-    </header>
+        <div class="screen-actions">
+          <button class="action-btn action-btn-primary" type="button" @click="refreshScreen">
+            {{ monitorStore.loading ? '刷新中...' : '刷新数据' }}
+          </button>
+          <button class="action-btn" type="button" @click="toggleFullscreen">
+            {{ isFullscreen ? '退出全屏' : '进入全屏' }}
+          </button>
+        </div>
+      </header>
 
-    <section class="hero-strip">
-      <article v-for="card in heroCards" :key="card.label" class="hero-card">
-        <span class="hero-label">{{ card.label }}</span>
-        <strong class="hero-value">{{ card.value }}</strong>
-        <small class="hero-sub">{{ card.sub }}</small>
-      </article>
-    </section>
-
-    <main class="screen-grid">
-      <section class="panel-column">
-        <article class="panel-card stage-card">
-          <div class="panel-header">
-            <div>
-              <span class="panel-kicker">SYSTEM STATUS</span>
-              <h2>{{ stageStatus }}</h2>
-            </div>
-            <span class="panel-chip">{{ successRateText }}</span>
-          </div>
-          <p class="stage-summary">{{ stageSummary }}</p>
-          <div class="stage-metrics">
-            <div>
-              <span>高优先级告警</span>
-              <strong>{{ criticalAlerts.length }}</strong>
-            </div>
-            <div>
-              <span>健康模型</span>
-              <strong>{{ healthyModels.length }}/{{ models.length }}</strong>
-            </div>
-            <div>
-              <span>正向反馈率</span>
-              <strong>{{ positiveRateText }}</strong>
-            </div>
-          </div>
-        </article>
-
-        <article class="panel-card">
-          <div class="panel-header">
-            <div>
-              <span class="panel-kicker">24H TRAFFIC</span>
-              <h2>请求趋势</h2>
-            </div>
-            <span class="panel-chip">峰值 {{ formatCompactNumber(maxHourlyTotal) }}</span>
-          </div>
-          <div class="traffic-chart">
-            <div v-for="item in trendBars" :key="item.hour" class="traffic-column">
-              <div class="traffic-track">
-                <span class="traffic-bar" :style="{ height: `${item.height}%` }"></span>
-                <span class="traffic-error" :style="{ height: `${item.errorHeight}%` }"></span>
-              </div>
-              <small>{{ item.hour }}</small>
-            </div>
-          </div>
-        </article>
-
-        <article class="panel-card scroll-card">
-          <div class="panel-header">
-            <div>
-              <span class="panel-kicker">AGENT LOAD</span>
-              <h2>助手调用排行</h2>
-            </div>
-          </div>
-          <div class="rank-list">
-            <div v-for="item in topAgentStats" :key="item.agent_type" class="rank-row">
-              <strong>{{ item.agent_type }}</strong>
-              <div class="rank-meta">
-                <span>{{ item.count }} 次</span>
-                <span>{{ item.avg_latency ?? 0 }} ms</span>
-              </div>
-              <div class="rank-track">
-                <span :style="{ width: `${buildPercent(item.count, topAgentStats[0]?.count || 1)}%` }"></span>
-              </div>
-            </div>
-          </div>
+      <section class="hero-strip">
+        <article v-for="card in heroCards" :key="card.label" class="hero-card">
+          <span class="hero-label">{{ card.label }}</span>
+          <strong class="hero-value">{{ card.value }}</strong>
+          <small class="hero-sub">{{ card.sub }}</small>
         </article>
       </section>
 
-      <section class="panel-column panel-center">
-        <article class="panel-card map-card">
-          <div class="panel-header">
-            <div>
-              <span class="panel-kicker">CHINA MAP</span>
-              <h2>省份热力 + 城市散点</h2>
-            </div>
-            <span class="panel-chip">近 24 小时</span>
-          </div>
-          <div v-if="chartError" class="chart-error">{{ chartError }}</div>
-          <div ref="chartRef" class="china-chart"></div>
-        </article>
-
-        <article class="panel-card scroll-card">
-          <div class="panel-header">
-            <div>
-              <span class="panel-kicker">REGION RANK</span>
-              <h2>热点区域</h2>
-            </div>
-          </div>
-          <div class="region-list">
-            <div v-for="item in regionHeat" :key="item.regionName" class="region-row">
+      <main class="screen-grid">
+        <section class="panel-column">
+          <article class="panel-card stage-card">
+            <div class="panel-header">
               <div>
-                <strong>{{ item.regionName }}</strong>
-                <small>成功率 {{ formatPercent(item.successRate) }}</small>
+                <span class="panel-kicker">SYSTEM STATUS</span>
+                <h2>{{ stageStatus }}</h2>
               </div>
-              <div class="region-metrics">
-                <span>{{ item.calls }} 次</span>
-                <span>{{ item.avgLatencyMs }} ms</span>
-              </div>
+              <span class="panel-chip">{{ successRateText }}</span>
             </div>
-          </div>
-        </article>
-      </section>
-
-      <section class="panel-column">
-        <article class="panel-card scroll-card">
-          <div class="panel-header">
-            <div>
-              <span class="panel-kicker">TOP USERS</span>
-              <h2>高频用户</h2>
-            </div>
-          </div>
-          <div class="user-list">
-            <div v-for="(item, index) in topUsers" :key="`${item.user_id}-${index}`" class="user-row">
-              <span class="user-index">{{ String(index + 1).padStart(2, '0') }}</span>
+            <p class="stage-summary">{{ stageSummary }}</p>
+            <div class="stage-metrics">
               <div>
-                <strong>{{ item.user_id }}</strong>
-                <small>{{ item.agent_type }} / {{ item.avg_latency }} ms</small>
+                <span>高优先级告警</span>
+                <strong>{{ criticalAlerts.length }}</strong>
               </div>
-              <strong>{{ item.calls }}</strong>
-            </div>
-          </div>
-        </article>
-
-        <article class="panel-card scroll-card">
-          <div class="panel-header">
-            <div>
-              <span class="panel-kicker">MODEL HEALTH</span>
-              <h2>模型健康</h2>
-            </div>
-          </div>
-          <div class="model-list">
-            <div
-              v-for="model in topModels"
-              :key="model.id"
-              class="model-row"
-              :class="model.healthStatus === 'degraded' ? 'is-degraded' : 'is-healthy'"
-            >
               <div>
-                <strong>{{ model.name || model.id }}</strong>
-                <small>{{ model.provider }}</small>
+                <span>健康模型</span>
+                <strong>{{ healthyModels.length }}/{{ models.length }}</strong>
               </div>
-              <div class="model-meta">
-                <span>{{ model.avgLatencyMs }} ms</span>
-                <span>{{ Math.round(model.successRate || 0) }}%</span>
+              <div>
+                <span>正向反馈率</span>
+                <strong>{{ positiveRateText }}</strong>
               </div>
             </div>
-          </div>
-        </article>
+          </article>
 
-        <article class="panel-card scroll-card">
-          <div class="panel-header">
-            <div>
-              <span class="panel-kicker">FAILURES</span>
-              <h2>最近失败样本</h2>
+          <article class="panel-card">
+            <div class="panel-header">
+              <div>
+                <span class="panel-kicker">24H TRAFFIC</span>
+                <h2>请求趋势</h2>
+              </div>
+              <span class="panel-chip">峰值 {{ formatCompactNumber(maxHourlyTotal) }}</span>
             </div>
-          </div>
-          <div class="failure-list">
-            <div v-for="item in failureSamples" :key="item.id" class="failure-row">
-              <strong>{{ item.agent_type || 'unknown' }}</strong>
-              <small>{{ item.user_id || 'anonymous' }} / {{ formatTime(item.created_at) }}</small>
-              <p>{{ item.error_message || '未记录异常详情' }}</p>
+            <div class="traffic-chart">
+              <div v-for="item in trendBars" :key="item.hour" class="traffic-column">
+                <div class="traffic-track">
+                  <span class="traffic-bar" :style="{ height: `${item.height}%` }"></span>
+                  <span class="traffic-error" :style="{ height: `${item.errorHeight}%` }"></span>
+                </div>
+                <small>{{ item.hour }}</small>
+              </div>
             </div>
-          </div>
-        </article>
-      </section>
-    </main>
+          </article>
+
+          <article class="panel-card">
+            <div class="panel-header">
+              <div>
+                <span class="panel-kicker">AGENT LOAD</span>
+                <h2>助手调用排行</h2>
+              </div>
+            </div>
+            <div ref="agentShellRef" class="scroll-shell">
+              <div class="scroll-track">
+                <div v-for="item in topAgentStatsMarquee" :key="item.key" class="rank-row">
+                  <strong>{{ item.agent_type }}</strong>
+                  <div class="rank-meta">
+                    <span>{{ item.count }} 次</span>
+                    <span>{{ item.avg_latency ?? 0 }} ms</span>
+                  </div>
+                  <div class="rank-track">
+                    <span :style="{ width: `${buildPercent(item.count, topAgentStats[0]?.count || 1)}%` }"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel-column panel-center">
+          <article class="panel-card map-card">
+            <div class="panel-header">
+              <div>
+                <span class="panel-kicker">CHINA MAP</span>
+                <h2>省份热力 + 城市散点</h2>
+              </div>
+              <span class="panel-chip">近 24 小时</span>
+            </div>
+            <div v-if="chartError" class="chart-error">{{ chartError }}</div>
+            <div ref="chartRef" class="china-chart"></div>
+          </article>
+
+          <article class="panel-card">
+            <div class="panel-header">
+              <div>
+                <span class="panel-kicker">REGION RANK</span>
+                <h2>热点区域</h2>
+              </div>
+            </div>
+            <div ref="regionShellRef" class="scroll-shell">
+              <div class="scroll-track">
+                <div v-for="item in regionHeatMarquee" :key="item.key" class="region-row">
+                  <div>
+                    <strong>{{ item.regionName }}</strong>
+                    <small>成功率 {{ formatPercent(item.successRate) }}</small>
+                  </div>
+                  <div class="region-metrics">
+                    <span>{{ item.calls }} 次</span>
+                    <span>{{ item.avgLatencyMs }} ms</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel-column">
+          <article class="panel-card">
+            <div class="panel-header">
+              <div>
+                <span class="panel-kicker">TOP USERS</span>
+                <h2>高频用户</h2>
+              </div>
+            </div>
+            <div ref="topUsersShellRef" class="scroll-shell">
+              <div class="scroll-track">
+                <div v-for="item in topUsersMarquee" :key="item.key" class="user-row">
+                  <span class="user-index">{{ item.rank }}</span>
+                  <div>
+                    <strong>{{ item.user_id }}</strong>
+                    <small>{{ item.agent_type }} / {{ item.avg_latency }} ms</small>
+                  </div>
+                  <strong>{{ item.calls }}</strong>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel-card">
+            <div class="panel-header">
+              <div>
+                <span class="panel-kicker">MODEL HEALTH</span>
+                <h2>模型健康</h2>
+              </div>
+            </div>
+            <div ref="topModelsShellRef" class="scroll-shell">
+              <div class="scroll-track">
+                <div
+                  v-for="item in topModelsMarquee"
+                  :key="item.key"
+                  class="model-row"
+                  :class="item.healthStatus === 'degraded' ? 'is-degraded' : 'is-healthy'"
+                >
+                  <div>
+                    <strong>{{ item.name || item.id }}</strong>
+                    <small>{{ item.provider }}</small>
+                  </div>
+                  <div class="model-meta">
+                    <span>{{ item.avgLatencyMs }} ms</span>
+                    <span>{{ Math.round(item.successRate || 0) }}%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel-card">
+            <div class="panel-header">
+              <div>
+                <span class="panel-kicker">FAILURES</span>
+                <h2>最近失败样本</h2>
+              </div>
+            </div>
+            <div ref="failureShellRef" class="scroll-shell">
+              <div class="scroll-track">
+                <div v-for="item in failureSamplesMarquee" :key="item.key" class="failure-row">
+                  <strong>{{ item.agent_type || 'unknown' }}</strong>
+                  <small>{{ item.user_id || 'anonymous' }} / {{ formatTime(item.created_at) }}</small>
+                  <p>{{ item.error_message || '未记录异常详情' }}</p>
+                </div>
+              </div>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
 import type { EChartsCoreOption } from 'echarts/core'
 import { useMonitorStore } from '@/stores/monitor'
 
@@ -209,17 +226,28 @@ type LonLat = [number, number]
 type EChartsModule = typeof import('echarts/core')
 type EChartsInstance = import('echarts/core').ECharts
 
+const STAGE_WIDTH = 1920
+const STAGE_HEIGHT = 1080
+
 const monitorStore = useMonitorStore()
+const shellRef = ref<HTMLDivElement | null>(null)
 const chartRef = ref<HTMLDivElement | null>(null)
+const agentShellRef = ref<HTMLDivElement | null>(null)
+const regionShellRef = ref<HTMLDivElement | null>(null)
+const topUsersShellRef = ref<HTMLDivElement | null>(null)
+const topModelsShellRef = ref<HTMLDivElement | null>(null)
+const failureShellRef = ref<HTMLDivElement | null>(null)
 const now = ref(new Date())
 const isFullscreen = ref(Boolean(document.fullscreenElement))
 const chartError = ref('')
+const stageScale = ref(1)
 
 let echartsModule: EChartsModule | null = null
 let chart: EChartsInstance | null = null
 let timer: ReturnType<typeof setInterval> | null = null
 let resizeObserver: ResizeObserver | null = null
 let chinaMapReady = false
+let cleanupAutoScrolls: Array<() => void> = []
 
 const overview = computed(() => monitorStore.screenSnapshot?.overview ?? monitorStore.overview)
 const feedbackOverview = computed(
@@ -228,19 +256,19 @@ const feedbackOverview = computed(
 const screenAlerts = computed(
   () => monitorStore.screenSnapshot?.alerts ?? { activeAlerts: 0, alerts: [] }
 )
-const topUsers = computed(() => (monitorStore.screenSnapshot?.topUsers ?? []).slice(0, 6))
+const topUsers = computed(() => (monitorStore.screenSnapshot?.topUsers ?? []).slice(0, 12))
 const failureSamples = computed(
-  () => (monitorStore.screenSnapshot?.failureSamples ?? []).slice(0, 5)
+  () => (monitorStore.screenSnapshot?.failureSamples ?? []).slice(0, 10)
 )
-const regionHeat = computed(() => (monitorStore.screenSnapshot?.regionHeat ?? []).slice(0, 10))
+const regionHeat = computed(() => (monitorStore.screenSnapshot?.regionHeat ?? []).slice(0, 20))
 const models = computed(() => monitorStore.models ?? [])
 const topAgentStats = computed(() =>
   [...(monitorStore.screenSnapshot?.agentStats ?? [])]
     .sort((a, b) => (b.count ?? 0) - (a.count ?? 0))
-    .slice(0, 6)
+    .slice(0, 10)
 )
 const topModels = computed(() =>
-  [...models.value].sort((a, b) => (b.totalCalls ?? 0) - (a.totalCalls ?? 0)).slice(0, 6)
+  [...models.value].sort((a, b) => (b.totalCalls ?? 0) - (a.totalCalls ?? 0)).slice(0, 12)
 )
 const healthyModels = computed(() =>
   models.value.filter((item) => !item.healthStatus || item.healthStatus === 'healthy')
@@ -277,6 +305,38 @@ const currentDate = computed(() =>
     day: 'numeric',
     weekday: 'long'
   })
+)
+
+function buildAutoScrollList<T extends Record<string, unknown>>(
+  items: T[],
+  duplicateThreshold: number,
+  rankFactory?: (index: number, total: number) => string
+) {
+  const shouldDuplicate = items.length > duplicateThreshold
+  const base = shouldDuplicate ? [...items, ...items] : items
+  return base.map((item, index) => ({
+    ...item,
+    key: `${String(item.id ?? item.regionName ?? item.user_id ?? item.agent_type ?? index)}-${index}`,
+    rank: rankFactory ? rankFactory(index, items.length) : ''
+  }))
+}
+
+const topAgentStatsMarquee = computed(() =>
+  buildAutoScrollList(topAgentStats.value, 4)
+)
+const regionHeatMarquee = computed(() =>
+  buildAutoScrollList(regionHeat.value, 4)
+)
+const topUsersMarquee = computed(() =>
+  buildAutoScrollList(topUsers.value, 4, (index, total) =>
+    String((index % total) + 1).padStart(2, '0')
+  )
+)
+const topModelsMarquee = computed(() =>
+  buildAutoScrollList(topModels.value, 4)
+)
+const failureSamplesMarquee = computed(() =>
+  buildAutoScrollList(failureSamples.value, 3)
 )
 
 const stageStatus = computed(() => {
@@ -383,6 +443,100 @@ const cityScatterData = computed(() =>
   })
 )
 
+function updateStageScale() {
+  const shell = shellRef.value
+  if (!shell) {
+    stageScale.value = 1
+    return
+  }
+  const widthScale = shell.clientWidth / STAGE_WIDTH
+  const heightScale = shell.clientHeight / STAGE_HEIGHT
+  stageScale.value = Math.max(0.35, Math.min(widthScale, heightScale))
+}
+
+function createAutoScroller(
+  shellRefValue: Ref<HTMLDivElement | null>,
+  enabled: () => boolean,
+  speed = 0.35
+) {
+  let intervalId: ReturnType<typeof setInterval> | null = null
+  let pausedUntil = 0
+  let remainder = 0
+  let hovered = false
+
+  const tick = () => {
+    const shell = shellRefValue.value
+    if (!shell) {
+      return
+    }
+
+    if (!enabled()) {
+      return
+    }
+
+    const halfHeight = shell.scrollHeight / 2
+    if (halfHeight <= shell.clientHeight) {
+      shell.scrollTop = 0
+      return
+    }
+
+    if (!hovered && Date.now() >= pausedUntil) {
+      remainder += speed
+      const step = Math.floor(remainder)
+      if (step <= 0) {
+        return
+      }
+      remainder -= step
+      shell.scrollTop += step
+      if (shell.scrollTop >= halfHeight) {
+        shell.scrollTop -= halfHeight
+      }
+    }
+  }
+
+  const pause = (duration = 1800) => {
+    pausedUntil = Date.now() + duration
+  }
+
+  const bind = () => {
+    const shell = shellRefValue.value
+    if (!shell) return () => {}
+    shell.scrollTop = 0
+
+    const onMouseEnter = () => {
+      hovered = true
+    }
+    const onMouseLeave = () => {
+      hovered = false
+      pause(500)
+    }
+    const onWheel = () => pause(2200)
+    const onTouch = () => pause(2200)
+
+    shell.addEventListener('mouseenter', onMouseEnter)
+    shell.addEventListener('mouseleave', onMouseLeave)
+    shell.addEventListener('wheel', onWheel, { passive: true })
+    shell.addEventListener('touchmove', onTouch, { passive: true })
+
+    return () => {
+      shell.removeEventListener('mouseenter', onMouseEnter)
+      shell.removeEventListener('mouseleave', onMouseLeave)
+      shell.removeEventListener('wheel', onWheel)
+      shell.removeEventListener('touchmove', onTouch)
+    }
+  }
+
+  const unbind = bind()
+  intervalId = setInterval(tick, 16)
+
+  return () => {
+    if (intervalId) {
+      clearInterval(intervalId)
+    }
+    unbind()
+  }
+}
+
 async function ensureEcharts() {
   if (echartsModule) return echartsModule
   const [core, charts, components, renderers] = await Promise.all([
@@ -409,7 +563,10 @@ function buildChartOption(): EChartsCoreOption {
     1,
     ...provinceSeriesData.value.map((item) => Number(item.value) || 0)
   )
-  const maxCityValue = Math.max(1, ...cityScatterData.value.map((item) => Number(item.value[2]) || 0))
+  const maxCityValue = Math.max(
+    1,
+    ...cityScatterData.value.map((item) => Number(item.value[2]) || 0)
+  )
 
   return {
     backgroundColor: 'transparent',
@@ -508,7 +665,19 @@ async function ensureChart() {
 }
 
 function resizeChart() {
+  updateStageScale()
   chart?.resize()
+}
+
+function initAutoScrolls() {
+  cleanupAutoScrolls.forEach((fn) => fn())
+  cleanupAutoScrolls = [
+    createAutoScroller(agentShellRef, () => topAgentStats.value.length > 4, 0.26),
+    createAutoScroller(regionShellRef, () => regionHeat.value.length > 4, 0.3),
+    createAutoScroller(topUsersShellRef, () => topUsers.value.length > 4, 0.3),
+    createAutoScroller(topModelsShellRef, () => topModels.value.length > 4, 0.28),
+    createAutoScroller(failureShellRef, () => failureSamples.value.length > 3, 0.22)
+  ]
 }
 
 function buildPercent(value: number, max: number) {
@@ -537,7 +706,9 @@ function formatTime(value?: string) {
 async function refreshScreen() {
   await monitorStore.loadScreenData()
   await nextTick()
+  updateStageScale()
   await ensureChart()
+  initAutoScrolls()
 }
 
 async function toggleFullscreen() {
@@ -556,10 +727,12 @@ function syncFullscreenState() {
 }
 
 watch(
-  [regionHeat, () => monitorStore.loading],
+  [regionHeat, topUsers, topModels, failureSamples, topAgentStats, () => monitorStore.loading],
   async () => {
     await nextTick()
+    updateStageScale()
     await ensureChart()
+    initAutoScrolls()
   },
   { deep: true }
 )
@@ -570,9 +743,9 @@ onMounted(async () => {
   }, 1000)
   document.addEventListener('fullscreenchange', syncFullscreenState)
   window.addEventListener('resize', resizeChart)
-  if (chartRef.value) {
+  if (shellRef.value) {
     resizeObserver = new ResizeObserver(() => resizeChart())
-    resizeObserver.observe(chartRef.value)
+    resizeObserver.observe(shellRef.value)
   }
   await refreshScreen()
 })
@@ -582,6 +755,7 @@ onUnmounted(() => {
   document.removeEventListener('fullscreenchange', syncFullscreenState)
   window.removeEventListener('resize', resizeChart)
   resizeObserver?.disconnect()
+  cleanupAutoScrolls.forEach((fn) => fn())
   chart?.dispose()
   chart = null
 })
@@ -590,20 +764,30 @@ onUnmounted(() => {
 <style scoped>
 .screen-page {
   position: relative;
+  width: 100%;
   height: 100%;
-  min-height: 100%;
-  padding: clamp(10px, 1vw, 16px);
-  color: #edf6ff;
   overflow: hidden;
+  background: #030712;
+}
+
+.screen-stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1920px;
+  height: 1080px;
+  transform-origin: center center;
+  color: #edf6ff;
+  padding: 16px;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  gap: clamp(10px, 0.9vw, 14px);
+  grid-template-rows: 92px 144px minmax(0, 1fr);
+  gap: 14px;
+  overflow: hidden;
 }
 
 .screen-backdrop {
   position: absolute;
   inset: 0;
-  border-radius: 0;
   background:
     radial-gradient(circle at 15% 15%, rgba(56, 189, 248, 0.18), transparent 25%),
     radial-gradient(circle at 85% 10%, rgba(45, 212, 191, 0.16), transparent 22%),
@@ -621,23 +805,23 @@ onUnmounted(() => {
 
 .screen-topbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 340px 260px;
+  gap: 16px;
   align-items: center;
 }
 
 .screen-kicker,
 .panel-kicker {
   display: block;
-  font-size: clamp(10px, 0.58vw, 11px);
+  font-size: 11px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: rgba(125, 211, 252, 0.75);
 }
 
 .screen-title {
-  margin: 6px 0 0;
-  font-size: clamp(22px, 1.8vw, 32px);
+  margin: 8px 0 0;
+  font-size: 32px;
   line-height: 1.1;
 }
 
@@ -647,7 +831,7 @@ onUnmounted(() => {
 }
 
 .screen-clock strong {
-  font-size: clamp(24px, 2.2vw, 38px);
+  font-size: 38px;
 }
 
 .screen-clock span,
@@ -664,12 +848,13 @@ onUnmounted(() => {
 
 .screen-actions {
   display: flex;
+  justify-content: flex-end;
   gap: 10px;
 }
 
 .action-btn {
-  height: 38px;
-  padding: 0 14px;
+  height: 40px;
+  padding: 0 16px;
   border-radius: 14px;
   border: 1px solid rgba(148, 163, 184, 0.18);
   background: rgba(255, 255, 255, 0.04);
@@ -699,8 +884,7 @@ onUnmounted(() => {
 }
 
 .hero-card {
-  padding: 14px;
-  min-height: 110px;
+  padding: 16px;
 }
 
 .hero-label {
@@ -710,13 +894,13 @@ onUnmounted(() => {
 
 .hero-value {
   display: block;
-  margin-top: 10px;
-  font-size: clamp(22px, 2vw, 42px);
+  margin-top: 12px;
+  font-size: 40px;
 }
 
 .screen-grid {
   display: grid;
-  grid-template-columns: 0.94fr 1.34fr 0.92fr;
+  grid-template-columns: 440px minmax(0, 1fr) 430px;
   gap: 14px;
   overflow: hidden;
 }
@@ -729,7 +913,7 @@ onUnmounted(() => {
 }
 
 .panel-center {
-  grid-template-rows: 1.25fr 0.75fr;
+  grid-template-rows: 1.28fr 0.72fr;
 }
 
 .panel-card {
@@ -738,12 +922,6 @@ onUnmounted(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-}
-
-.scroll-card :is(.rank-list, .region-list, .user-list, .model-list, .failure-list) {
-  overflow: auto;
-  min-height: 0;
-  padding-right: 4px;
 }
 
 .panel-header {
@@ -756,7 +934,7 @@ onUnmounted(() => {
 
 .panel-header h2 {
   margin: 8px 0 0;
-  font-size: clamp(17px, 1.1vw, 22px);
+  font-size: 22px;
   line-height: 1.1;
 }
 
@@ -785,7 +963,7 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
-  margin-top: 12px;
+  margin-top: 14px;
 }
 
 .stage-metrics div,
@@ -808,7 +986,7 @@ onUnmounted(() => {
 .stage-metrics strong {
   display: block;
   margin-top: 6px;
-  font-size: clamp(18px, 1.5vw, 26px);
+  font-size: 24px;
 }
 
 .traffic-chart {
@@ -854,14 +1032,24 @@ onUnmounted(() => {
   background: linear-gradient(180deg, #fb7185, rgba(244, 63, 94, 0.22));
 }
 
-.rank-list,
-.region-list,
-.user-list,
-.model-list,
-.failure-list {
+.scroll-shell {
+  flex: 1;
+  min-height: 0;
+  margin-top: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 6px;
+  scrollbar-width: none;
+}
+
+.scroll-shell::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.scroll-track {
   display: grid;
   gap: 10px;
-  margin-top: 12px;
 }
 
 .rank-row {
@@ -948,53 +1136,5 @@ onUnmounted(() => {
   margin: 6px 0 0;
   line-height: 1.6;
   font-size: 12px;
-}
-
-@media (max-width: 1600px) {
-  .hero-strip {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .screen-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .panel-center {
-    grid-column: 1 / -1;
-    grid-template-rows: 1fr;
-  }
-}
-
-@media (max-width: 1100px) {
-  .screen-page {
-    overflow: auto;
-    grid-template-rows: auto auto auto;
-  }
-
-  .screen-grid {
-    grid-template-columns: 1fr;
-    overflow: visible;
-  }
-
-  .panel-column,
-  .panel-center {
-    grid-template-rows: auto;
-  }
-
-  .panel-card,
-  .china-chart {
-    min-height: 320px;
-  }
-}
-
-@media (max-width: 768px) {
-  .screen-topbar {
-    grid-template-columns: 1fr;
-  }
-
-  .hero-strip,
-  .stage-metrics {
-    grid-template-columns: 1fr;
-  }
 }
 </style>
