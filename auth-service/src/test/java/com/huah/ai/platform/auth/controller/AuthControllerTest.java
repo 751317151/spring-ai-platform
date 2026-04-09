@@ -171,4 +171,30 @@ class AuthControllerTest {
                 anyLong(),
                 eq(TimeUnit.SECONDS));
     }
+
+    @Test
+    void refreshRejectsDisabledUser() {
+        AiUserEntity user = AiUserEntity.builder()
+                .userId("user-1")
+                .username("alice")
+                .passwordHash("encoded-password")
+                .department("研发中心")
+                .roles("ROLE_USER")
+                .build();
+        when(userMapper.selectByUserIdAndEnabled("user-1")).thenReturn(user, null);
+        when(passwordEncoder.matches("plain-password", "encoded-password")).thenReturn(true);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+
+        LoginRequest loginRequest = new LoginRequest();
+        loginRequest.setUserId("user-1");
+        loginRequest.setPassword("plain-password");
+        Result<TokenResponse> loginResult = controller.login(loginRequest);
+
+        RefreshTokenRequest refreshRequest = new RefreshTokenRequest();
+        refreshRequest.setRefreshToken(loginResult.getData().getRefreshToken());
+        Result<TokenResponse> result = controller.refresh(refreshRequest);
+
+        assertEquals(401, result.getCode());
+        assertEquals("用户已被禁用或不存在", result.getMessage());
+    }
 }

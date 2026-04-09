@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.huah.ai.platform.rag.mapper.VectorStoreSearchMapper">
+    <select id="searchByKeywords" resultType="com.huah.ai.platform.rag.model.VectorStoreChunkEntity">
+        SELECT
+            id::text AS chunk_id,
+            CAST(metadata->>'doc_id' AS BIGINT) AS document_id,
+            COALESCE(CAST(metadata->>'chunk_index' AS INTEGER), 0) AS chunk_index,
+            COALESCE(metadata->>'filename', 'unknown') AS filename,
+            metadata->>'chunk_preview' AS preview,
+            content,
+            (
+            <foreach collection="terms" item="term" separator=" + ">
+                (
+                    CASE WHEN LOWER(COALESCE(metadata->>'filename', '')) LIKE CONCAT('%', LOWER(#{term}), '%') THEN 3 ELSE 0 END
+                    + CASE WHEN LOWER(COALESCE(metadata->>'chunk_preview', '')) LIKE CONCAT('%', LOWER(#{term}), '%') THEN 2 ELSE 0 END
+                    + CASE WHEN LOWER(content) LIKE CONCAT('%', LOWER(#{term}), '%') THEN 1 ELSE 0 END
+                )
+            </foreach>
+            ) AS lexical_score
+        FROM vector_store
+        WHERE metadata->>'kb_id' = CAST(#{knowledgeBaseId} AS TEXT)
+          AND (
+            <foreach collection="terms" item="term" separator=" OR ">
+                LOWER(content) LIKE CONCAT('%', LOWER(#{term}), '%')
+                OR LOWER(COALESCE(metadata->>'chunk_preview', '')) LIKE CONCAT('%', LOWER(#{term}), '%')
+                OR LOWER(COALESCE(metadata->>'filename', '')) LIKE CONCAT('%', LOWER(#{term}), '%')
+            </foreach>
+          )
+        ORDER BY lexical_score DESC,
+                 COALESCE(CAST(metadata->>'chunk_index' AS INTEGER), 0) ASC,
+                 id ASC
+        LIMIT #{limit}
+    </select>
+</mapper>

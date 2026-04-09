@@ -74,7 +74,7 @@ public class AgentOperationsController {
     public Result<McpServerListResponse> listMcpServersByAgent(
             @PathVariable(name = "agentType") String agentType,
             HttpServletRequest request) {
-        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker);
+        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker, "READ");
         if (deny != null) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
         }
@@ -97,7 +97,7 @@ public class AgentOperationsController {
     public Result<ToolSecurityOverviewResponse> getToolSecurityOverview(
             @PathVariable(name = "agentType") String agentType,
             HttpServletRequest request) {
-        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker);
+        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker, "READ");
         if (deny != null) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
         }
@@ -109,7 +109,7 @@ public class AgentOperationsController {
             @PathVariable(name = "agentType") String agentType,
             HttpServletRequest request) {
         AgentRequestContext context = controllerSupport.resolveContext(request);
-        String deny = accessChecker.checkPermission(agentType, context.getRoles(), context.getDepartment());
+        String deny = accessChecker.checkPermission(agentType, context.getRoles(), context.getDepartment(), "READ");
         if (deny != null) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
         }
@@ -120,7 +120,7 @@ public class AgentOperationsController {
     public Result<AgentAccessOverviewResponse> getAgentAccessOverview(
             @PathVariable(name = "agentType") String agentType,
             HttpServletRequest request) {
-        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker);
+        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker, "READ");
         if (deny != null) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
         }
@@ -131,7 +131,7 @@ public class AgentOperationsController {
     public Result<AgentWorkbenchSummaryResponse> getAgentWorkbenchSummary(
             @PathVariable(name = "agentType") String agentType,
             HttpServletRequest request) {
-        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker);
+        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker, "READ");
         if (deny != null) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
         }
@@ -143,11 +143,11 @@ public class AgentOperationsController {
             @RequestParam(name = "leftAgent") String leftAgent,
             @RequestParam(name = "rightAgent") String rightAgent,
             HttpServletRequest request) {
-        String leftDeny = controllerSupport.checkAgentAccess(leftAgent, request, accessChecker);
+        String leftDeny = controllerSupport.checkAgentAccess(leftAgent, request, accessChecker, "READ");
         if (leftDeny != null) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, leftDeny);
         }
-        String rightDeny = controllerSupport.checkAgentAccess(rightAgent, request, accessChecker);
+        String rightDeny = controllerSupport.checkAgentAccess(rightAgent, request, accessChecker, "READ");
         if (rightDeny != null) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, rightDeny);
         }
@@ -158,7 +158,7 @@ public class AgentOperationsController {
     public Result<AgentLogLifecycleSummaryResponse> getAgentLogLifecycleSummary(
             @PathVariable(name = "agentType") String agentType,
             HttpServletRequest request) {
-        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker);
+        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker, "READ");
         if (deny != null) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
         }
@@ -169,7 +169,7 @@ public class AgentOperationsController {
     public Result<AgentLogArchiveDetailResponse> getLatestAgentLogArchive(
             @PathVariable(name = "agentType") String agentType,
             HttpServletRequest request) {
-        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker);
+        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker, "READ");
         if (deny != null) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
         }
@@ -182,7 +182,7 @@ public class AgentOperationsController {
             @RequestParam(name = "artifactType") String artifactType,
             @RequestParam(name = "limit", defaultValue = "5") Integer limit,
             HttpServletRequest request) {
-        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker);
+        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker, "READ");
         if (deny != null) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
         }
@@ -208,7 +208,7 @@ public class AgentOperationsController {
             @RequestParam(name = "traceId") String traceId,
             HttpServletRequest request) {
         AgentRequestContext context = controllerSupport.resolveContext(request);
-        String deny = accessChecker.checkPermission(agentType, context.getRoles(), context.getDepartment());
+        String deny = accessChecker.checkPermission(agentType, context.getRoles(), context.getDepartment(), "EXECUTE");
         if (deny != null) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
         }
@@ -237,7 +237,7 @@ public class AgentOperationsController {
             @PathVariable(name = "agentType") String agentType,
             @RequestBody(required = false) AgentLogCleanupRequest body,
             HttpServletRequest request) {
-        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker);
+        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker, "WRITE");
         if (deny != null) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
         }

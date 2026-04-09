@@ -139,7 +139,10 @@ public class AgentConversationController {
         String userId = context.getUserId();
 
         String deny = accessChecker.checkPermission(
-                AgentApiConstants.AGENT_TYPE_MULTI, context.getRoles(), context.getDepartment());
+                AgentApiConstants.AGENT_TYPE_MULTI,
+                context.getRoles(),
+                context.getDepartment(),
+                "EXECUTE");
         if (deny != null) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
         }
@@ -156,7 +159,7 @@ public class AgentConversationController {
     }
 
     private Result<AgentChatResponse> validateChatAccess(String agentType, AgentRequestContext context, String userId) {
-        String deny = accessChecker.checkPermission(agentType, context.getRoles(), context.getDepartment());
+        String deny = accessChecker.checkPermission(agentType, context.getRoles(), context.getDepartment(), "CHAT");
         if (deny != null) {
             log.warn("[Chat] permission denied agent={}, userId={}, roles={}, reason={}",
                     agentType, userId, context.getRoles(), deny);
@@ -172,7 +175,7 @@ public class AgentConversationController {
     }
 
     private String validateStreamAccess(String agentType, AgentRequestContext context, String userId) {
-        String deny = accessChecker.checkPermission(agentType, context.getRoles(), context.getDepartment());
+        String deny = accessChecker.checkPermission(agentType, context.getRoles(), context.getDepartment(), "CHAT");
         if (deny != null) {
             log.warn("[Stream] permission denied agent={}, userId={}, roles={}, reason={}",
                     agentType, userId, context.getRoles(), deny);

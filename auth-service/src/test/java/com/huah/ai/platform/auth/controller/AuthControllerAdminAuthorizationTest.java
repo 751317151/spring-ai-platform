@@ -16,11 +16,13 @@ import com.huah.ai.platform.auth.service.AuthQuotaAdminService;
 import com.huah.ai.platform.auth.service.AuthRoleService;
 import com.huah.ai.platform.auth.service.AuthTokenService;
 import com.huah.ai.platform.common.config.CorsConfig;
+import com.huah.ai.platform.common.web.RequestOriginResolver;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -52,6 +54,12 @@ class AuthControllerAdminAuthorizationTest {
 
     @MockBean
     private StringRedisTemplate redisTemplate;
+
+    @MockBean
+    private RestTemplateBuilder restTemplateBuilder;
+
+    @MockBean
+    private RequestOriginResolver requestOriginResolver;
 
     @MockBean
     private AiUserMapper aiUserMapper;

@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,6 +47,9 @@ public class AuthAdminService {
     private static final String MESSAGE_ROLE_NAME_INVALID = "roleName \u5fc5\u987b\u4ee5 ROLE_ \u5f00\u5934\uff0c\u4e14\u53ea\u80fd\u5305\u542b\u5927\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u548c\u4e0b\u5212\u7ebf";
     private static final String MESSAGE_ROLE_NAME_EXISTS = "roleName \u5df2\u5b58\u5728";
     private static final String MESSAGE_ROLE_REFERENCED = "\u89d2\u8272\u4ecd\u88ab\u7528\u6237\u6216 AI \u52a9\u624b\u6743\u9650\u89c4\u5219\u5f15\u7528\uff0c\u65e0\u6cd5\u5220\u9664";
+    private static final String MESSAGE_CURRENT_USER_DELETE_FORBIDDEN = "\u4e0d\u80fd\u5220\u9664\u5f53\u524d\u767b\u5f55\u7528\u6237";
+    private static final String MESSAGE_LAST_ADMIN_FORBIDDEN = "\u81f3\u5c11\u9700\u4fdd\u7559\u4e00\u4e2a\u542f\u7528\u72b6\u6001\u7684\u7ba1\u7406\u5458";
+    private static final String ROLE_ADMIN = "ROLE_ADMIN";
 
     private final AiRoleMapper roleMapper;
     private final AiUserMapper userMapper;
@@ -252,6 +257,10 @@ public class AuthAdminService {
             return Result.fail(404, MESSAGE_USER_NOT_FOUND);
         }
 
+        if (wouldRemoveLastAdmin(user, request)) {
+            return Result.fail(400, MESSAGE_LAST_ADMIN_FORBIDDEN);
+        }
+
         if (request.getUsername() != null) {
             AiUserEntity existedUser = userMapper.selectByUsername(request.getUsername());
             if (existedUser != null && !id.equals(existedUser.getUserId())) {
@@ -299,6 +308,12 @@ public class AuthAdminService {
         AiUserEntity user = userMapper.selectByUserId(id);
         if (user == null) {
             return Result.fail(404, MESSAGE_USER_NOT_FOUND);
+        }
+        if (isCurrentAuthenticatedUser(id)) {
+            return Result.fail(400, MESSAGE_CURRENT_USER_DELETE_FORBIDDEN);
+        }
+        if (isLastEnabledAdmin(user)) {
+            return Result.fail(400, MESSAGE_LAST_ADMIN_FORBIDDEN);
         }
         userRoleMapper.deleteByUserId(id);
         userTokenLimitMapper.deleteByUserId(id);
@@ -442,5 +457,42 @@ public class AuthAdminService {
 
     private boolean isValidRoleName(String roleName) {
         return roleName.matches("^ROLE_[A-Z0-9_]+$");
+    }
+
+    private boolean wouldRemoveLastAdmin(AiUserEntity user, UserUpsertRequest request) {
+        if (!hasRole(user.getRoles(), ROLE_ADMIN)) {
+            return false;
+        }
+        boolean enabledAfterUpdate = request.getEnabled() == null
+                ? user.isEnabled()
+                : parseEnabled(request.getEnabled(), user.isEnabled());
+        boolean keepsAdminRole = request.getRoles() == null || hasRole(request.getRoles(), ROLE_ADMIN);
+        return (!enabledAfterUpdate || !keepsAdminRole) && isLastEnabledAdmin(user);
+    }
+
+    private boolean isLastEnabledAdmin(AiUserEntity user) {
+        return user.isEnabled()
+                && hasRole(user.getRoles(), ROLE_ADMIN)
+                && userRoleMapper.countEnabledUsersByRoleName(ROLE_ADMIN) <= 1;
+    }
+
+    private boolean isCurrentAuthenticatedUser(String userId) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getName() == null) {
+            return false;
+        }
+        return userId.equals(authentication.getName());
+    }
+
+    private boolean hasRole(String roles, String roleName) {
+        if (roles == null || roles.isBlank()) {
+            return false;
+        }
+        for (String role : roles.split(",")) {
+            if (roleName.equals(role.trim().toUpperCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
     }
 }

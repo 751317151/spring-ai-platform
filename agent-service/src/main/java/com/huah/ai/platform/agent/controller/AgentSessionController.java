@@ -32,6 +32,7 @@ public class AgentSessionController {
 
     private final ConversationMemoryService memoryService;
     private final ResponseFeedbackService feedbackService;
+    private final com.huah.ai.platform.agent.security.AgentAccessChecker accessChecker;
     private final AgentControllerSupport controllerSupport;
 
     @DeleteMapping("/{agentType}/memory")
@@ -41,6 +42,10 @@ public class AgentSessionController {
                     defaultValue = AgentApiConstants.DEFAULT_SESSION_ID) String sessionId,
             HttpServletRequest request) {
         String userId = controllerSupport.currentUserId(request);
+        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker, "WRITE");
+        if (deny != null) {
+            return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
+        }
         if (!controllerSupport.ownsSession(userId, agentType, sessionId)) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, AgentApiConstants.MESSAGE_SESSION_ACCESS_DENIED);
         }
@@ -56,6 +61,10 @@ public class AgentSessionController {
                     defaultValue = AgentApiConstants.DEFAULT_SESSION_ID) String sessionId,
             HttpServletRequest request) {
         String userId = controllerSupport.currentUserId(request);
+        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker, "READ");
+        if (deny != null) {
+            return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
+        }
         if (!controllerSupport.ownsSession(userId, agentType, sessionId)) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, AgentApiConstants.MESSAGE_SESSION_ACCESS_DENIED);
         }
@@ -75,6 +84,10 @@ public class AgentSessionController {
             @RequestParam(name = "limit", required = false) Integer limit,
             HttpServletRequest request) {
         String userId = controllerSupport.currentUserId(request);
+        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker, "READ");
+        if (deny != null) {
+            return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
+        }
         String prefix = controllerSupport.buildSessionPrefix(userId, agentType);
         log.info("[Sessions] list agent={}, userId={}, prefix={}", agentType, userId, prefix);
         return Result.ok(memoryService.searchSessions(
@@ -87,6 +100,10 @@ public class AgentSessionController {
             @RequestHeader(value = AgentApiConstants.HEADER_SESSION_ID) String sessionId,
             HttpServletRequest request) {
         String userId = controllerSupport.currentUserId(request);
+        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker, "READ");
+        if (deny != null) {
+            return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
+        }
         if (!controllerSupport.ownsSession(userId, agentType, sessionId)) {
             return Result.fail(
                     AgentApiConstants.HTTP_FORBIDDEN, AgentApiConstants.MESSAGE_SESSION_CONFIG_ACCESS_DENIED);
@@ -101,6 +118,10 @@ public class AgentSessionController {
             @RequestBody SessionConfigRequest body,
             HttpServletRequest request) {
         String userId = controllerSupport.currentUserId(request);
+        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker, "WRITE");
+        if (deny != null) {
+            return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
+        }
         if (!controllerSupport.ownsSession(userId, agentType, sessionId)) {
             return Result.fail(
                     AgentApiConstants.HTTP_FORBIDDEN, AgentApiConstants.MESSAGE_SESSION_CONFIG_ACCESS_DENIED);
@@ -116,6 +137,10 @@ public class AgentSessionController {
             @RequestBody SessionTitleRequest body,
             HttpServletRequest request) {
         String userId = controllerSupport.currentUserId(request);
+        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker, "WRITE");
+        if (deny != null) {
+            return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
+        }
         if (!controllerSupport.ownsSession(userId, agentType, sessionId)) {
             return Result.fail(
                     AgentApiConstants.HTTP_FORBIDDEN, AgentApiConstants.MESSAGE_SESSION_TITLE_ACCESS_DENIED);
@@ -135,6 +160,10 @@ public class AgentSessionController {
             @RequestBody SessionToggleRequest body,
             HttpServletRequest request) {
         String userId = controllerSupport.currentUserId(request);
+        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker, "WRITE");
+        if (deny != null) {
+            return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
+        }
         if (!controllerSupport.ownsSession(userId, agentType, sessionId)) {
             return Result.fail(
                     AgentApiConstants.HTTP_FORBIDDEN, AgentApiConstants.MESSAGE_SESSION_TITLE_ACCESS_DENIED);
@@ -152,6 +181,10 @@ public class AgentSessionController {
             @RequestBody SessionToggleRequest body,
             HttpServletRequest request) {
         String userId = controllerSupport.currentUserId(request);
+        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker, "WRITE");
+        if (deny != null) {
+            return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
+        }
         if (!controllerSupport.ownsSession(userId, agentType, sessionId)) {
             return Result.fail(
                     AgentApiConstants.HTTP_FORBIDDEN, AgentApiConstants.MESSAGE_SESSION_TITLE_ACCESS_DENIED);
@@ -170,6 +203,10 @@ public class AgentSessionController {
             @RequestHeader(value = AgentApiConstants.HEADER_SESSION_ID) String sessionId,
             HttpServletRequest request) {
         String userId = controllerSupport.currentUserId(request);
+        String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker, "WRITE");
+        if (deny != null) {
+            return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
+        }
         if (!controllerSupport.ownsSession(userId, agentType, sessionId)) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, AgentApiConstants.MESSAGE_SESSION_ACCESS_DENIED);
         }

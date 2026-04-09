@@ -7,6 +7,7 @@ import type {
   KnowledgeBase,
   RagEvaluationOverview,
   RagEvaluationSample,
+  RetrievalDebugInfo,
   SourceDocument,
   SSEChunk
 } from '@/api/types'
@@ -49,6 +50,7 @@ export const useRagStore = defineStore('rag', () => {
   const activeChunkDocument = ref<DocumentMeta | null>(null)
   const queryResult = ref('')
   const querySources = ref<SourceDocument[]>([])
+  const queryRetrievalDebug = ref<RetrievalDebugInfo | null>(null)
   const queryResponseId = ref('')
   const queryFeedback = ref<'up' | 'down' | null>(null)
   const isQuerying = ref(false)
@@ -472,6 +474,7 @@ export const useRagStore = defineStore('rag', () => {
 
     queryResult.value = ''
     querySources.value = []
+    queryRetrievalDebug.value = null
     queryResponseId.value = ''
     queryFeedback.value = null
     queryError.value = ''
@@ -483,6 +486,7 @@ export const useRagStore = defineStore('rag', () => {
       queryStage.value = 'answering'
       queryResult.value = createGuestRagAnswer(question, currentKb.value)
       querySources.value = createGuestRagSources(question, currentKb.value)
+      queryRetrievalDebug.value = null
       queryResponseId.value = `guest-rag-${Date.now()}`
       queryFeedback.value = null
       isQuerying.value = false
@@ -532,6 +536,9 @@ export const useRagStore = defineStore('rag', () => {
               if (Array.isArray(data.sources)) {
                 querySources.value = data.sources.map((item) => ({ ...item, feedback: null }))
               }
+              if (data.retrievalDebug) {
+                queryRetrievalDebug.value = data.retrievalDebug
+              }
               if (data.done && data.responseId) {
                 queryResponseId.value = data.responseId
               }
@@ -550,6 +557,7 @@ export const useRagStore = defineStore('rag', () => {
         queryStage.value = 'answering'
         queryResult.value = data.answer || ''
         querySources.value = (data.sources || []).map((item) => ({ ...item, feedback: null }))
+        queryRetrievalDebug.value = data.retrievalDebug || null
         queryResponseId.value = data.responseId || ''
       }
 
@@ -560,6 +568,7 @@ export const useRagStore = defineStore('rag', () => {
       runtimeStore.markServiceUnavailable('rag', '知识库问答服务不可用，请检查 rag-service 状态。')
       queryResult.value = ''
       querySources.value = []
+      queryRetrievalDebug.value = null
       queryResponseId.value = ''
       queryFeedback.value = null
     } finally {
@@ -609,6 +618,7 @@ export const useRagStore = defineStore('rag', () => {
     activeChunkDocument,
     queryResult,
     querySources,
+    queryRetrievalDebug,
     queryResponseId,
     queryFeedback,
     isQuerying,

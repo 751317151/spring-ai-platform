@@ -1,6 +1,17 @@
 package com.huah.ai.platform.agent.security;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.huah.ai.platform.agent.metrics.AiMetricsCollector;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -10,20 +21,12 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class AgentAccessCheckerTest {
+
+    private static final String QUERY_PERMISSION =
+            "SELECT allowed_roles, allowed_departments, allowed_operations, enabled "
+                    + "FROM ai_bot_permissions WHERE bot_type = ?";
 
     @Mock
     private JdbcTemplate jdbcTemplate;
@@ -46,28 +49,24 @@ class AgentAccessCheckerTest {
 
     @Test
     void checkPermissionAllowsMatchingRoleAndDepartment() {
-        when(jdbcTemplate.queryForList(
-                "SELECT allowed_roles, allowed_departments, enabled FROM ai_bot_permissions WHERE bot_type = ?",
-                "rd"
-        )).thenReturn(List.of(Map.of(
+        when(jdbcTemplate.queryForList(QUERY_PERMISSION, "rd")).thenReturn(List.of(Map.of(
                 "allowed_roles", "ROLE_RD,ROLE_ADMIN",
                 "allowed_departments", "研发中心",
+                "allowed_operations", "CHAT,READ",
                 "enabled", true
         )));
 
-        String result = checker.checkPermission("rd", "ROLE_RD,ROLE_USER", "研发中心");
+        String result = checker.checkPermission("rd", "ROLE_RD,ROLE_USER", "研发中心", "CHAT");
 
         assertNull(result);
     }
 
     @Test
     void checkPermissionRejectsRoleMismatch() {
-        when(jdbcTemplate.queryForList(
-                "SELECT allowed_roles, allowed_departments, enabled FROM ai_bot_permissions WHERE bot_type = ?",
-                "finance"
-        )).thenReturn(List.of(Map.of(
+        when(jdbcTemplate.queryForList(QUERY_PERMISSION, "finance")).thenReturn(List.of(Map.of(
                 "allowed_roles", "ROLE_FINANCE,ROLE_ADMIN",
                 "allowed_departments", "财务部",
+                "allowed_operations", "CHAT",
                 "enabled", true
         )));
 
@@ -77,11 +76,22 @@ class AgentAccessCheckerTest {
     }
 
     @Test
+    void checkPermissionRejectsOperationMismatch() {
+        when(jdbcTemplate.queryForList(QUERY_PERMISSION, "search")).thenReturn(List.of(Map.of(
+                "allowed_roles", "ROLE_RD,ROLE_ADMIN",
+                "allowed_departments", "研发中心",
+                "allowed_operations", "READ",
+                "enabled", true
+        )));
+
+        String result = checker.checkPermission("search", "ROLE_RD", "研发中心", "WRITE");
+
+        assertEquals("当前权限规则不允许该操作，需要操作权限: WRITE", result);
+    }
+
+    @Test
     void checkPermissionRejectsMissingPermissionRecord() {
-        when(jdbcTemplate.queryForList(
-                "SELECT allowed_roles, allowed_departments, enabled FROM ai_bot_permissions WHERE bot_type = ?",
-                "hr"
-        )).thenReturn(List.of());
+        when(jdbcTemplate.queryForList(QUERY_PERMISSION, "hr")).thenReturn(List.of());
 
         String result = checker.checkPermission("hr", "ROLE_HR,ROLE_USER", "人力资源部");
 
@@ -90,10 +100,7 @@ class AgentAccessCheckerTest {
 
     @Test
     void checkPermissionRejectsWhenPermissionQueryFails() {
-        when(jdbcTemplate.queryForList(
-                "SELECT allowed_roles, allowed_departments, enabled FROM ai_bot_permissions WHERE bot_type = ?",
-                "sales"
-        )).thenThrow(new RuntimeException("db down"));
+        when(jdbcTemplate.queryForList(QUERY_PERMISSION, "sales")).thenThrow(new RuntimeException("db down"));
 
         String result = checker.checkPermission("sales", "ROLE_SALES,ROLE_USER", "销售部");
 

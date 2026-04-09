@@ -38,6 +38,7 @@ public class AuthTokenService {
     private static final String MESSAGE_REFRESH_INVALID = "Refresh Token \u65e0\u6548";
     private static final String MESSAGE_TOKEN_INVALID = "Token \u65e0\u6548";
     private static final String MESSAGE_TOKEN_EXPIRED = "Token \u5df2\u5931\u6548";
+    private static final String MESSAGE_USER_DISABLED = "\u7528\u6237\u5df2\u88ab\u7981\u7528\u6216\u4e0d\u5b58\u5728";
     private static final String MESSAGE_AUTH_HEADER_INVALID =
             "Authorization header \u683c\u5f0f\u9519\u8bef";
 
@@ -100,11 +101,17 @@ public class AuthTokenService {
         }
 
         String userId = jwtUtil.getSubject(refreshToken);
-        String username = stringify(jwtUtil.getClaim(refreshToken, "username"));
-        String department = stringify(jwtUtil.getClaim(refreshToken, "department"));
-        String province = stringify(jwtUtil.getClaim(refreshToken, "province"));
-        String city = stringify(jwtUtil.getClaim(refreshToken, "city"));
-        String roles = stringify(jwtUtil.getClaim(refreshToken, "roles"));
+        AiUserEntity user = userMapper.selectByUserIdAndEnabled(userId);
+        if (user == null) {
+            blacklistToken(refreshToken);
+            return Result.fail(401, MESSAGE_USER_DISABLED);
+        }
+
+        String username = defaultString(user.getUsername(), stringify(jwtUtil.getClaim(refreshToken, "username")));
+        String department = defaultString(user.getDepartment(), stringify(jwtUtil.getClaim(refreshToken, "department")));
+        String province = defaultString(user.getProvince(), stringify(jwtUtil.getClaim(refreshToken, "province")));
+        String city = defaultString(user.getCity(), stringify(jwtUtil.getClaim(refreshToken, "city")));
+        String roles = defaultString(user.getRoles(), "ROLE_USER");
 
         blacklistToken(refreshToken);
         return Result.ok(buildTokenPayload(userId, username, department, province, city, roles));
@@ -188,19 +195,61 @@ public class AuthTokenService {
         if (roles != null && roles.contains("ROLE_ADMIN")) {
             return true;
         }
-        if (!isBlank(permission.getAllowedRoles()) && roles != null) {
-            List<String> allowedRoles = List.of(permission.getAllowedRoles().split(","));
-            for (String role : roles.split(",")) {
-                if (allowedRoles.contains(role.trim())) {
-                    return true;
-                }
+        if (!hasRequiredRole(permission.getAllowedRoles(), roles)) {
+            return false;
+        }
+        if (!hasRequiredDepartment(permission.getAllowedDepartments(), department)) {
+            return false;
+        }
+        return isChatOperationAllowed(permission.getAllowedOperations());
+    }
+
+    private boolean hasRequiredRole(String allowedRoles, String roles) {
+        if (isBlank(allowedRoles)) {
+            return true;
+        }
+        if (isBlank(roles)) {
+            return false;
+        }
+        List<String> normalizedAllowedRoles = List.of(allowedRoles.split(",")).stream()
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .toList();
+        for (String role : roles.split(",")) {
+            if (normalizedAllowedRoles.contains(role.trim())) {
+                return true;
             }
         }
-        if (!isBlank(permission.getAllowedDepartments()) && department != null) {
-            List<String> allowedDepartments = List.of(permission.getAllowedDepartments().split(","));
-            return allowedDepartments.contains(department.trim());
-        }
         return false;
+    }
+
+    private boolean hasRequiredDepartment(String allowedDepartments, String department) {
+        if (isBlank(allowedDepartments)) {
+            return true;
+        }
+        if (isBlank(department)) {
+            return false;
+        }
+        List<String> normalizedAllowedDepartments = List.of(allowedDepartments.split(",")).stream()
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .toList();
+        return normalizedAllowedDepartments.contains(department.trim());
+    }
+
+    private boolean isChatOperationAllowed(String allowedOperations) {
+        if (isBlank(allowedOperations)) {
+            return true;
+        }
+        List<String> operations = List.of(allowedOperations.split(",")).stream()
+                .map(String::trim)
+                .map(String::toUpperCase)
+                .filter(value -> !value.isEmpty())
+                .toList();
+        return operations.contains("ALL")
+                || operations.contains("CHAT")
+                || operations.contains("WRITE")
+                || operations.contains("EXECUTE");
     }
 
     private void syncPermissionRolesView(BotPermissionEntity permission) {

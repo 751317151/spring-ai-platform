@@ -34,6 +34,11 @@ class AgentControllerSupport {
         return accessChecker.checkPermission(agentType, context.getRoles(), context.getDepartment());
     }
 
+    String checkAgentAccess(String agentType, HttpServletRequest request, AgentAccessChecker accessChecker, String requiredOperation) {
+        AgentRequestContext context = resolveContext(request);
+        return accessChecker.checkPermission(agentType, context.getRoles(), context.getDepartment(), requiredOperation);
+    }
+
     boolean ownsSession(String userId, String agentType, String sessionId) {
         return sessionId != null && sessionId.startsWith(buildSessionPrefix(userId, agentType));
     }

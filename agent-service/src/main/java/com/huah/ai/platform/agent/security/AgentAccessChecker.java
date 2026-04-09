@@ -1,12 +1,6 @@
 package com.huah.ai.platform.agent.security;
 
 import com.huah.ai.platform.agent.metrics.AiMetricsCollector;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Service;
-
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
@@ -15,6 +9,11 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
 
 /**
  * Agent access and token quota checker.
@@ -27,7 +26,8 @@ public class AgentAccessChecker {
     private static final String TOKEN_DAILY_TOTAL_KEY = "ai:token:daily:total:%s:%s";
     private static final String TOKEN_DAILY_AGENT_KEY = "ai:token:daily:agent:%s:%s:%s";
     private static final String QUERY_PERMISSION =
-            "SELECT allowed_roles, allowed_departments, enabled FROM ai_bot_permissions WHERE bot_type = ?";
+            "SELECT allowed_roles, allowed_departments, allowed_operations, enabled "
+                    + "FROM ai_bot_permissions WHERE bot_type = ?";
     private static final String QUERY_BOT_DAILY_LIMIT =
             "SELECT daily_token_limit FROM ai_bot_permissions WHERE bot_type = ? AND enabled = true";
     private static final String QUERY_USER_AGENT_DAILY_LIMIT =
@@ -54,15 +54,15 @@ public class AgentAccessChecker {
     private final AiMetricsCollector metricsCollector;
 
     public String checkPermission(String agentType, String userRoles, String department) {
+        return checkPermission(agentType, userRoles, department, null);
+    }
+
+    public String checkPermission(String agentType, String userRoles, String department, String requiredOperation) {
         if (userRoles == null || userRoles.isBlank()) {
             return "当前用户未分配角色";
         }
 
-        Set<String> roles = Arrays.stream(userRoles.split(","))
-                .map(String::trim)
-                .filter(role -> !role.isEmpty())
-                .collect(Collectors.toSet());
-
+        Set<String> roles = parseValues(userRoles);
         if (roles.contains("ROLE_ADMIN")) {
             return null;
         }
@@ -82,14 +82,10 @@ public class AgentAccessChecker {
 
             String allowedRolesStr = (String) permission.get("allowed_roles");
             if (allowedRolesStr != null && !allowedRolesStr.isBlank()) {
-                Set<String> allowedRoles = Arrays.stream(allowedRolesStr.split(","))
-                        .map(String::trim)
-                        .filter(role -> !role.isEmpty())
-                        .collect(Collectors.toSet());
+                Set<String> allowedRoles = parseValues(allowedRolesStr);
                 boolean hasRole = roles.stream().anyMatch(allowedRoles::contains);
                 if (!hasRole) {
-                    return "您的角色无权使用该 Agent，需要角色: "
-                            + allowedRolesStr;
+                    return "您的角色无权使用该 Agent，需要角色: " + allowedRolesStr;
                 }
             }
 
@@ -99,14 +95,17 @@ public class AgentAccessChecker {
                     return "当前用户缺少部门信息，无法访问该 Agent";
                 }
 
-                Set<String> departmentSet = Arrays.stream(allowedDepartments.split(","))
-                        .map(String::trim)
-                        .filter(value -> !value.isEmpty())
-                        .collect(Collectors.toSet());
+                Set<String> departmentSet = parseValues(allowedDepartments);
                 if (!departmentSet.contains(department.trim())) {
-                    return "您所在部门无权使用该 Agent，需要部门: "
-                            + allowedDepartments;
+                    return "您所在部门无权使用该 Agent，需要部门: " + allowedDepartments;
                 }
+            }
+
+            String allowedOperations = (String) permission.get("allowed_operations");
+            if (requiredOperation != null
+                    && !requiredOperation.isBlank()
+                    && !isOperationAllowed(allowedOperations, requiredOperation)) {
+                return "当前权限规则不允许该操作，需要操作权限: " + requiredOperation.toUpperCase();
             }
 
             return null;
@@ -256,6 +255,39 @@ public class AgentAccessChecker {
                 .sorted()
                 .collect(Collectors.joining(","));
         return new TokenQuotaLimit(limit, agentScoped, "role", descriptionPrefix + "，取最小角色额度: " + roleNames);
+    }
+
+    private Set<String> parseValues(String value) {
+        return Arrays.stream(value.split(","))
+                .map(String::trim)
+                .filter(item -> !item.isEmpty())
+                .map(item -> item.toUpperCase().equals(item) ? item : item)
+                .collect(Collectors.toSet());
+    }
+
+    private boolean isOperationAllowed(String allowedOperations, String requiredOperation) {
+        if (allowedOperations == null || allowedOperations.isBlank()) {
+            return true;
+        }
+        Set<String> operations = Arrays.stream(allowedOperations.split(","))
+                .map(String::trim)
+                .filter(item -> !item.isEmpty())
+                .map(String::toUpperCase)
+                .collect(Collectors.toSet());
+        String normalizedRequired = requiredOperation.trim().toUpperCase();
+        if (operations.contains("ALL") || operations.contains(normalizedRequired)) {
+            return true;
+        }
+        if ("CHAT".equals(normalizedRequired)) {
+            return operations.contains("WRITE") || operations.contains("EXECUTE");
+        }
+        if ("READ".equals(normalizedRequired)) {
+            return operations.contains("CHAT") || operations.contains("QUERY") || operations.contains("SEARCH");
+        }
+        if ("WRITE".equals(normalizedRequired)) {
+            return operations.contains("CHAT") || operations.contains("EXECUTE");
+        }
+        return false;
     }
 
     private long valueOrZero(Long value) {

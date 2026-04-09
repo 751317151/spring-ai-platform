@@ -47,41 +47,46 @@ describe('RagQueryPanel', () => {
     store.ragQuery = vi.fn().mockResolvedValue(undefined) as never
 
     const wrapper = mount(RagQueryPanel)
-    await wrapper.find('textarea').setValue('接口规范是什么')
+    await wrapper.find('textarea').setValue('接口规范是什么？')
     await wrapper.find('button.btn.btn-primary').trigger('click')
 
-    expect(sessionStorage.getItem('rag_recent_queries')).toContain('接口规范是什么')
+    expect(sessionStorage.getItem('rag_recent_queries')).toContain('接口规范是什么？')
     expect(store.ragQuery).toHaveBeenCalled()
 
-    const suggestionButtons = wrapper.findAll('.query-no-evidence-actions .query-action-btn')
-    await suggestionButtons[0]?.trigger('click')
+    const suggestionButtons = wrapper.findAll('.chip-btn')
+    const expandButton = suggestionButtons.find((item) => item.text().includes('提高 TopK 到 10'))
+    await expandButton?.trigger('click')
+
     expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('10')
   })
 
-  it('renders follow-up suggestions and copies query snapshot', async () => {
+  it('renders retrieval debug info and copies query snapshot', async () => {
     const store = useRagStore()
     store.currentKb = 'kb-001'
     store.currentKbName = '研发知识库'
     store.documents = [] as never
-    store.queryResult = '这是一个较完整的回答。'
+    store.queryResult = '这是一条完整回答'
     store.querySources = [
       { filename: '规范手册.pdf', score: 0.93, content: '证据内容', chunkIndex: 2 }
     ] as never
+    store.queryRetrievalDebug = {
+      retrievalQuery: '接口 规范',
+      keywords: ['接口', '规范'],
+      candidateCount: 6,
+      selectedCount: 1,
+      recallSteps: [{ source: 'vector-original', query: '接口规范是什么？', returnedCount: 4 }]
+    } as never
     store.ragQuery = vi.fn().mockResolvedValue(undefined) as never
 
     const wrapper = mount(RagQueryPanel)
     await wrapper.find('textarea').setValue('接口规范是什么？')
 
-    expect(wrapper.text()).toContain('继续追问')
+    expect(wrapper.text()).toContain('检索解释')
+    expect(wrapper.text()).toContain('vector-original')
 
-    const followUpButton = wrapper.findAll('.follow-up-card .query-helper-chip')[0]
-    await followUpButton?.trigger('click')
-    expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toContain('请按步骤展开说明')
-
-    const snapshotButton = wrapper.findAll('.query-result-actions .query-action-btn').find((item) => item.text() === '复制问答快照')
+    const snapshotButton = wrapper.findAll('.chip-btn').find((item) => item.text().includes('复制问答快照'))
     await snapshotButton?.trigger('click')
 
     expect(navigator.clipboard.writeText).toHaveBeenCalled()
-    expect(String(vi.mocked(navigator.clipboard.writeText).mock.calls[0]?.[0])).toContain('问题：接口规范是什么？')
   })
 })

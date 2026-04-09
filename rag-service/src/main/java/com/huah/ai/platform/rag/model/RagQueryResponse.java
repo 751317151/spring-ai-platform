@@ -11,6 +11,7 @@ public class RagQueryResponse {
     private String answer;
     private List<SourceDocument> sources;
     private long latencyMs;
+    private RetrievalDebugInfo retrievalDebug;
 
     @Data
     @Builder
@@ -22,5 +23,9 @@ public class RagQueryResponse {
         private String preview;
         private String content;
         private double score;
+        private double semanticScore;
+        private double keywordScore;
+        private List<String> recallSources;
+        private List<String> matchedTerms;
     }
 }

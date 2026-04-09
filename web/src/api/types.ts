@@ -229,6 +229,7 @@ export interface SSEChunk {
   responseId?: string
   traceId?: string
   sources?: SourceDocument[]
+  retrievalDebug?: RetrievalDebugInfo
 }
 
 export interface KnowledgeBase {
@@ -284,6 +285,7 @@ export interface RagQueryResponse {
   answer: string
   sources: SourceDocument[]
   latencyMs: number
+  retrievalDebug?: RetrievalDebugInfo
 }
 
 export interface SourceDocument {
@@ -294,7 +296,28 @@ export interface SourceDocument {
   preview?: string
   content: string
   score: number
+  semanticScore?: number
+  keywordScore?: number
+  recallSources?: string[]
+  matchedTerms?: string[]
   feedback?: 'up' | 'down' | null
+}
+
+export interface RecallTraceItem {
+  source: string
+  query: string
+  returnedCount: number
+}
+
+export interface RetrievalDebugInfo {
+  originalQuery?: string
+  retrievalQuery?: string
+  alternateQueries?: string[]
+  keywords?: string[]
+  recallSteps?: RecallTraceItem[]
+  candidateCount?: number
+  rerankedCount?: number
+  selectedCount?: number
 }
 
 export interface MonitorOverview {

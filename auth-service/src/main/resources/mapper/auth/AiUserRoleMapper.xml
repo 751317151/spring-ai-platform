@@ -30,4 +30,13 @@
         ORDER BY u.userid ASC
         LIMIT 10
     </select>
+
+    <select id="countEnabledUsersByRoleName" resultType="int">
+        SELECT COUNT(DISTINCT ur.user_id)
+        FROM ai_user_roles ur
+        INNER JOIN ai_roles r ON r.id = ur.role_id
+        INNER JOIN ai_users u ON u.userid = ur.user_id
+        WHERE r.role_name = #{roleName}
+          AND u.enabled = true
+    </select>
 </mapper>

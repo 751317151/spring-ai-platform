@@ -16,4 +16,6 @@ public interface AiUserRoleMapper extends BaseMapper<AiUserRoleEntity> {
     int countUsersByRoleId(@Param("roleId") Long roleId);
 
     List<String> selectUserReferencesByRoleId(@Param("roleId") Long roleId);
+
+    int countEnabledUsersByRoleName(@Param("roleName") String roleName);
 }
