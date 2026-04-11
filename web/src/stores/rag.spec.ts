@@ -16,7 +16,6 @@ vi.mock('@/api/rag', () => ({
   downloadDocument: vi.fn(),
   previewDocument: vi.fn(),
   listDocumentChunks: vi.fn(),
-  ragQuery: vi.fn(),
   ragQueryStream: vi.fn(),
   submitFeedback: vi.fn(),
   submitEvidenceFeedback: vi.fn()
@@ -67,16 +66,16 @@ describe('rag store', () => {
   })
 
   it('stores retrieval debug when rag query succeeds', async () => {
-    vi.mocked(ragApi.ragQuery).mockResolvedValue({
-      answer: '答案',
-      latencyMs: 12,
-      sources: [{ filename: 'a.md', content: '证据', score: 0.9 }],
-      retrievalDebug: {
-        retrievalQuery: '接口 规范',
-        keywords: ['接口', '规范'],
-        candidateCount: 5,
-        selectedCount: 1
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('data: {"chunk":"答案","done":false}\n\n'))
+        controller.enqueue(new TextEncoder().encode('data: {"chunk":"","done":true,"responseId":"resp-1","sources":[{"filename":"a.md","content":"证据","score":0.9}],"retrievalDebug":{"retrievalQuery":"接口 规范","keywords":["接口","规范"],"candidateCount":5,"selectedCount":1}}\n\n'))
+        controller.close()
       }
+    })
+    vi.mocked(ragApi.ragQueryStream).mockReturnValue({
+      response: Promise.resolve(new Response(stream)),
+      abort: vi.fn()
     } as never)
     vi.mocked(ragApi.getEvaluationOverview).mockResolvedValue({
       totalQueries: 0,
@@ -103,7 +102,10 @@ describe('rag store', () => {
   })
 
   it('falls back to demo answer when query fails in demo mode', async () => {
-    vi.mocked(ragApi.ragQuery).mockRejectedValue(new Error('boom'))
+    vi.mocked(ragApi.ragQueryStream).mockReturnValue({
+      response: Promise.reject(new Error('boom')),
+      abort: vi.fn()
+    } as never)
 
     const store = useRagStore()
     const runtimeStore = useRuntimeStore()

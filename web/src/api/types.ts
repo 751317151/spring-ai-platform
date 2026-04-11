@@ -270,14 +270,6 @@ export interface RagQueryRequest {
   history?: ChatMessage[]
 }
 
-export interface RagQueryResponse {
-  responseId?: string
-  answer: string
-  sources: SourceDocument[]
-  latencyMs: number
-  retrievalDebug?: RetrievalDebugInfo
-}
-
 export interface SourceDocument {
   documentId?: string
   chunkId?: string

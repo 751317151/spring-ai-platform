@@ -7,7 +7,5 @@ public interface AssistantAgent {
 
     String getAgentType();
 
-    AgentChatResult chat(String userId, String sessionId, String message);
-
     Flux<ChatResponse> chatStream(String userId, String sessionId, String message);
 }

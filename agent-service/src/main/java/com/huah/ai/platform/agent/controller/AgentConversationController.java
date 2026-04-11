@@ -1,7 +1,6 @@
 package com.huah.ai.platform.agent.controller;
 
 import com.huah.ai.platform.agent.dto.AgentChatRequest;
-import com.huah.ai.platform.agent.dto.AgentChatResponse;
 import com.huah.ai.platform.agent.dto.MultiAgentTaskRequest;
 import com.huah.ai.platform.agent.memory.ConversationMemoryService;
 import com.huah.ai.platform.agent.security.AgentAccessChecker;
@@ -35,47 +34,6 @@ public class AgentConversationController {
     private final AgentControllerSupport controllerSupport;
     private final AgentRuntimeIsolationService agentRuntimeIsolationService;
     private final AgentConversationOrchestrator conversationOrchestrator;
-
-    @PostMapping("/{agentType}/chat")
-    public Result<AgentChatResponse> chat(
-            @PathVariable(name = "agentType") String agentType,
-            @RequestBody AgentChatRequest body,
-            @RequestHeader(value = AgentApiConstants.HEADER_SESSION_ID,
-                    defaultValue = AgentApiConstants.DEFAULT_SESSION_ID) String sessionId,
-            HttpServletRequest request) {
-        AgentRequestContext context = controllerSupport.resolveContext(request);
-        RequestOrigin requestOrigin = controllerSupport.resolveOrigin(request);
-        String userId = context.getUserId();
-
-        Result<AgentChatResponse> accessFailure = validateChatAccess(agentType, context, userId);
-        if (accessFailure != null) {
-            return accessFailure;
-        }
-
-        AgentRuntimeIsolationService.RuntimeIsolationDecision isolationDecision =
-                agentRuntimeIsolationService.acquire(agentType);
-        if (!isolationDecision.allowed()) {
-            return Result.fail(AgentApiConstants.HTTP_TOO_MANY_REQUESTS, isolationDecision.reasonMessage());
-        }
-
-        String message = prepareMessage(body, sessionId);
-        if (message == null) {
-            return Result.fail(AgentApiConstants.HTTP_BAD_REQUEST, AgentApiConstants.MESSAGE_MESSAGE_REQUIRED);
-        }
-
-        log.info("[Chat] received agent={}, userId={}, sessionId={}, messageLength={}",
-                agentType, userId, sessionId, message.length());
-        log.info("[Chat] input agent={}, userId={}, message={}",
-                agentType, userId, controllerSupport.truncate(message, 500));
-
-        try {
-            return Result.ok(conversationOrchestrator.executeChat(agentType, userId, sessionId, message, requestOrigin));
-        } catch (Exception e) {
-            return Result.fail(AgentApiConstants.HTTP_INTERNAL_SERVER_ERROR, AgentApiConstants.MESSAGE_AI_UNAVAILABLE);
-        } finally {
-            agentRuntimeIsolationService.release(agentType);
-        }
-    }
 
     @PostMapping(value = "/{agentType}/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chatStream(
@@ -156,22 +114,6 @@ public class AgentConversationController {
         log.info("[Multi] input userId={}, task={}", userId, controllerSupport.truncate(task, 500));
 
         return Result.ok(conversationOrchestrator.executeMultiTask(userId, sessionId, task));
-    }
-
-    private Result<AgentChatResponse> validateChatAccess(String agentType, AgentRequestContext context, String userId) {
-        String deny = accessChecker.checkPermission(agentType, context.getRoles(), context.getDepartment(), "CHAT");
-        if (deny != null) {
-            log.warn("[Chat] permission denied agent={}, userId={}, roles={}, reason={}",
-                    agentType, userId, context.getRoles(), deny);
-            return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, deny);
-        }
-
-        String quotaDeny = accessChecker.checkAndConsumeTokens(userId, agentType, AgentApiConstants.PRE_DEDUCT_TOKENS);
-        if (quotaDeny != null) {
-            log.warn("[Chat] token quota exceeded agent={}, userId={}", agentType, userId);
-            return Result.fail(AgentApiConstants.HTTP_TOO_MANY_REQUESTS, quotaDeny);
-        }
-        return null;
     }
 
     private String validateStreamAccess(String agentType, AgentRequestContext context, String userId) {

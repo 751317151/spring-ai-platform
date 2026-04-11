@@ -9,7 +9,7 @@
         <div class="chips">
           <span class="chip">已加载 {{ ragStore.documents.length }} 份文档</span>
           <span class="chip">{{ topKLabel }}</span>
-          <span class="chip">{{ streamMode ? '流式模式' : '标准模式' }}</span>
+          <span class="chip">流式模式</span>
         </div>
       </div>
     </section>
@@ -28,11 +28,8 @@
     </div>
 
     <div class="toolbar">
-      <button class="btn btn-primary btn-sm" :disabled="ragStore.isQuerying || !ragStore.currentKb" @click="doQuery(false)">
-        {{ ragStore.isQuerying && !streamMode ? '检索中...' : '检索答案' }}
-      </button>
-      <button class="btn btn-ghost btn-sm" :disabled="ragStore.isQuerying || !ragStore.currentKb" @click="doQuery(true)">
-        {{ ragStore.isQuerying && streamMode ? '生成中...' : '流式回答' }}
+      <button class="btn btn-primary btn-sm" :disabled="ragStore.isQuerying || !ragStore.currentKb" @click="doQuery">
+        {{ ragStore.isQuerying ? '生成中...' : '流式回答' }}
       </button>
       <select v-model="topK" class="form-select topk-select">
         <option :value="3">TopK: 3</option>
@@ -111,7 +108,7 @@
         :description="ragStore.currentKb ? '系统会结合当前知识库生成回答，并展示命中的证据片段。' : '先确定知识库范围，再进行提问、重试和证据定位。'"
         :action-text="ragStore.currentKb && question.trim() ? '立即查询' : undefined"
         variant="compact"
-        @action="doQuery(false)"
+        @action="doQuery"
       />
       <div v-else class="content-wrap">
         <div v-if="answerInsights.length && !minimal" class="debug-grid">
@@ -214,7 +211,6 @@ import { formatMarkdown } from '@/utils/format'
 interface QueryWorkspaceState {
   question: string
   topK: number
-  streamMode: boolean
 }
 
 type SuggestionType = 'expand-topk' | 'add-keywords' | 'narrow-question'
@@ -229,7 +225,6 @@ const { showToast } = useToast()
 
 const question = ref('')
 const topK = ref(5)
-const streamMode = ref(false)
 const recentQuestions = ref<string[]>([])
 const RECENT_QUERY_KEY = 'rag_recent_queries'
 const WORKSPACE_KEY_PREFIX = 'rag_query_workspace:'
@@ -253,7 +248,7 @@ const answerInsights = computed(() => !ragStore.queryResult
   : [
       { label: '回答长度', value: `${ragStore.queryResult.trim().length} 字` },
       { label: '证据条数', value: `${ragStore.querySources.length} 条` },
-      { label: '当前模式', value: streamMode.value ? '流式回答' : '标准回答' },
+      { label: '当前模式', value: '流式回答' },
       { label: '最高分', value: topEvidenceScore.value }
     ])
 const followUpSuggestions = computed(() => {
@@ -289,14 +284,13 @@ const recommendedQuestions = computed(() => {
   ]
 })
 
-async function doQuery(stream: boolean) {
+async function doQuery() {
   if (!question.value.trim()) return showToast('请输入问题')
   saveRecentQuestion(question.value)
-  streamMode.value = stream
   persistWorkspaceState()
-  await ragStore.ragQuery(question.value, stream, topK.value)
+  await ragStore.ragQuery(question.value, topK.value)
 }
-function retryLastQuery() { if (question.value.trim()) void doQuery(streamMode.value) }
+function retryLastQuery() { if (question.value.trim()) void doQuery() }
 async function submitFeedback(feedback: 'up' | 'down') { try { if (await ragStore.submitQueryFeedback(feedback)) showToast(feedback === 'up' ? '已记录回答反馈' : '已记录改进建议') } catch { showToast('提交反馈失败') } }
 async function submitEvidenceFeedback(chunkId: string, feedback: 'up' | 'down') { try { if (await ragStore.submitEvidenceFeedback(chunkId, feedback)) showToast(feedback === 'up' ? '已记录证据反馈' : '已记录证据问题') } catch { showToast('提交证据反馈失败') } }
 function summarize(content: string) { const normalized = content.replace(/\s+/g, ' ').trim(); return normalized.length <= 180 ? normalized : `${normalized.slice(0, 180)}...` }
@@ -308,9 +302,9 @@ function getHighlightTerms() { return question.value.split(/[\s,，。；;、]+/
 function highlightEvidence(value: string) { let output = escapeHtml(value); for (const term of getHighlightTerms()) output = output.replace(new RegExp(`(${escapeRegExp(term)})`, 'gi'), '<mark class="evidence-highlight">$1</mark>'); return output }
 function sourceTags(src: SourceDocument) { const tags = new Set<string>([...(src.matchedTerms || []), ...(src.recallSources || [])]); if (!tags.size) { const source = `${src.preview || ''}\n${src.content || ''}`.toLowerCase(); getHighlightTerms().filter((term) => source.includes(term.toLowerCase())).forEach((term) => tags.add(term)) } return Array.from(tags).slice(0, 6) }
 function getWorkspaceStateKey(kbId: string) { return `${WORKSPACE_KEY_PREFIX}${kbId}` }
-function persistWorkspaceState() { if (ragStore.currentKb) window.sessionStorage.setItem(getWorkspaceStateKey(ragStore.currentKb), JSON.stringify({ question: question.value, topK: topK.value, streamMode: streamMode.value } satisfies QueryWorkspaceState)) }
-function loadWorkspaceState(kbId: string) { if (!kbId) return false; try { const raw = window.sessionStorage.getItem(getWorkspaceStateKey(kbId)); if (!raw) return false; const parsed = JSON.parse(raw) as Partial<QueryWorkspaceState>; question.value = parsed.question ?? ''; topK.value = parsed.topK === 3 || parsed.topK === 10 ? parsed.topK : 5; streamMode.value = Boolean(parsed.streamMode); return true } catch { return false } }
-function resetWorkspaceState() { if (!ragStore.currentKb) return; question.value = recommendedQuestions.value[0] || ''; topK.value = 5; streamMode.value = false; persistWorkspaceState(); showToast('当前知识库的提问草稿已重置') }
+function persistWorkspaceState() { if (ragStore.currentKb) window.sessionStorage.setItem(getWorkspaceStateKey(ragStore.currentKb), JSON.stringify({ question: question.value, topK: topK.value } satisfies QueryWorkspaceState)) }
+function loadWorkspaceState(kbId: string) { if (!kbId) return false; try { const raw = window.sessionStorage.getItem(getWorkspaceStateKey(kbId)); if (!raw) return false; const parsed = JSON.parse(raw) as Partial<QueryWorkspaceState>; question.value = parsed.question ?? ''; topK.value = parsed.topK === 3 || parsed.topK === 10 ? parsed.topK : 5; return true } catch { return false } }
+function resetWorkspaceState() { if (!ragStore.currentKb) return; question.value = recommendedQuestions.value[0] || ''; topK.value = 5; persistWorkspaceState(); showToast('当前知识库的提问草稿已重置') }
 function saveRecentQuestion(value: string) { const normalized = value.trim(); if (!normalized) return; recentQuestions.value = [normalized, ...recentQuestions.value.filter((item) => item !== normalized)].slice(0, 6); window.sessionStorage.setItem(RECENT_QUERY_KEY, JSON.stringify(recentQuestions.value)) }
 function clearRecentQuestions() { recentQuestions.value = []; window.sessionStorage.removeItem(RECENT_QUERY_KEY) }
 function summarizeSource(src: Pick<SourceDocument, 'filename' | 'preview' | 'content'>) { const normalized = (src.preview || src.content || src.filename).replace(/\s+/g, ' ').trim(); return normalized.length <= 72 ? normalized : `${normalized.slice(0, 72)}...` }
@@ -320,10 +314,10 @@ function focusEvidenceSource(src: Pick<SourceDocument, 'documentId' | 'filename'
 async function copyEvidence(src: Pick<SourceDocument, 'filename' | 'content' | 'chunkIndex'>) { try { await navigator.clipboard.writeText([`来源：${src.filename}`, src.chunkIndex != null ? `分段：${src.chunkIndex}` : '', src.content].filter(Boolean).join('\n')); showToast('已复制证据内容') } catch { showToast('复制证据内容失败') } }
 async function copyAnswer() { try { await navigator.clipboard.writeText(ragStore.queryResult); showToast('已复制回答') } catch { showToast('复制回答失败') } }
 async function copyEvidenceSummary() { const payload = ragStore.querySources.map((src, idx) => [`证据 ${idx + 1}`, `文件：${src.filename}`, src.chunkIndex != null ? `分段：${src.chunkIndex}` : '', `分数：${formatScore(src.score)}`, src.preview || summarize(src.content)].filter(Boolean).join('\n')).join('\n\n'); try { await navigator.clipboard.writeText(payload); showToast('已复制证据摘要') } catch { showToast('复制证据摘要失败') } }
-async function copyQuerySnapshot() { const payload = [`问题：${question.value.trim() || '-'}`, `知识库：${ragStore.currentKbName || ragStore.currentKb || '未选择'}`, `模式：${streamMode.value ? '流式回答' : '标准回答'}`, `TopK：${topK.value}`, '', '回答：', ragStore.queryResult || '-', '', '证据概览：', ragStore.querySources.length ? ragStore.querySources.map((src, idx) => `${idx + 1}. ${src.filename}${src.chunkIndex != null ? ` / 分段 ${src.chunkIndex}` : ''} / 分数 ${formatScore(src.score)}`).join('\n') : '无'].join('\n'); try { await navigator.clipboard.writeText(payload); showToast('已复制问答快照') } catch { showToast('复制问答快照失败') } }
+async function copyQuerySnapshot() { const payload = [`问题：${question.value.trim() || '-'}`, `知识库：${ragStore.currentKbName || ragStore.currentKb || '未选择'}`, '模式：流式回答', `TopK：${topK.value}`, '', '回答：', ragStore.queryResult || '-', '', '证据概览：', ragStore.querySources.length ? ragStore.querySources.map((src, idx) => `${idx + 1}. ${src.filename}${src.chunkIndex != null ? ` / 分段 ${src.chunkIndex}` : ''} / 分数 ${formatScore(src.score)}`).join('\n') : '无'].join('\n'); try { await navigator.clipboard.writeText(payload); showToast('已复制问答快照') } catch { showToast('复制问答快照失败') } }
 
-watch([question, topK, streamMode], () => { persistWorkspaceState() })
-watch(() => ragStore.currentKb, (kbId, previousKb) => { if (previousKb && previousKb !== kbId) persistWorkspaceState(); const loaded = loadWorkspaceState(kbId); if (!loaded && !question.value.trim()) { question.value = recommendedQuestions.value[0] || ''; topK.value = 5; streamMode.value = false } }, { immediate: true })
+watch([question, topK], () => { persistWorkspaceState() })
+watch(() => ragStore.currentKb, (kbId, previousKb) => { if (previousKb && previousKb !== kbId) persistWorkspaceState(); const loaded = loadWorkspaceState(kbId); if (!loaded && !question.value.trim()) { question.value = recommendedQuestions.value[0] || ''; topK.value = 5 } }, { immediate: true })
 watch(() => ragStore.currentKbName, () => { if (!question.value.trim()) question.value = recommendedQuestions.value[0] || '' })
 onMounted(() => { try { recentQuestions.value = JSON.parse(window.sessionStorage.getItem(RECENT_QUERY_KEY) || '[]') } catch { recentQuestions.value = [] } if (!loadWorkspaceState(ragStore.currentKb) && !question.value.trim()) question.value = recommendedQuestions.value[0] || '' })
 </script>

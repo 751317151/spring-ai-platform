@@ -467,7 +467,7 @@ export const useRagStore = defineStore('rag', () => {
     activeChunkDocument.value = null
   }
 
-  async function ragQuery(question: string, stream = false, topK = 5) {
+  async function ragQuery(question: string, topK = 5) {
     if (!question.trim()) {
       return
     }
@@ -482,7 +482,7 @@ export const useRagStore = defineStore('rag', () => {
     queryStage.value = 'retrieving'
 
     if (runtimeStore.demoMode) {
-      await new Promise((resolve) => setTimeout(resolve, stream ? 450 : 180))
+      await new Promise((resolve) => setTimeout(resolve, 450))
       queryStage.value = 'answering'
       queryResult.value = createGuestRagAnswer(question, currentKb.value)
       querySources.value = createGuestRagSources(question, currentKb.value)
@@ -495,70 +495,57 @@ export const useRagStore = defineStore('rag', () => {
     }
 
     try {
-      if (stream) {
-        const { response } = ragApi.ragQueryStream({
-          question,
-          knowledgeBaseId: currentKb.value,
-          topK
-        })
-        const res = await response
-        if (!res.ok || !res.body) {
-          throw new Error(`HTTP ${res.status}`)
+      const { response } = ragApi.ragQueryStream({
+        question,
+        knowledgeBaseId: currentKb.value,
+        topK
+      })
+      const res = await response
+      if (!res.ok || !res.body) {
+        throw new Error(`HTTP ${res.status}`)
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) {
+          break
         }
-
-        const reader = res.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ''
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) {
-            break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed || !trimmed.startsWith('data:')) {
+            continue
           }
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-          for (const line of lines) {
-            const trimmed = line.trim()
-            if (!trimmed || !trimmed.startsWith('data:')) {
-              continue
-            }
-            const jsonStr = trimmed.slice(5).trim()
-            if (!jsonStr || jsonStr === '[DONE]') {
-              continue
-            }
-            try {
-              const data = JSON.parse(jsonStr) as SSEChunk
-              if (data.chunk) {
-                queryStage.value = 'answering'
-                queryResult.value += data.chunk
-              }
-              if (Array.isArray(data.sources)) {
-                querySources.value = data.sources.map((item) => ({ ...item, feedback: null }))
-              }
-              if (data.retrievalDebug) {
-                queryRetrievalDebug.value = data.retrievalDebug
-              }
-              if (data.done && data.responseId) {
-                queryResponseId.value = data.responseId
-              }
-            } catch {
+          const jsonStr = trimmed.slice(5).trim()
+          if (!jsonStr || jsonStr === '[DONE]') {
+            continue
+          }
+          try {
+            const data = JSON.parse(jsonStr) as SSEChunk
+            if (data.chunk) {
               queryStage.value = 'answering'
-              queryResult.value += jsonStr
+              queryResult.value += data.chunk
             }
+            if (Array.isArray(data.sources)) {
+              querySources.value = data.sources.map((item) => ({ ...item, feedback: null }))
+            }
+            if (data.retrievalDebug) {
+              queryRetrievalDebug.value = data.retrievalDebug
+            }
+            if (data.done && data.responseId) {
+              queryResponseId.value = data.responseId
+            }
+          } catch {
+            queryStage.value = 'answering'
+            queryResult.value += jsonStr
           }
         }
-      } else {
-        const data = await ragApi.ragQuery({
-          question,
-          knowledgeBaseId: currentKb.value,
-          topK
-        })
-        queryStage.value = 'answering'
-        queryResult.value = data.answer || ''
-        querySources.value = (data.sources || []).map((item) => ({ ...item, feedback: null }))
-        queryRetrievalDebug.value = data.retrievalDebug || null
-        queryResponseId.value = data.responseId || ''
       }
 
       runtimeStore.markServiceAvailable('rag')

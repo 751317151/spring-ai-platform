@@ -54,7 +54,7 @@ class AgentMetadataServiceTest {
         assertEquals("gpt-4o-mini", dynamic.getDefaultModel());
         assertTrue(dynamic.isRegistered());
         assertEquals(false, dynamic.isSupportsKnowledge());
-        assertEquals(false, dynamic.isSupportsTools());
+        assertEquals(true, dynamic.isSupportsTools());
 
         var multi = response.getAgents().stream()
                 .filter(item -> "multi".equals(item.getAgentType()))

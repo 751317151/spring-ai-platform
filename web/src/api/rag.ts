@@ -5,7 +5,6 @@ import type {
   DocumentChunkPreview,
   DocumentMeta,
   RagQueryRequest,
-  RagQueryResponse,
   RagEvaluationOverview,
   RagEvaluationSample
 } from './types'
@@ -86,11 +85,6 @@ export function retryDocument(id: string): Promise<DocumentMeta> {
 
 export function reindexDocument(id: string): Promise<DocumentMeta> {
   return client.post(`${BASE}/documents/${id}/reindex`)
-}
-
-// RAG query
-export function ragQuery(data: RagQueryRequest): Promise<RagQueryResponse> {
-  return client.post(`${BASE}/query`, data, { timeout: 120000 })
 }
 
 export function submitFeedback(responseId: string, feedback: 'up' | 'down', comment?: string): Promise<void> {

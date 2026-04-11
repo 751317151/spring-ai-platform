@@ -4,7 +4,7 @@ import com.huah.ai.platform.common.web.RequestOrigin;
 import com.huah.ai.platform.rag.model.RagEvaluationOverview;
 import com.huah.ai.platform.rag.model.RagEvaluationSample;
 import com.huah.ai.platform.rag.model.RagQueryRequest;
-import com.huah.ai.platform.rag.model.RagQueryResponse;
+import com.huah.ai.platform.rag.model.RagSourceDocument;
 import com.huah.ai.platform.rag.model.RetrievalExecution;
 import com.huah.ai.platform.rag.model.RetrievedChunk;
 import java.io.IOException;
@@ -30,53 +30,6 @@ public class RagQueryFacadeService {
     private final RagAuditService ragAuditService;
     @Qualifier("ragControllerExecutor")
     private final ExecutorService executor;
-
-    public RagQueryResponse query(
-            RagQueryRequest request,
-            String userId,
-            DocumentMetaService.AccessContext accessContext,
-            RequestOrigin requestOrigin) {
-        long start = System.currentTimeMillis();
-        int topK = resolveTopK(request);
-        try {
-            documentMetaService.ensureKnowledgeBaseAccessible(request.getKnowledgeBaseId(), accessContext);
-            RetrievalExecution retrievalExecution =
-                    retrievalOrchestrator.retrieve(request.getQuestion(), request.getKnowledgeBaseId(), topK);
-            String answer = ragService.answer(
-                    request.getQuestion(),
-                    request.getHistory(),
-                    retrievalExecution.getSelectedChunks());
-            List<RagQueryResponse.SourceDocument> sources = mapSourceDocuments(retrievalExecution.getSelectedChunks());
-            long latency = System.currentTimeMillis() - start;
-            Long responseId = ragAuditService.saveQueryLog(
-                    userId,
-                    request.getKnowledgeBaseId(),
-                    request.getQuestion(),
-                    answer,
-                    latency,
-                    true,
-                    null,
-                    requestOrigin);
-            return RagQueryResponse.builder()
-                    .responseId(responseId)
-                    .answer(answer)
-                    .sources(sources)
-                    .latencyMs(latency)
-                    .retrievalDebug(retrievalExecution.getRetrievalDebug())
-                    .build();
-        } catch (Exception ex) {
-            ragAuditService.saveQueryLog(
-                    userId,
-                    request.getKnowledgeBaseId(),
-                    request.getQuestion(),
-                    null,
-                    System.currentTimeMillis() - start,
-                    false,
-                    ex.getMessage(),
-                    requestOrigin);
-            throw ex;
-        }
-    }
 
     public SseEmitter queryStream(
             RagQueryRequest request,
@@ -123,7 +76,7 @@ public class RagQueryFacadeService {
             documentMetaService.ensureKnowledgeBaseAccessible(request.getKnowledgeBaseId(), accessContext);
             RetrievalExecution retrievalExecution =
                     retrievalOrchestrator.retrieve(request.getQuestion(), request.getKnowledgeBaseId(), topK);
-            List<RagQueryResponse.SourceDocument> sources = mapSourceDocuments(retrievalExecution.getSelectedChunks());
+            List<RagSourceDocument> sources = mapSourceDocuments(retrievalExecution.getSelectedChunks());
             List<String> chunks = new ArrayList<>();
             ragService.answerStream(request.getQuestion(), request.getHistory(), retrievalExecution.getSelectedChunks())
                     .doOnNext(chunk -> handleStreamChunk(emitter, chunks, chunk))
@@ -167,7 +120,7 @@ public class RagQueryFacadeService {
             String userId,
             long start,
             List<String> chunks,
-            List<RagQueryResponse.SourceDocument> sources,
+            List<RagSourceDocument> sources,
             RetrievalExecution retrievalExecution,
             RequestOrigin requestOrigin) {
         try {
@@ -216,9 +169,9 @@ public class RagQueryFacadeService {
         return request.getTopK() != null ? request.getTopK() : 5;
     }
 
-    private List<RagQueryResponse.SourceDocument> mapSourceDocuments(List<RetrievedChunk> sourceChunks) {
+    private List<RagSourceDocument> mapSourceDocuments(List<RetrievedChunk> sourceChunks) {
         return sourceChunks.stream()
-                .map(chunk -> RagQueryResponse.SourceDocument.builder()
+                .map(chunk -> RagSourceDocument.builder()
                         .documentId(chunk.getDocumentId())
                         .chunkId(chunk.getChunkId())
                         .chunkIndex(chunk.getChunkIndex())

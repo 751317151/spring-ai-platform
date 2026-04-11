@@ -48,35 +48,6 @@ public class DynamicAssistantAgent {
         this.assistantCapabilityResolverService = assistantCapabilityResolverService;
     }
 
-    public AgentChatResult chat(String agentType, String userId, String sessionId, String message) {
-        long preparationStart = System.currentTimeMillis();
-        AgentDefinitionEntity definition = agentDefinitionService.getRequiredEnabledEntity(agentType);
-        SessionConfigResponse sessionConfig = conversationMemoryService.getSessionConfig(sessionId);
-        String runtimeInstruction = sessionRuntimeInstructionBuilder.build(sessionConfig);
-        String systemPrompt = renderSystemPrompt(definition, userId);
-        ChatOptions chatOptions = buildChatOptions(sessionConfig, definition);
-        String enrichedMessage = enrichMessage(message, runtimeInstruction);
-        ChatClient chatClient = buildChatClient(definition);
-        long preparationLatency = System.currentTimeMillis() - preparationStart;
-        ToolExecutionContext.set(userId, sessionId, agentType);
-        try {
-            long modelStart = System.currentTimeMillis();
-            ChatResponse chatResponse = chatClient
-                    .prompt()
-                    .system(systemPrompt)
-                    .options(chatOptions)
-                    .user(enrichedMessage)
-                    .advisors(a -> a.param(CONVERSATION_ID, sessionId))
-                    .call()
-                    .chatResponse();
-            long modelLatency = System.currentTimeMillis() - modelStart;
-            return AgentChatResult.fromChatResponse(chatResponse)
-                    .withExecutionMetrics(new AgentExecutionMetrics(preparationLatency, modelLatency));
-        } finally {
-            ToolExecutionContext.clear();
-        }
-    }
-
     public Flux<ChatResponse> chatStream(String agentType, String userId, String sessionId, String message) {
         long preparationStart = System.currentTimeMillis();
         AgentDefinitionEntity definition = agentDefinitionService.getRequiredEnabledEntity(agentType);

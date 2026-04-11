@@ -33,37 +33,6 @@ public abstract class BaseAssistantAgent implements AssistantAgent {
     }
 
     @Override
-    public AgentChatResult chat(String userId, String sessionId, String message) {
-        return chatAs(agentType, userId, sessionId, message);
-    }
-
-    public AgentChatResult chatAs(String effectiveAgentType, String userId, String sessionId, String message) {
-        long preparationStart = System.currentTimeMillis();
-        SessionConfigResponse sessionConfig = conversationMemoryService.getSessionConfig(sessionId);
-        String runtimeInstruction = sessionRuntimeInstructionBuilder.build(sessionConfig);
-        ChatOptions chatOptions = buildChatOptions(sessionConfig);
-        String enrichedMessage = enrichMessage(message, runtimeInstruction);
-        long preparationLatency = System.currentTimeMillis() - preparationStart;
-        ToolExecutionContext.set(userId, sessionId, effectiveAgentType);
-        try {
-            long modelStart = System.currentTimeMillis();
-            ChatResponse chatResponse = chatClient
-                    .prompt()
-                    .system(s -> s.param("userId", userId))
-                    .options(chatOptions)
-                    .user(enrichedMessage)
-                    .advisors(a -> a.param(CONVERSATION_ID, sessionId))
-                    .call()
-                    .chatResponse();
-            long modelLatency = System.currentTimeMillis() - modelStart;
-            return AgentChatResult.fromChatResponse(chatResponse)
-                    .withExecutionMetrics(new AgentExecutionMetrics(preparationLatency, modelLatency));
-        } finally {
-            ToolExecutionContext.clear();
-        }
-    }
-
-    @Override
     public Flux<ChatResponse> chatStream(String userId, String sessionId, String message) {
         return chatStreamAs(agentType, userId, sessionId, message);
     }

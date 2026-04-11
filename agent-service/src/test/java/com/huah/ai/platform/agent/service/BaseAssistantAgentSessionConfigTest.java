@@ -50,11 +50,6 @@ class BaseAssistantAgentSessionConfigTest {
         }
 
         @Override
-        public AgentChatResult chat(String userId, String sessionId, String message) {
-            return new AgentChatResult(message, 0, 0);
-        }
-
-        @Override
         public Flux<ChatResponse> chatStream(String userId, String sessionId, String message) {
             return Flux.empty();
         }

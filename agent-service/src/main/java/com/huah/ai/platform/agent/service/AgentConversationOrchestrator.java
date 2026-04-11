@@ -1,7 +1,6 @@
 package com.huah.ai.platform.agent.service;
 
 import com.huah.ai.platform.agent.controller.AgentApiConstants;
-import com.huah.ai.platform.agent.dto.AgentChatResponse;
 import com.huah.ai.platform.agent.memory.ConversationMemoryService;
 import com.huah.ai.platform.agent.metrics.AiMetricsCollector;
 import com.huah.ai.platform.agent.multi.MultiAgentExecutionListener;
@@ -37,74 +36,6 @@ public class AgentConversationOrchestrator {
     private final AgentAuditLogService agentAuditLogService;
     @Qualifier("agentControllerExecutor")
     private final ExecutorService agentControllerExecutor;
-
-    public AgentChatResponse executeChat(
-            String agentType, String userId, String sessionId, String message, RequestOrigin requestOrigin) {
-        long startTime = System.currentTimeMillis();
-        try {
-            long agentStartTime = System.currentTimeMillis();
-            AgentChatResult result;
-            String traceId = null;
-            if (AgentApiConstants.AGENT_TYPE_MULTI.equals(agentType)) {
-                MultiAgentExecutionResult multiResult = multiAgentTraceService.execute(
-                        userId, sessionId, message, new MultiAgentExecutionListener() { });
-                result = new AgentChatResult(
-                        multiResult.getContent(), multiResult.getPromptTokens(), multiResult.getCompletionTokens());
-                traceId = multiResult.getTraceId();
-            } else {
-                result = routeToAgent(agentType, userId, sessionId, message);
-            }
-
-            long latency = System.currentTimeMillis() - startTime;
-            long persistenceStartTime = System.currentTimeMillis();
-            AgentExecutionMetrics executionMetrics = result.getExecutionMetrics();
-            Long responseId = agentAuditLogService.saveAuditLog(
-                    userId,
-                    sessionId,
-                    agentType,
-                    message,
-                    result.getContent(),
-                    latency,
-                    true,
-                    null,
-                    Math.max(0, agentStartTime - startTime),
-                    executionMetrics != null ? executionMetrics.getPreparationLatencyMs() : 0L,
-                    executionMetrics != null
-                            ? executionMetrics.getModelLatencyMs()
-                            : Math.max(0, System.currentTimeMillis() - agentStartTime),
-                    Math.max(0, System.currentTimeMillis() - persistenceStartTime),
-                    result.getPromptTokens(),
-                    result.getCompletionTokens(),
-                    requestOrigin);
-            recordSuccessMetrics(agentType, latency, result.getPromptTokens(), result.getCompletionTokens());
-            log.info("[Chat] output agent={}, userId={}, latency={}ms, responseLength={}, promptTokens={}, completionTokens={}, response={}",
-                    agentType,
-                    userId,
-                    latency,
-                    result.getContent() != null ? result.getContent().length() : 0,
-                    result.getPromptTokens(),
-                    result.getCompletionTokens(),
-                    truncate(result.getContent(), 500));
-            accessChecker.recordActualTokens(
-                    userId,
-                    agentType,
-                    result.getPromptTokens() + result.getCompletionTokens(),
-                    AgentApiConstants.PRE_DEDUCT_TOKENS);
-            return AgentChatResponse.builder()
-                    .responseId(responseId)
-                    .content(result.getContent())
-                    .traceId(traceId)
-                    .build();
-        } catch (ToolAccessDeniedException e) {
-            handleChatFailure(agentType, userId, sessionId, startTime, false);
-            throw e;
-        } catch (RuntimeException e) {
-            handleChatFailure(agentType, userId, sessionId, startTime, true);
-            log.error("[Chat] failed agent={}, userId={}, latency={}ms, error={}",
-                    agentType, userId, System.currentTimeMillis() - startTime, e.getMessage(), e);
-            throw e;
-        }
-    }
 
     public void executeStream(
             String agentType,
@@ -392,16 +323,6 @@ public class AgentConversationOrchestrator {
         sendDone(emitter, responseId, multiResult.getTraceId());
     }
 
-    private AgentChatResult routeToAgent(String type, String userId, String sessionId, String message) {
-        if (AgentApiConstants.AGENT_TYPE_MULTI.equals(type)) {
-            MultiAgentExecutionResult result = multiAgentTraceService.execute(
-                    userId, sessionId, message, new MultiAgentExecutionListener() { });
-            return new AgentChatResult(result.getContent(), result.getPromptTokens(), result.getCompletionTokens());
-        }
-        AssistantAgent assistantAgent = assistantAgentRegistry.getRequired(type);
-        return assistantAgent.chat(userId, sessionId, message);
-    }
-
     private Flux<ChatResponse> routeToAgentStream(String type, String userId, String sessionId, String message) {
         AssistantAgent assistantAgent = assistantAgentRegistry.getRequired(type);
         return assistantAgent.chatStream(userId, sessionId, message);
@@ -419,13 +340,6 @@ public class AgentConversationOrchestrator {
         }
         metricsCollector.recordModelCall(agentType, latency, false);
         metricsCollector.recordRequest(null, agentType, latency, false, 0, 0);
-    }
-
-    private void handleChatFailure(String agentType, String userId, String sessionId, long startTime, boolean includeMultiAlias) {
-        long latency = System.currentTimeMillis() - startTime;
-        recordFailureMetrics(agentType, latency, includeMultiAlias);
-        accessChecker.recordActualTokens(userId, agentType, 0, AgentApiConstants.PRE_DEDUCT_TOKENS);
-        memoryService.rollbackLastUserMessage(sessionId);
     }
 
     private void sendChunk(SseEmitter emitter, String chunk) {

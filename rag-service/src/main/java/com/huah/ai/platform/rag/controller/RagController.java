@@ -10,7 +10,6 @@ import com.huah.ai.platform.rag.model.KnowledgeBaseResponse;
 import com.huah.ai.platform.rag.model.RagEvaluationOverview;
 import com.huah.ai.platform.rag.model.RagEvaluationSample;
 import com.huah.ai.platform.rag.model.RagQueryRequest;
-import com.huah.ai.platform.rag.model.RagQueryResponse;
 import com.huah.ai.platform.rag.model.ResponseFeedbackRequest;
 import com.huah.ai.platform.rag.service.DocumentMetaService;
 import com.huah.ai.platform.rag.service.RagAdminFacadeService;
@@ -49,15 +48,6 @@ public class RagController {
     private final RagQueryFacadeService ragQueryFacadeService;
     private final RagDocumentContentService ragDocumentContentService;
     private final RequestOriginResolver requestOriginResolver;
-
-    @PostMapping("/query")
-    public Result<RagQueryResponse> query(@RequestBody RagQueryRequest request, HttpServletRequest servletRequest) {
-        return Result.ok(ragQueryFacadeService.query(
-                request,
-                resolveUserId(servletRequest),
-                resolveAccessContext(servletRequest),
-                requestOriginResolver.resolve(servletRequest)));
-    }
 
     @PostMapping(value = "/query/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter queryStream(@RequestBody RagQueryRequest request, HttpServletRequest servletRequest) {

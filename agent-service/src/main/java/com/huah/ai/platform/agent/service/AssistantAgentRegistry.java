@@ -1,15 +1,16 @@
 package com.huah.ai.platform.agent.service;
 
 import com.huah.ai.platform.agent.entity.AgentDefinitionEntity;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
+
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.stereotype.Component;
-import reactor.core.publisher.Flux;
 
 @Component
 public class AssistantAgentRegistry {
@@ -77,14 +78,6 @@ public class AssistantAgentRegistry {
         }
 
         @Override
-        public AgentChatResult chat(String userId, String sessionId, String message) {
-            if (executor instanceof BaseAssistantAgent baseAssistantAgent) {
-                return baseAssistantAgent.chatAs(agentType, userId, sessionId, message);
-            }
-            return executor.chat(userId, sessionId, message);
-        }
-
-        @Override
         public Flux<ChatResponse> chatStream(String userId, String sessionId, String message) {
             if (executor instanceof BaseAssistantAgent baseAssistantAgent) {
                 return baseAssistantAgent.chatStreamAs(agentType, userId, sessionId, message);
@@ -100,11 +93,6 @@ public class AssistantAgentRegistry {
         @Override
         public String getAgentType() {
             return agentType;
-        }
-
-        @Override
-        public AgentChatResult chat(String userId, String sessionId, String message) {
-            return dynamicAssistantAgent.chat(agentType, userId, sessionId, message);
         }
 
         @Override
