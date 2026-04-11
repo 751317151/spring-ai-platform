@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.huah.ai.platform.agent.mapper.AgentRoleMapper">
+    <select id="selectRoleNamesByAgentCode" resultType="java.lang.String">
+        SELECT r.role_name
+        FROM ai_agent_roles ar
+        INNER JOIN ai_roles r ON r.id = ar.role_id
+        WHERE ar.agent_code = #{agentCode}
+        ORDER BY r.role_name ASC
+    </select>
+
+    <delete id="deleteByAgentCode">
+        DELETE FROM ai_agent_roles
+        WHERE agent_code = #{agentCode}
+    </delete>
+</mapper>

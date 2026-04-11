@@ -4,11 +4,10 @@ import com.huah.ai.platform.agent.security.AgentAccessChecker;
 import com.huah.ai.platform.common.web.RequestOrigin;
 import com.huah.ai.platform.common.web.RequestOriginResolver;
 import jakarta.servlet.http.HttpServletRequest;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Component;
-
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
@@ -37,6 +36,19 @@ class AgentControllerSupport {
     String checkAgentAccess(String agentType, HttpServletRequest request, AgentAccessChecker accessChecker, String requiredOperation) {
         AgentRequestContext context = resolveContext(request);
         return accessChecker.checkPermission(agentType, context.getRoles(), context.getDepartment(), requiredOperation);
+    }
+
+    boolean isAdmin(HttpServletRequest request) {
+        AgentRequestContext context = resolveContext(request);
+        if (context.getRoles() == null || context.getRoles().isBlank()) {
+            return false;
+        }
+        for (String role : context.getRoles().split(",")) {
+            if ("ROLE_ADMIN".equals(role.trim())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     boolean ownsSession(String userId, String agentType, String sessionId) {

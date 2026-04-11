@@ -2,7 +2,6 @@ package com.huah.ai.platform.auth.controller;
 
 import com.huah.ai.platform.auth.dto.AuthUserResponse;
 import com.huah.ai.platform.auth.dto.BotPermissionResponse;
-import com.huah.ai.platform.auth.dto.BotPermissionUpsertRequest;
 import com.huah.ai.platform.auth.dto.LoginRequest;
 import com.huah.ai.platform.auth.dto.LogoutRequest;
 import com.huah.ai.platform.auth.dto.RefreshTokenRequest;
@@ -139,38 +138,6 @@ public class AuthController {
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<Void> deleteUser(@PathVariable(name = "id") String id) {
         return authAdminService.deleteUser(id);
-    }
-
-    @GetMapping("/permissions")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public Result<List<BotPermissionResponse>> listPermissions() {
-        return authAdminService.listPermissions();
-    }
-
-    @GetMapping("/permissions/{id}")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public Result<BotPermissionResponse> getPermission(@PathVariable(name = "id") Long id) {
-        return authAdminService.getPermission(id);
-    }
-
-    @PostMapping("/permissions")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public Result<BotPermissionResponse> createPermission(@RequestBody BotPermissionUpsertRequest request) {
-        return authAdminService.createPermission(request);
-    }
-
-    @PutMapping("/permissions/{id}")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public Result<BotPermissionResponse> updatePermission(
-            @PathVariable(name = "id") Long id,
-            @RequestBody BotPermissionUpsertRequest request) {
-        return authAdminService.updatePermission(id, request);
-    }
-
-    @DeleteMapping("/permissions/{id}")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public Result<Void> deletePermission(@PathVariable(name = "id") Long id) {
-        return authAdminService.deletePermission(id);
     }
 
     @GetMapping("/role-token-limits")

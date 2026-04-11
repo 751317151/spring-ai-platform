@@ -2,16 +2,32 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useUserStore } from './user'
 import * as authApi from '@/api/auth'
+import * as agentApi from '@/api/agent'
 
 vi.mock('@/api/auth', () => ({
   getUsers: vi.fn(),
-  getPermissions: vi.fn(),
+  getRoles: vi.fn(),
   createUser: vi.fn(),
   updateUser: vi.fn(),
   deleteUser: vi.fn(),
-  createPermission: vi.fn(),
-  updatePermission: vi.fn(),
-  deletePermission: vi.fn()
+  createRole: vi.fn(),
+  updateRole: vi.fn(),
+  deleteRole: vi.fn(),
+  getRoleTokenLimits: vi.fn(),
+  getUserTokenLimits: vi.fn(),
+  createRoleTokenLimit: vi.fn(),
+  updateRoleTokenLimit: vi.fn(),
+  deleteRoleTokenLimit: vi.fn(),
+  createUserTokenLimit: vi.fn(),
+  updateUserTokenLimit: vi.fn(),
+  deleteUserTokenLimit: vi.fn()
+}))
+
+vi.mock('@/api/agent', () => ({
+  getAgentDefinitions: vi.fn(),
+  createAgentDefinition: vi.fn(),
+  updateAgentDefinition: vi.fn(),
+  deleteAgentDefinition: vi.fn()
 }))
 
 describe('user store', () => {
@@ -20,30 +36,40 @@ describe('user store', () => {
     vi.clearAllMocks()
   })
 
-  it('loads users and permissions successfully', async () => {
+  it('loads users, roles and assistants successfully', async () => {
     vi.mocked(authApi.getUsers).mockResolvedValue([{ userId: 'u1', username: '张三' } as never])
-    vi.mocked(authApi.getPermissions).mockResolvedValue([{ id: 'p1', botType: 'rd' } as never])
+    vi.mocked(authApi.getRoles).mockResolvedValue([{ id: 'r1', roleName: 'ROLE_ADMIN' } as never])
+    vi.mocked(agentApi.getAgentDefinitions).mockResolvedValue([{ id: 2001, agentCode: 'rd', allowedRoles: 'ROLE_ADMIN' } as never])
+    vi.mocked(authApi.getRoleTokenLimits).mockResolvedValue([])
+    vi.mocked(authApi.getUserTokenLimits).mockResolvedValue([])
 
     const store = useUserStore()
     await store.loadAll()
 
     expect(store.users).toHaveLength(1)
-    expect(store.permissions).toHaveLength(1)
+    expect(store.roles).toHaveLength(1)
+    expect(store.agentDefinitions).toHaveLength(1)
     expect(store.userError).toBe('')
-    expect(store.permissionError).toBe('')
+    expect(store.roleError).toBe('')
+    expect(store.agentDefinitionError).toBe('')
   })
 
   it('sets readable errors when load requests fail', async () => {
     vi.mocked(authApi.getUsers).mockRejectedValue(new Error('fail'))
-    vi.mocked(authApi.getPermissions).mockRejectedValue(new Error('fail'))
+    vi.mocked(authApi.getRoles).mockRejectedValue(new Error('fail'))
+    vi.mocked(agentApi.getAgentDefinitions).mockRejectedValue(new Error('fail'))
+    vi.mocked(authApi.getRoleTokenLimits).mockResolvedValue([])
+    vi.mocked(authApi.getUserTokenLimits).mockResolvedValue([])
 
     const store = useUserStore()
     await store.loadAll()
 
-    expect(store.userError).toBe('用户列表加载失败，请稍后重试。')
-    expect(store.permissionError).toBe('权限规则加载失败，请稍后重试。')
+    expect(store.userError).toBe('fail')
+    expect(store.roleError).toBe('fail')
+    expect(store.agentDefinitionError).toBe('fail')
     expect(store.users).toEqual([])
-    expect(store.permissions).toEqual([])
+    expect(store.roles).toEqual([])
+    expect(store.agentDefinitions).toEqual([])
   })
 
   it('reloads users after createUser succeeds', async () => {
@@ -58,15 +84,15 @@ describe('user store', () => {
     expect(store.users[0]?.username).toBe('李四')
   })
 
-  it('reloads permissions after updatePermission succeeds', async () => {
-    vi.mocked(authApi.updatePermission).mockResolvedValue({} as never)
-    vi.mocked(authApi.getPermissions).mockResolvedValue([{ id: 'p2', botType: 'search' } as never])
+  it('reloads assistants after updateAgentDefinition succeeds', async () => {
+    vi.mocked(agentApi.updateAgentDefinition).mockResolvedValue({} as never)
+    vi.mocked(agentApi.getAgentDefinitions).mockResolvedValue([{ id: 2008, agentCode: 'search', allowedRoles: 'ROLE_ADMIN' } as never])
 
     const store = useUserStore()
-    await expect(store.updatePermission('p2', { botType: 'search' })).resolves.toBe(true)
+    await expect(store.updateAgentDefinition('search', { allowedRoles: 'ROLE_ADMIN' })).resolves.toBe(true)
 
-    expect(authApi.updatePermission).toHaveBeenCalledWith('p2', { botType: 'search' })
-    expect(authApi.getPermissions).toHaveBeenCalled()
-    expect(store.permissions[0]?.botType).toBe('search')
+    expect(agentApi.updateAgentDefinition).toHaveBeenCalledWith('search', { allowedRoles: 'ROLE_ADMIN' })
+    expect(agentApi.getAgentDefinitions).toHaveBeenCalled()
+    expect(store.agentDefinitions[0]?.agentCode).toBe('search')
   })
 })

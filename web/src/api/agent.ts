@@ -1,6 +1,9 @@
 import client, { buildHeaders } from './client'
 import type {
   AgentAccessOverviewResponse,
+  AgentDefinition,
+  AgentDefinitionUpsertRequest,
+  AssistantToolCatalogItem,
   AgentLogArchiveDetailResponse,
   AgentLogArchivePreviewResponse,
   AgentDiagnosticsResponse,
@@ -106,6 +109,33 @@ export function getMcpServers(): Promise<McpServerListResponse> {
 
 export function getAgentMetadata(): Promise<AgentMetadataResponse> {
   return client.get(`${BASE}/metadata`)
+}
+
+export function getAgentDefinitions(): Promise<AgentDefinition[]> {
+  return client.get(`${BASE}/definitions`)
+}
+
+export function getAgentDefinition(agentCode: string): Promise<AgentDefinition> {
+  return client.get(`${BASE}/definitions/${agentCode}`)
+}
+
+export function createAgentDefinition(data: AgentDefinitionUpsertRequest): Promise<AgentDefinition> {
+  return client.post(`${BASE}/definitions`, data)
+}
+
+export function getAssistantToolCatalog(): Promise<AssistantToolCatalogItem[]> {
+  return client.get(`${BASE}/definitions/tool-catalog`)
+}
+
+export function updateAgentDefinition(
+  agentCode: string,
+  data: AgentDefinitionUpsertRequest
+): Promise<AgentDefinition> {
+  return client.put(`${BASE}/definitions/${agentCode}`, data)
+}
+
+export function deleteAgentDefinition(agentCode: string): Promise<void> {
+  return client.delete(`${BASE}/definitions/${agentCode}`)
 }
 
 export function getMcpServersByAgent(agentType: AgentType): Promise<McpServerListResponse> {

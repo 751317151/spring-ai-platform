@@ -176,4 +176,18 @@ class ConversationMemoryServiceTest {
         assertTrue(Boolean.TRUE.equals(config.getKnowledgeEnabled()));
         assertEquals("你是发布助手", config.getSystemPromptTemplate());
     }
+
+    @Test
+    void shouldStripRuntimeInstructionFromHistoryUserMessages() {
+        when(chatMemoryRepository.findByConversationId("session-1")).thenReturn(List.of(
+                new UserMessage("[会话配置]\n- 知识增强：开启\n- 上下文窗口：最近 6 条消息。\n\n[user-question]\n真正的问题"),
+                new AssistantMessage("助手回答")
+        ));
+
+        List<Map<String, String>> history = conversationMemoryService.getHistory("session-1");
+
+        assertEquals(2, history.size());
+        assertEquals("真正的问题", history.get(0).get("content"));
+        assertEquals("助手回答", history.get(1).get("content"));
+    }
 }

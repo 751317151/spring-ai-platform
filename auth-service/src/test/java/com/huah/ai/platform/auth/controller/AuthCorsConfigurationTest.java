@@ -1,22 +1,24 @@
 package com.huah.ai.platform.auth.controller;
 
 import com.huah.ai.platform.auth.config.SecurityConfig;
-import com.huah.ai.platform.auth.mapper.AiBotPermissionRoleMapper;
+import com.huah.ai.platform.auth.mapper.AiAgentDefinitionMapper;
+import com.huah.ai.platform.auth.mapper.AiAgentRoleMapper;
 import com.huah.ai.platform.auth.mapper.AiRoleMapper;
 import com.huah.ai.platform.auth.mapper.AiRoleTokenLimitMapper;
 import com.huah.ai.platform.auth.mapper.AiUserMapper;
 import com.huah.ai.platform.auth.mapper.AiUserRoleMapper;
 import com.huah.ai.platform.auth.mapper.AiUserTokenLimitMapper;
-import com.huah.ai.platform.auth.mapper.BotPermissionMapper;
 import com.huah.ai.platform.auth.service.AuthAdminService;
 import com.huah.ai.platform.auth.service.AuthQuotaAdminService;
 import com.huah.ai.platform.auth.service.AuthRoleService;
 import com.huah.ai.platform.auth.service.AuthTokenService;
 import com.huah.ai.platform.common.config.CorsConfig;
+import com.huah.ai.platform.common.web.RequestOriginResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -43,6 +45,12 @@ class AuthCorsConfigurationTest {
     private StringRedisTemplate redisTemplate;
 
     @MockBean
+    private RestTemplateBuilder restTemplateBuilder;
+
+    @MockBean
+    private RequestOriginResolver requestOriginResolver;
+
+    @MockBean
     private AiUserMapper userMapper;
 
     @MockBean
@@ -58,10 +66,10 @@ class AuthCorsConfigurationTest {
     private AiUserTokenLimitMapper aiUserTokenLimitMapper;
 
     @MockBean
-    private BotPermissionMapper botPermissionMapper;
+    private AiAgentDefinitionMapper aiAgentDefinitionMapper;
 
     @MockBean
-    private AiBotPermissionRoleMapper aiBotPermissionRoleMapper;
+    private AiAgentRoleMapper aiAgentRoleMapper;
 
     @MockBean
     private AuthTokenService authTokenService;

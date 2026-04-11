@@ -11,6 +11,17 @@ import org.springframework.stereotype.Component;
 @Component
 public class AgentChatClientFactory {
 
+    public ChatClient buildChatClient(ChatModel model, ChatMemory chatMemory, Object... tools) {
+        return ChatClient
+                .builder(model)
+                .defaultTools(tools)
+                .defaultAdvisors(
+                        new SimpleLoggerAdvisor(),
+                        MessageChatMemoryAdvisor.builder(chatMemory).build()
+                )
+                .build();
+    }
+
     public ChatClient buildChatClient(ChatModel model, ChatMemory chatMemory, String systemPrompt, Object... tools) {
         return ChatClient
                 .builder(model)
@@ -21,6 +32,28 @@ public class AgentChatClientFactory {
                         MessageChatMemoryAdvisor.builder(chatMemory).build()
                 )
                 .build();
+    }
+
+    public ChatClient buildDynamicChatClient(ChatModel model,
+                                             ChatMemory chatMemory,
+                                             String systemPrompt,
+                                             ToolCallbackProvider toolCallbackProvider,
+                                             Object... tools) {
+        ChatClient.Builder builder = ChatClient.builder(model);
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            builder.defaultSystem(systemPrompt);
+        }
+        builder.defaultAdvisors(
+                new SimpleLoggerAdvisor(),
+                MessageChatMemoryAdvisor.builder(chatMemory).build()
+        );
+        if (tools != null && tools.length > 0) {
+            builder.defaultTools(tools);
+        }
+        if (toolCallbackProvider != null) {
+            builder.defaultToolCallbacks(toolCallbackProvider);
+        }
+        return builder.build();
     }
 
     public ChatClient buildMcpChatClient(ChatModel model,

@@ -33,18 +33,30 @@ CREATE TABLE IF NOT EXISTS ai_user_roles (
     CONSTRAINT uk_ai_user_roles UNIQUE (user_id, role_id)
 );
 
-CREATE TABLE IF NOT EXISTS ai_bot_permissions (
+CREATE TABLE IF NOT EXISTS ai_agent_definitions (
     id BIGINT PRIMARY KEY,
-    bot_type VARCHAR(32) UNIQUE NOT NULL,
-    allowed_roles VARCHAR(255),
-    allowed_departments VARCHAR(255),
-    data_scope VARCHAR(16) DEFAULT 'DEPARTMENT',
-    allowed_operations VARCHAR(128),
-    daily_token_limit INT DEFAULT 100000,
-    enabled BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    agent_code VARCHAR(64) NOT NULL UNIQUE,
+    agent_name VARCHAR(128) NOT NULL,
+    description VARCHAR(512),
+    icon VARCHAR(16),
+    color VARCHAR(32),
+    system_prompt TEXT NOT NULL,
+    default_model VARCHAR(128),
+    tool_codes VARCHAR(512),
+    mcp_server_codes VARCHAR(512),
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    daily_token_limit INTEGER NOT NULL DEFAULT 100000,
+    assistant_profile VARCHAR(64) NOT NULL,
+    system_defined BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by VARCHAR(64),
+    updated_by VARCHAR(64),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE ai_agent_definitions ADD COLUMN IF NOT EXISTS tool_codes VARCHAR(512);
+ALTER TABLE ai_agent_definitions ADD COLUMN IF NOT EXISTS mcp_server_codes VARCHAR(512);
 
 CREATE TABLE IF NOT EXISTS ai_role_token_limits (
     id BIGINT PRIMARY KEY,
@@ -66,13 +78,13 @@ CREATE TABLE IF NOT EXISTS ai_user_token_limits (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS ai_bot_permission_roles (
+CREATE TABLE IF NOT EXISTS ai_agent_roles (
     id BIGINT PRIMARY KEY,
-    permission_id BIGINT NOT NULL REFERENCES ai_bot_permissions(id) ON DELETE CASCADE,
+    agent_code VARCHAR(64) NOT NULL REFERENCES ai_agent_definitions(agent_code) ON DELETE CASCADE,
     role_id BIGINT NOT NULL REFERENCES ai_roles(id) ON DELETE CASCADE,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
-    CONSTRAINT uk_ai_bot_permission_roles UNIQUE (permission_id, role_id)
+    CONSTRAINT uk_ai_agent_roles UNIQUE (agent_code, role_id)
 );
 
 CREATE TABLE IF NOT EXISTS knowledge_bases (
@@ -336,6 +348,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_user_token_limits_bot
     ON ai_user_token_limits (user_id, bot_type)
     WHERE bot_type IS NOT NULL;
 
+CREATE INDEX IF NOT EXISTS idx_ai_agent_definitions_enabled_sort
+    ON ai_agent_definitions (enabled, sort_order, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_ai_agent_roles_agent
+    ON ai_agent_roles (agent_code);
+
+CREATE INDEX IF NOT EXISTS idx_ai_agent_roles_role
+    ON ai_agent_roles (role_id);
+
 CREATE TABLE IF NOT EXISTS gateway_model_stats (
     model_id VARCHAR(64) PRIMARY KEY,
     total_calls INT DEFAULT 0,
@@ -393,55 +414,85 @@ INSERT INTO ai_user_roles (id, user_id, role_id) VALUES
     (11006, 'admin', 1006)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO ai_bot_permissions (
+INSERT INTO ai_agent_definitions (
     id,
-    bot_type,
-    allowed_roles,
-    allowed_departments,
-    data_scope,
-    daily_token_limit,
+    agent_code,
+    agent_name,
+    description,
+    icon,
+    color,
+    system_prompt,
+    default_model,
+    tool_codes,
+    mcp_server_codes,
     enabled,
+    sort_order,
+    daily_token_limit,
+    assistant_profile,
+    system_defined,
+    created_by,
+    updated_by,
     created_at,
     updated_at
 ) VALUES
-    (2001, 'rd', 'ROLE_RD,ROLE_ADMIN', '研发中心,系统管理', 'DEPARTMENT', 200000, TRUE, NOW(), NOW()),
-    (2002, 'sales', 'ROLE_SALES,ROLE_ADMIN', '销售部,系统管理', 'DEPARTMENT', 150000, TRUE, NOW(), NOW()),
-    (2003, 'hr', 'ROLE_HR,ROLE_ADMIN', '人力资源部,系统管理', 'DEPARTMENT', 100000, TRUE, NOW(), NOW()),
-    (2004, 'finance', 'ROLE_FINANCE,ROLE_ADMIN', '财务部,系统管理', 'DEPARTMENT', 100000, TRUE, NOW(), NOW()),
-    (2005, 'supply-chain', 'ROLE_USER,ROLE_ADMIN', NULL, 'DEPARTMENT', 100000, TRUE, NOW(), NOW()),
-    (2006, 'qc', 'ROLE_USER,ROLE_ADMIN', NULL, 'DEPARTMENT', 100000, TRUE, NOW(), NOW()),
-    (2007, 'multi', 'ROLE_ADMIN', '系统管理', 'DEPARTMENT', 500000, TRUE, NOW(), NOW()),
-    (2008, 'weather', 'ROLE_USER,ROLE_ADMIN', NULL, 'DEPARTMENT', 100000, TRUE, NOW(), NOW()),
-    (2009, 'search', 'ROLE_USER,ROLE_ADMIN', NULL, 'DEPARTMENT', 100000, TRUE, NOW(), NOW()),
-    (2010, 'data-analysis', 'ROLE_RD,ROLE_FINANCE,ROLE_ADMIN', '研发中心,财务部,系统管理', 'DEPARTMENT', 200000, TRUE, NOW(), NOW()),
-    (2011, 'code', 'ROLE_RD,ROLE_ADMIN', '研发中心,系统管理', 'DEPARTMENT', 200000, TRUE, NOW(), NOW()),
-    (2012, 'mcp', 'ROLE_ADMIN', '系统管理', 'DEPARTMENT', 500000, TRUE, NOW(), NOW())
+    (2001, 'rd', '研发助手', '研发问答与方案分析', 'RD', '#4f8ef7',
+     '你是企业研发助手，负责代码审查、缺陷分析、技术方案设计与研发知识问答。当前用户: {userId}',
+     'auto', 'rd-tools,internal-api', '', TRUE, 10, 100000, 'generic', FALSE, 'system', 'system', NOW(), NOW()),
+    (2002, 'sales', '销售助手', '销售支持与客户沟通', 'SA', '#3dd68c',
+     '你是企业销售助手，负责报价查询、客户需求分析、方案推荐和订单相关问答。当前用户: {userId}',
+     'auto', 'sales-tools', '', TRUE, 20, 100000, 'generic', FALSE, 'system', 'system', NOW(), NOW()),
+    (2003, 'hr', 'HR 助手', '人事制度与流程答疑', 'HR', '#9d7cf4',
+     '你是 HR 助手，负责员工信息查询、审批流程、政策问答和人事流程说明。当前用户: {userId}',
+     'auto', 'hr-tools', '', TRUE, 30, 100000, 'generic', FALSE, 'system', 'system', NOW(), NOW()),
+    (2004, 'finance', '财务助手', '财务分析与报表解读', 'FN', '#f5a623',
+     '你是财务助手，负责报表解读、预算对比、费用分析和审批相关问答。当前用户: {userId}',
+     'auto', 'finance-tools', '', TRUE, 40, 100000, 'generic', FALSE, 'system', 'system', NOW(), NOW()),
+    (2005, 'supply-chain', '供应链助手', '供应链协同与状态跟踪', 'SC', '#2dd4bf',
+     '你是供应链助手，负责库存查询、采购订单跟踪、补货建议和交付风险分析。当前用户: {userId}',
+     'auto', 'supply-chain-tools', '', TRUE, 50, 100000, 'generic', FALSE, 'system', 'system', NOW(), NOW()),
+    (2006, 'qc', '质控助手', '质量事件分析与预警', 'QC', '#f06060',
+     '你是质控助手，负责质量事件分析、质检结果解读和风险预警。当前用户: {userId}',
+     'auto', 'qc-tools', '', TRUE, 60, 100000, 'generic', FALSE, 'system', 'system', NOW(), NOW()),
+    (2007, 'weather', '天气助手', '天气查询与出行建议', 'WX', '#38bdf8',
+     '你是天气助手，负责天气查询、预报解读和出行建议。当前用户: {userId}',
+     'auto', 'weather-tools', '', TRUE, 70, 100000, 'generic', FALSE, 'system', 'system', NOW(), NOW()),
+    (2008, 'search', '搜索助手', '通用搜索与信息归纳', 'SE', '#6366f1',
+     '你是搜索助手，负责互联网检索、网页摘要、信息比对与事实归纳。当前用户: {userId}',
+     'auto', 'search-tools', '', TRUE, 80, 100000, 'generic', FALSE, 'system', 'system', NOW(), NOW()),
+    (2009, 'data-analysis', '数据分析助手', '数据查询与分析说明', 'DA', '#f59e0b',
+     '你是数据分析助手，负责数据库查询、结果解读、统计分析和图表建议。当前用户: {userId}',
+     'auto', 'data-analysis-tools', '', TRUE, 90, 100000, 'generic', FALSE, 'system', 'system', NOW(), NOW()),
+    (2010, 'code', '代码助手', '代码分析与实现建议', 'CO', '#10b981',
+     '你是代码助手，负责代码分析、质量审查、实现建议和仓库检索。当前用户: {userId}',
+     'auto', 'code-tools', '', TRUE, 100, 100000, 'generic', FALSE, 'system', 'system', NOW(), NOW()),
+    (2011, 'mcp', 'MCP 助手', 'MCP 工具接入、服务诊断和能力扩展', 'MC', '#8b5cf6',
+     '你是 MCP 助手，负责使用 MCP 工具完成外部服务调用与能力扩展。当前用户: {userId}',
+     'auto', '', '', TRUE, 110, 100000, 'mcp', TRUE, 'system', 'system', NOW(), NOW())
 ON CONFLICT DO NOTHING;
 
-INSERT INTO ai_bot_permission_roles (id, permission_id, role_id) VALUES
-    (21001, 2001, 1001),
-    (21002, 2001, 1002),
-    (21003, 2002, 1001),
-    (21004, 2002, 1003),
-    (21005, 2003, 1001),
-    (21006, 2003, 1004),
-    (21007, 2004, 1001),
-    (21008, 2004, 1005),
-    (21009, 2005, 1001),
-    (21010, 2005, 1006),
-    (21011, 2006, 1001),
-    (21012, 2006, 1006),
-    (21013, 2007, 1001),
-    (21014, 2008, 1001),
-    (21015, 2008, 1006),
-    (21016, 2009, 1001),
-    (21017, 2009, 1006),
-    (21018, 2010, 1001),
-    (21019, 2010, 1002),
-    (21020, 2010, 1005),
-    (21021, 2011, 1001),
-    (21022, 2011, 1002),
-    (21023, 2012, 1001)
+INSERT INTO ai_agent_roles (id, agent_code, role_id) VALUES
+    (21001, 'rd', 1001),
+    (21002, 'rd', 1002),
+    (21003, 'sales', 1001),
+    (21004, 'sales', 1003),
+    (21005, 'hr', 1001),
+    (21006, 'hr', 1004),
+    (21007, 'finance', 1001),
+    (21008, 'finance', 1005),
+    (21009, 'supply-chain', 1001),
+    (21010, 'supply-chain', 1006),
+    (21011, 'qc', 1001),
+    (21012, 'qc', 1006),
+    (21013, 'weather', 1001),
+    (21014, 'weather', 1006),
+    (21015, 'search', 1001),
+    (21016, 'search', 1006),
+    (21017, 'data-analysis', 1001),
+    (21018, 'data-analysis', 1002),
+    (21019, 'data-analysis', 1005),
+    (21020, 'code', 1001),
+    (21021, 'code', 1002),
+    (21022, 'mcp', 1001)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO knowledge_bases (

@@ -1,22 +1,18 @@
 package com.huah.ai.platform.auth.service;
 
 import com.huah.ai.platform.auth.dto.AuthUserResponse;
-import com.huah.ai.platform.auth.dto.BotPermissionResponse;
-import com.huah.ai.platform.auth.dto.BotPermissionUpsertRequest;
 import com.huah.ai.platform.auth.dto.RoleOptionResponse;
 import com.huah.ai.platform.auth.dto.RoleUsageResponse;
 import com.huah.ai.platform.auth.dto.RoleUpsertRequest;
 import com.huah.ai.platform.auth.dto.UserUpsertRequest;
-import com.huah.ai.platform.auth.mapper.AiBotPermissionRoleMapper;
+import com.huah.ai.platform.auth.mapper.AiAgentRoleMapper;
 import com.huah.ai.platform.auth.mapper.AiRoleMapper;
 import com.huah.ai.platform.auth.mapper.AiRoleTokenLimitMapper;
 import com.huah.ai.platform.auth.mapper.AiUserMapper;
 import com.huah.ai.platform.auth.mapper.AiUserRoleMapper;
 import com.huah.ai.platform.auth.mapper.AiUserTokenLimitMapper;
-import com.huah.ai.platform.auth.mapper.BotPermissionMapper;
 import com.huah.ai.platform.auth.model.AiRoleEntity;
 import com.huah.ai.platform.auth.model.AiUserEntity;
-import com.huah.ai.platform.auth.model.BotPermissionEntity;
 import com.huah.ai.platform.common.dto.Result;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import java.util.List;
@@ -39,9 +35,6 @@ public class AuthAdminService {
     private static final String MESSAGE_USERNAME_EXISTS = "\u7528\u6237\u540d\u5df2\u5b58\u5728";
     private static final String MESSAGE_USERID_EXISTS = "userId \u5df2\u5b58\u5728";
     private static final String MESSAGE_USERID_PASSWORD_REQUIRED = "userId \u548c password \u4e0d\u80fd\u4e3a\u7a7a";
-    private static final String MESSAGE_PERMISSION_NOT_FOUND = "\u6743\u9650\u914d\u7f6e\u4e0d\u5b58\u5728";
-    private static final String MESSAGE_BOT_TYPE_REQUIRED = "botType \u4e0d\u80fd\u4e3a\u7a7a";
-    private static final String MESSAGE_BOT_PERMISSION_EXISTS = "Bot \u6743\u9650\u914d\u7f6e\u5df2\u5b58\u5728";
     private static final String MESSAGE_ROLE_NOT_FOUND = "\u89d2\u8272\u4e0d\u5b58\u5728";
     private static final String MESSAGE_ROLE_NAME_REQUIRED = "roleName \u4e0d\u80fd\u4e3a\u7a7a";
     private static final String MESSAGE_ROLE_NAME_INVALID = "roleName \u5fc5\u987b\u4ee5 ROLE_ \u5f00\u5934\uff0c\u4e14\u53ea\u80fd\u5305\u542b\u5927\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u548c\u4e0b\u5212\u7ebf";
@@ -55,8 +48,7 @@ public class AuthAdminService {
     private final AiUserMapper userMapper;
     private final AiUserRoleMapper userRoleMapper;
     private final AiUserTokenLimitMapper userTokenLimitMapper;
-    private final BotPermissionMapper botPermissionMapper;
-    private final AiBotPermissionRoleMapper botPermissionRoleMapper;
+    private final AiAgentRoleMapper agentRoleMapper;
     private final AiRoleTokenLimitMapper roleTokenLimitMapper;
     private final PasswordEncoder passwordEncoder;
     private final AuthViewAssembler authViewAssembler;
@@ -128,7 +120,8 @@ public class AuthAdminService {
         }
 
         int userCount = userRoleMapper.countUsersByRoleId(id);
-        int permissionCount = botPermissionRoleMapper.countPermissionsByRoleId(id);
+        int permissionCount = agentRoleMapper.countAgentsByRoleId(id);
+        List<String> permissionReferences = agentRoleMapper.selectAgentReferencesByRoleId(id);
 
         return Result.ok(RoleUsageResponse.builder()
                 .roleId(role.getId())
@@ -136,7 +129,7 @@ public class AuthAdminService {
                 .userCount(userCount)
                 .permissionCount(permissionCount)
                 .userReferences(userRoleMapper.selectUserReferencesByRoleId(id))
-                .permissionReferences(botPermissionRoleMapper.selectPermissionReferencesByRoleId(id))
+                .permissionReferences(permissionReferences)
                 .build());
     }
 
@@ -195,7 +188,8 @@ public class AuthAdminService {
         if (role == null) {
             return Result.fail(404, MESSAGE_ROLE_NOT_FOUND);
         }
-        if (userRoleMapper.countUsersByRoleId(id) > 0 || botPermissionRoleMapper.countPermissionsByRoleId(id) > 0) {
+        if (userRoleMapper.countUsersByRoleId(id) > 0
+                || agentRoleMapper.countAgentsByRoleId(id) > 0) {
             return Result.fail(400, MESSAGE_ROLE_REFERENCED);
         }
         roleTokenLimitMapper.deleteByRoleId(id);
@@ -322,110 +316,6 @@ public class AuthAdminService {
         return Result.ok();
     }
 
-    public Result<List<BotPermissionResponse>> listPermissions() {
-        return Result.ok(botPermissionMapper.selectList(null).stream()
-                .peek(this::syncPermissionRolesView)
-                .map(authViewAssembler::toPermissionResponse)
-                .toList());
-    }
-
-    public Result<BotPermissionResponse> getPermission(Long id) {
-        BotPermissionEntity permission = botPermissionMapper.selectById(id);
-        if (permission == null) {
-            return Result.fail(404, MESSAGE_PERMISSION_NOT_FOUND);
-        }
-        syncPermissionRolesView(permission);
-        return Result.ok(authViewAssembler.toPermissionResponse(permission));
-    }
-
-    @Transactional
-    public Result<BotPermissionResponse> createPermission(BotPermissionUpsertRequest request) {
-        if (isBlank(request.getBotType())) {
-            return Result.fail(400, MESSAGE_BOT_TYPE_REQUIRED);
-        }
-
-        BotPermissionEntity existing = botPermissionMapper.selectByBotTypeAndEnabled(request.getBotType());
-        if (existing != null) {
-            return Result.fail(400, MESSAGE_BOT_PERMISSION_EXISTS);
-        }
-
-        BotPermissionEntity permission = BotPermissionEntity.builder()
-                .botType(request.getBotType())
-                .allowedRoles(defaultString(request.getAllowedRoles(), "ROLE_ADMIN"))
-                .allowedDepartments(request.getAllowedDepartments())
-                .dataScope(defaultString(request.getDataScope(), "DEPARTMENT"))
-                .allowedOperations(defaultString(request.getAllowedOperations(), "READ,WRITE"))
-                .dailyTokenLimit(request.getDailyTokenLimit() != null ? request.getDailyTokenLimit() : 100000)
-                .enabled(request.getEnabled() == null || request.getEnabled())
-                .build();
-
-        try {
-            authRoleService.validatePermissionRolesOrThrow(permission.getAllowedRoles());
-            botPermissionMapper.insert(permission);
-            authRoleService.replacePermissionRoles(permission.getId(), permission.getAllowedRoles());
-        } catch (IllegalArgumentException exception) {
-            return Result.fail(400, exception.getMessage());
-        }
-
-        syncPermissionRolesView(permission);
-        log.info(
-                "Create bot permission: botType={}, allowedRoles={}",
-                permission.getBotType(),
-                permission.getAllowedRoles());
-        return Result.ok(authViewAssembler.toPermissionResponse(permission));
-    }
-
-    @Transactional
-    public Result<BotPermissionResponse> updatePermission(Long id, BotPermissionUpsertRequest request) {
-        BotPermissionEntity permission = botPermissionMapper.selectById(id);
-        if (permission == null) {
-            return Result.fail(404, MESSAGE_PERMISSION_NOT_FOUND);
-        }
-
-        if (request.getAllowedRoles() != null) {
-            permission.setAllowedRoles(request.getAllowedRoles());
-        }
-        if (request.getAllowedDepartments() != null) {
-            permission.setAllowedDepartments(request.getAllowedDepartments());
-        }
-        if (request.getDataScope() != null) {
-            permission.setDataScope(request.getDataScope());
-        }
-        if (request.getAllowedOperations() != null) {
-            permission.setAllowedOperations(request.getAllowedOperations());
-        }
-        if (request.getDailyTokenLimit() != null) {
-            permission.setDailyTokenLimit(request.getDailyTokenLimit());
-        }
-        if (request.getEnabled() != null) {
-            permission.setEnabled(request.getEnabled());
-        }
-
-        try {
-            authRoleService.validatePermissionRolesOrThrow(permission.getAllowedRoles());
-            botPermissionMapper.updateById(permission);
-            authRoleService.replacePermissionRoles(permission.getId(), permission.getAllowedRoles());
-        } catch (IllegalArgumentException exception) {
-            return Result.fail(400, exception.getMessage());
-        }
-
-        syncPermissionRolesView(permission);
-        log.info("Update bot permission: id={}, botType={}", id, permission.getBotType());
-        return Result.ok(authViewAssembler.toPermissionResponse(permission));
-    }
-
-    @Transactional
-    public Result<Void> deletePermission(Long id) {
-        BotPermissionEntity permission = botPermissionMapper.selectById(id);
-        if (permission == null) {
-            return Result.fail(404, MESSAGE_PERMISSION_NOT_FOUND);
-        }
-        authRoleService.replacePermissionRoles(id, null);
-        botPermissionMapper.deleteById(id);
-        log.info("Delete bot permission: id={}, botType={}", id, permission.getBotType());
-        return Result.ok();
-    }
-
     private Boolean parseEnabled(String enabled, Boolean defaultValue) {
         return enabled != null ? Boolean.parseBoolean(enabled) : defaultValue;
     }
@@ -436,10 +326,6 @@ public class AuthAdminService {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
-    }
-
-    private void syncPermissionRolesView(BotPermissionEntity permission) {
-        permission.setAllowedRoles(authRoleService.getPermissionRoleNamesCsv(permission.getId(), permission.getAllowedRoles()));
     }
 
     private AiRoleEntity findRoleByName(String roleName) {

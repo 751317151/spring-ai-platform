@@ -1,5 +1,5 @@
 <template>
-  <div class="drawer-mask" @click.self="emit('close')">
+  <div class="drawer-mask">
     <aside class="drawer-shell">
       <div class="drawer-header">
         <div>
@@ -15,7 +15,7 @@
           <strong class="stat-value">{{ usage.userCount }}</strong>
         </div>
         <div class="stat-card">
-          <span class="stat-label">助手规则引用</span>
+          <span class="stat-label">助手引用</span>
           <strong class="stat-value">{{ usage.permissionCount }}</strong>
         </div>
       </div>
@@ -36,15 +36,15 @@
       </section>
 
       <section class="detail-section">
-        <div class="section-title">AI 助手规则引用</div>
+        <div class="section-title">助手引用</div>
         <div v-if="usage.permissionReferences.length" class="reference-list">
           <div v-for="item in usage.permissionReferences" :key="item" class="reference-item">{{ item }}</div>
         </div>
         <EmptyState
           v-else
-          icon="P"
-          title="暂无助手规则引用"
-          description="当前没有 AI 助手规则使用这个角色。"
+          icon="AI"
+          title="暂无助手引用"
+          description="当前没有助手使用这个角色。"
           variant="compact"
           align="left"
         />
@@ -62,7 +62,7 @@ const emit = defineEmits<{ close: [] }>()
 </script>
 
 <style scoped>
-.drawer-mask { position: fixed; inset: 0; z-index: 1000; display: flex; justify-content: flex-end; background: rgba(15, 23, 42, 0.48); backdrop-filter: blur(6px); }
+.drawer-mask { position: fixed; inset: 0; z-index: 1600; display: flex; justify-content: flex-end; background: rgba(15, 23, 42, 0.48); backdrop-filter: blur(6px); }
 .drawer-shell { width: min(480px, 100%); height: 100%; padding: 24px; border-left: 1px solid rgba(148, 163, 184, 0.18); background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.94)); overflow-y: auto; }
 .drawer-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
 .drawer-title { color: var(--text); font-size: 20px; font-weight: 700; }

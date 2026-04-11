@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.huah.ai.platform.auth.mapper.AiAgentDefinitionMapper">
+    <select id="selectEnabledDefinitions" resultType="com.huah.ai.platform.auth.model.AiAgentDefinitionEntity">
+        SELECT id, agent_code, agent_name, daily_token_limit, enabled
+        FROM ai_agent_definitions
+        WHERE enabled = TRUE
+        ORDER BY sort_order ASC, created_at DESC
+    </select>
+</mapper>

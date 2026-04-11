@@ -96,7 +96,7 @@
       </tbody>
     </table>
 
-    <div v-if="chunkModalVisible" class="chunk-modal-mask" @click.self="closeChunkPreview">
+    <div v-if="chunkModalVisible" class="chunk-modal-mask">
       <div class="chunk-modal">
         <div class="chunk-modal-header">
           <div>
@@ -316,8 +316,8 @@ async function copyCurrentChunk() {
 .doc-error-row td { padding-top: 0; }
 .doc-row-highlight { box-shadow: inset 3px 0 0 var(--accent); background: color-mix(in srgb, var(--accent-dim) 60%, transparent); }
 .doc-error-message { border-left: 3px solid #f04438; background: #fff3f2; color: #b42318; padding: 8px 10px; font-size: 12px; }
-.chunk-modal-mask { position: fixed; inset: 0; z-index: 1000; background: rgba(15,23,42,0.54); display: flex; align-items: center; justify-content: center; padding: 24px; }
-.chunk-modal { width: min(920px, 100%); max-height: 84vh; overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 22px; box-shadow: 0 20px 60px rgba(15,23,42,0.22); padding: 22px; }
+.chunk-modal-mask { position: fixed; inset: 0; z-index: 1600; background: rgba(15,23,42,0.54); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.chunk-modal { width: min(920px, 100%); max-height: calc(100vh - 48px); overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 22px; box-shadow: 0 20px 60px rgba(15,23,42,0.22); padding: 22px; }
 .chunk-modal-title { font-size: 16px; font-weight: 600; color: var(--text); }
 .chunk-modal-subtitle { margin-top: 6px; color: var(--text3); font-size: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
 .chunk-overview, .chunk-list { display: grid; gap: 12px; }

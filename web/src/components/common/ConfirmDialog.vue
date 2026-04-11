@@ -1,5 +1,5 @@
 <template>
-  <div v-if="visible" class="confirm-mask" @click.self="resolveConfirm(false)">
+  <div v-if="visible" class="confirm-mask">
     <div class="confirm-dialog">
       <div class="confirm-eyebrow">确认操作</div>
       <div class="confirm-title">{{ title }}</div>
@@ -32,7 +32,7 @@ const {
 .confirm-mask {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  z-index: 2100;
   background: rgba(15, 23, 42, 0.58);
   display: flex;
   align-items: center;
@@ -42,6 +42,8 @@ const {
 
 .confirm-dialog {
   width: min(440px, 100%);
+  max-height: min(420px, calc(100vh - 40px));
+  overflow: auto;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r3);
@@ -74,6 +76,7 @@ const {
 .confirm-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 20px;
 }

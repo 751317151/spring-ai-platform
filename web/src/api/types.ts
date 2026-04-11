@@ -116,16 +116,6 @@ export interface BotPermission {
   enabled: boolean
 }
 
-export interface BotPermissionUpsertRequest {
-  botType?: string
-  allowedRoles?: string
-  allowedDepartments?: string
-  dataScope?: string
-  allowedOperations?: string
-  dailyTokenLimit?: number
-  enabled?: boolean
-}
-
 export type AgentType = string
 
 export interface MessageDerivedFrom {
@@ -641,6 +631,13 @@ export interface McpServerListResponse {
   servers: McpServerInfo[]
 }
 
+export interface AssistantToolCatalogItem {
+  code: string
+  name: string
+  description?: string
+  category?: string
+}
+
 export interface ToolSecurityOverviewResponse {
   securityEnabled: boolean
   agentType: string
@@ -952,6 +949,46 @@ export interface AgentMetadataItem {
 export interface AgentMetadataResponse {
   count: number
   agents: AgentMetadataItem[]
+}
+
+export interface AgentDefinition {
+  id?: string | number
+  agentCode: string
+  agentName: string
+  assistantProfile: string
+  allowedRoles: string
+  description?: string
+  icon?: string
+  color?: string
+  systemPrompt?: string
+  defaultModel?: string
+  toolCodes?: string
+  mcpServerCodes?: string
+  enabled: boolean
+  sortOrder?: number
+  dailyTokenLimit?: number
+  systemDefined?: boolean
+  createdBy?: string
+  updatedBy?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface AgentDefinitionUpsertRequest {
+  agentCode?: string
+  agentName?: string
+  assistantProfile?: string
+  allowedRoles?: string
+  description?: string
+  icon?: string
+  color?: string
+  systemPrompt?: string
+  defaultModel?: string
+  toolCodes?: string
+  mcpServerCodes?: string
+  enabled?: boolean
+  sortOrder?: number
+  dailyTokenLimit?: number
 }
 
 export interface AgentToolAuditLog {

@@ -34,13 +34,17 @@ public abstract class BaseAssistantAgent implements AssistantAgent {
 
     @Override
     public AgentChatResult chat(String userId, String sessionId, String message) {
+        return chatAs(agentType, userId, sessionId, message);
+    }
+
+    public AgentChatResult chatAs(String effectiveAgentType, String userId, String sessionId, String message) {
         long preparationStart = System.currentTimeMillis();
         SessionConfigResponse sessionConfig = conversationMemoryService.getSessionConfig(sessionId);
         String runtimeInstruction = sessionRuntimeInstructionBuilder.build(sessionConfig);
         ChatOptions chatOptions = buildChatOptions(sessionConfig);
         String enrichedMessage = enrichMessage(message, runtimeInstruction);
         long preparationLatency = System.currentTimeMillis() - preparationStart;
-        ToolExecutionContext.set(userId, sessionId, agentType);
+        ToolExecutionContext.set(userId, sessionId, effectiveAgentType);
         try {
             long modelStart = System.currentTimeMillis();
             ChatResponse chatResponse = chatClient
@@ -61,6 +65,10 @@ public abstract class BaseAssistantAgent implements AssistantAgent {
 
     @Override
     public Flux<ChatResponse> chatStream(String userId, String sessionId, String message) {
+        return chatStreamAs(agentType, userId, sessionId, message);
+    }
+
+    public Flux<ChatResponse> chatStreamAs(String effectiveAgentType, String userId, String sessionId, String message) {
         long preparationStart = System.currentTimeMillis();
         SessionConfigResponse sessionConfig = conversationMemoryService.getSessionConfig(sessionId);
         String runtimeInstruction = sessionRuntimeInstructionBuilder.build(sessionConfig);
@@ -68,7 +76,7 @@ public abstract class BaseAssistantAgent implements AssistantAgent {
         String enrichedMessage = enrichMessage(message, null);
         long preparationLatency = System.currentTimeMillis() - preparationStart;
         AgentExecutionMetricsContext.set(new AgentExecutionMetrics(preparationLatency, 0));
-        ToolExecutionContext.set(userId, sessionId, agentType);
+        ToolExecutionContext.set(userId, sessionId, effectiveAgentType);
         return chatClient
                 .prompt()
                 .system(s -> s.param("userId", userId))

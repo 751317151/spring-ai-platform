@@ -47,7 +47,7 @@ export const useChatStore = defineStore('chat', () => {
     loadAgentMetadata
   } = useAgentMetadata()
 
-  function normalizeSessionConfig(config?: SessionConfig | null): SessionConfig {
+function normalizeSessionConfig(config?: SessionConfig | null): SessionConfig {
     const temperature =
       typeof config?.temperature === 'number'
         ? Math.min(1, Math.max(0, Number(config.temperature)))
@@ -68,6 +68,19 @@ export const useChatStore = defineStore('chat', () => {
       systemPromptTemplate: config?.systemPromptTemplate?.trim() || '',
       updatedAt: config?.updatedAt ?? null
     }
+  }
+
+  function buildDefaultSessionConfig(agentType = currentAgent.value): SessionConfig {
+    const metadataConfig = getMetadataAgentConfig(agentType)
+    return normalizeSessionConfig({
+      model: metadataConfig.defaultModel ?? DEFAULT_SESSION_CONFIG.model,
+      temperature: metadataConfig.defaultTemperature ?? DEFAULT_SESSION_CONFIG.temperature,
+      maxContextMessages:
+        metadataConfig.defaultMaxContextMessages ?? DEFAULT_SESSION_CONFIG.maxContextMessages,
+      knowledgeEnabled:
+        metadataConfig.supportsKnowledge ?? DEFAULT_SESSION_CONFIG.knowledgeEnabled,
+      systemPromptTemplate: ''
+    })
   }
 
   function normalizeChatMessage(message: ChatMessage): ChatMessage {
@@ -175,7 +188,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function resetSessionConfig() {
-    sessionConfig.value = normalizeSessionConfig(DEFAULT_SESSION_CONFIG)
+    sessionConfig.value = buildDefaultSessionConfig(currentAgent.value)
   }
 
   async function loadSessionConfig(sessionId: string | null = currentSessionId.value) {

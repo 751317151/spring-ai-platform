@@ -1,10 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as authApi from '@/api/auth'
+import * as agentApi from '@/api/agent'
 import type {
+  AgentDefinition,
+  AgentDefinitionUpsertRequest,
   AiUser,
-  BotPermission,
-  BotPermissionUpsertRequest,
   RoleOption,
   RoleTokenLimit,
   RoleTokenLimitUpsertRequest,
@@ -17,19 +18,19 @@ import type {
 export const useUserStore = defineStore('user', () => {
   const users = ref<AiUser[]>([])
   const roles = ref<RoleOption[]>([])
-  const permissions = ref<BotPermission[]>([])
+  const agentDefinitions = ref<AgentDefinition[]>([])
   const roleTokenLimits = ref<RoleTokenLimit[]>([])
   const userTokenLimits = ref<UserTokenLimit[]>([])
 
   const loadingUsers = ref(false)
   const loadingRoles = ref(false)
-  const loadingPermissions = ref(false)
+  const loadingAgentDefinitions = ref(false)
   const loadingRoleTokenLimits = ref(false)
   const loadingUserTokenLimits = ref(false)
 
   const userError = ref('')
   const roleError = ref('')
-  const permissionError = ref('')
+  const agentDefinitionError = ref('')
   const roleTokenLimitError = ref('')
   const userTokenLimitError = ref('')
 
@@ -59,16 +60,16 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  async function loadPermissions() {
-    loadingPermissions.value = true
-    permissionError.value = ''
+  async function loadAgentDefinitions() {
+    loadingAgentDefinitions.value = true
+    agentDefinitionError.value = ''
     try {
-      permissions.value = (await authApi.getPermissions()) || []
+      agentDefinitions.value = (await agentApi.getAgentDefinitions()) || []
     } catch (error) {
-      permissions.value = []
-      permissionError.value = error instanceof Error ? error.message : '助手权限规则加载失败，请稍后重试'
+      agentDefinitions.value = []
+      agentDefinitionError.value = error instanceof Error ? error.message : '助手定义加载失败，请稍后重试'
     } finally {
-      loadingPermissions.value = false
+      loadingAgentDefinitions.value = false
     }
   }
 
@@ -99,7 +100,13 @@ export const useUserStore = defineStore('user', () => {
   }
 
   async function loadAll() {
-    await Promise.all([loadUsers(), loadRoles(), loadPermissions(), loadRoleTokenLimits(), loadUserTokenLimits()])
+    await Promise.all([
+      loadUsers(),
+      loadRoles(),
+      loadAgentDefinitions(),
+      loadRoleTokenLimits(),
+      loadUserTokenLimits()
+    ])
   }
 
   async function createRole(data: RoleUpsertRequest): Promise<boolean> {
@@ -116,8 +123,7 @@ export const useUserStore = defineStore('user', () => {
   async function updateRole(id: string, data: RoleUpsertRequest): Promise<boolean> {
     try {
       await authApi.updateRole(id, data)
-      await loadRoles()
-      await Promise.all([loadUsers(), loadPermissions()])
+      await Promise.all([loadRoles(), loadUsers(), loadAgentDefinitions()])
       return true
     } catch (error) {
       roleError.value = error instanceof Error ? error.message : '更新角色失败'
@@ -128,8 +134,7 @@ export const useUserStore = defineStore('user', () => {
   async function deleteRole(id: string): Promise<boolean> {
     try {
       await authApi.deleteRole(id)
-      await loadRoles()
-      await Promise.all([loadUsers(), loadPermissions()])
+      await Promise.all([loadRoles(), loadUsers(), loadAgentDefinitions()])
       return true
     } catch (error) {
       roleError.value = error instanceof Error ? error.message : '删除角色失败'
@@ -170,35 +175,35 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  async function createPermission(data: BotPermissionUpsertRequest): Promise<boolean> {
+  async function createAgentDefinition(data: AgentDefinitionUpsertRequest): Promise<boolean> {
     try {
-      await authApi.createPermission(data)
-      await loadPermissions()
+      await agentApi.createAgentDefinition(data)
+      await loadAgentDefinitions()
       return true
     } catch (error) {
-      permissionError.value = error instanceof Error ? error.message : '新建助手权限规则失败'
+      agentDefinitionError.value = error instanceof Error ? error.message : '新建助手定义失败'
       return false
     }
   }
 
-  async function updatePermission(id: string, data: BotPermissionUpsertRequest): Promise<boolean> {
+  async function updateAgentDefinition(agentCode: string, data: AgentDefinitionUpsertRequest): Promise<boolean> {
     try {
-      await authApi.updatePermission(id, data)
-      await loadPermissions()
+      await agentApi.updateAgentDefinition(agentCode, data)
+      await loadAgentDefinitions()
       return true
     } catch (error) {
-      permissionError.value = error instanceof Error ? error.message : '更新助手权限规则失败'
+      agentDefinitionError.value = error instanceof Error ? error.message : '更新助手定义失败'
       return false
     }
   }
 
-  async function deletePermission(id: string): Promise<boolean> {
+  async function deleteAgentDefinition(agentCode: string): Promise<boolean> {
     try {
-      await authApi.deletePermission(id)
-      await loadPermissions()
+      await agentApi.deleteAgentDefinition(agentCode)
+      await loadAgentDefinitions()
       return true
     } catch (error) {
-      permissionError.value = error instanceof Error ? error.message : '删除助手权限规则失败'
+      agentDefinitionError.value = error instanceof Error ? error.message : '删除助手定义失败'
       return false
     }
   }
@@ -272,22 +277,22 @@ export const useUserStore = defineStore('user', () => {
   return {
     users,
     roles,
-    permissions,
+    agentDefinitions,
     roleTokenLimits,
     userTokenLimits,
     loadingUsers,
     loadingRoles,
-    loadingPermissions,
+    loadingAgentDefinitions,
     loadingRoleTokenLimits,
     loadingUserTokenLimits,
     userError,
     roleError,
-    permissionError,
+    agentDefinitionError,
     roleTokenLimitError,
     userTokenLimitError,
     loadUsers,
     loadRoles,
-    loadPermissions,
+    loadAgentDefinitions,
     loadRoleTokenLimits,
     loadUserTokenLimits,
     loadAll,
@@ -297,9 +302,9 @@ export const useUserStore = defineStore('user', () => {
     createUser,
     updateUser,
     deleteUser,
-    createPermission,
-    updatePermission,
-    deletePermission,
+    createAgentDefinition,
+    updateAgentDefinition,
+    deleteAgentDefinition,
     createRoleTokenLimit,
     updateRoleTokenLimit,
     deleteRoleTokenLimit,

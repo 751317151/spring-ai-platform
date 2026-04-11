@@ -1,15 +1,16 @@
 package com.huah.ai.platform.auth.service;
 
 import com.huah.ai.platform.auth.dto.BotPermissionResponse;
+import com.huah.ai.platform.auth.mapper.AiAgentDefinitionMapper;
+import com.huah.ai.platform.auth.mapper.AiAgentRoleMapper;
 import com.huah.ai.platform.auth.dto.LoginRequest;
 import com.huah.ai.platform.auth.dto.LogoutRequest;
 import com.huah.ai.platform.auth.dto.RefreshTokenRequest;
 import com.huah.ai.platform.auth.dto.TokenResponse;
 import com.huah.ai.platform.auth.dto.TokenValidationResponse;
 import com.huah.ai.platform.auth.mapper.AiUserMapper;
-import com.huah.ai.platform.auth.mapper.BotPermissionMapper;
+import com.huah.ai.platform.auth.model.AiAgentDefinitionEntity;
 import com.huah.ai.platform.auth.model.AiUserEntity;
-import com.huah.ai.platform.auth.model.BotPermissionEntity;
 import com.huah.ai.platform.common.dto.Result;
 import com.huah.ai.platform.common.util.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -46,9 +47,9 @@ public class AuthTokenService {
     private final PasswordEncoder passwordEncoder;
     private final StringRedisTemplate redisTemplate;
     private final AiUserMapper userMapper;
-    private final BotPermissionMapper botPermissionMapper;
+    private final AiAgentDefinitionMapper agentDefinitionMapper;
+    private final AiAgentRoleMapper agentRoleMapper;
     private final AuthViewAssembler authViewAssembler;
-    private final AuthRoleService authRoleService;
 
     @Value("${jwt.access-expiration-ms:${jwt.expiration-ms:7200000}}")
     private long accessExpirationMs = 7_200_000L;
@@ -146,14 +147,35 @@ public class AuthTokenService {
                 : (String) request.getAttribute("X-Roles");
         String department = (String) request.getAttribute("X-Department");
 
-        List<BotPermissionResponse> available = botPermissionMapper.selectList(null).stream()
-                .peek(this::syncPermissionRolesView)
-                .filter(BotPermissionEntity::isEnabled)
-                .filter(permission -> hasBotAccess(permission, roles, department))
-                .map(authViewAssembler::toPermissionResponse)
+        List<BotPermissionResponse> available = agentDefinitionMapper.selectEnabledDefinitions().stream()
+                .filter(definition -> hasAgentAccess(definition.getAgentCode(), roles))
+                .map(this::toBotPermissionResponse)
                 .toList();
 
         return Result.ok(available);
+    }
+
+    private BotPermissionResponse toBotPermissionResponse(AiAgentDefinitionEntity definition) {
+        List<String> roleNames = agentRoleMapper.selectRoleNamesByAgentCode(definition.getAgentCode());
+        String allowedRoles = roleNames == null ? "" : String.join(",", roleNames);
+        return BotPermissionResponse.builder()
+                .id(null)
+                .botType(definition.getAgentCode())
+                .allowedRoles(allowedRoles)
+                .allowedDepartments(null)
+                .dataScope("ALL")
+                .allowedOperations("CHAT")
+                .dailyTokenLimit(definition.getDailyTokenLimit() == null ? 100000 : definition.getDailyTokenLimit())
+                .enabled(Boolean.TRUE.equals(definition.getEnabled()))
+                .build();
+    }
+
+    private boolean hasAgentAccess(String agentCode, String roles) {
+        if (roles != null && roles.contains("ROLE_ADMIN")) {
+            return true;
+        }
+        List<String> roleNames = agentRoleMapper.selectRoleNamesByAgentCode(agentCode);
+        return hasRequiredRole(roleNames == null ? "" : String.join(",", roleNames), roles);
     }
 
     private TokenResponse buildTokenPayload(
@@ -191,19 +213,6 @@ public class AuthTokenService {
                 .build();
     }
 
-    private boolean hasBotAccess(BotPermissionEntity permission, String roles, String department) {
-        if (roles != null && roles.contains("ROLE_ADMIN")) {
-            return true;
-        }
-        if (!hasRequiredRole(permission.getAllowedRoles(), roles)) {
-            return false;
-        }
-        if (!hasRequiredDepartment(permission.getAllowedDepartments(), department)) {
-            return false;
-        }
-        return isChatOperationAllowed(permission.getAllowedOperations());
-    }
-
     private boolean hasRequiredRole(String allowedRoles, String roles) {
         if (isBlank(allowedRoles)) {
             return true;
@@ -221,39 +230,6 @@ public class AuthTokenService {
             }
         }
         return false;
-    }
-
-    private boolean hasRequiredDepartment(String allowedDepartments, String department) {
-        if (isBlank(allowedDepartments)) {
-            return true;
-        }
-        if (isBlank(department)) {
-            return false;
-        }
-        List<String> normalizedAllowedDepartments = List.of(allowedDepartments.split(",")).stream()
-                .map(String::trim)
-                .filter(value -> !value.isEmpty())
-                .toList();
-        return normalizedAllowedDepartments.contains(department.trim());
-    }
-
-    private boolean isChatOperationAllowed(String allowedOperations) {
-        if (isBlank(allowedOperations)) {
-            return true;
-        }
-        List<String> operations = List.of(allowedOperations.split(",")).stream()
-                .map(String::trim)
-                .map(String::toUpperCase)
-                .filter(value -> !value.isEmpty())
-                .toList();
-        return operations.contains("ALL")
-                || operations.contains("CHAT")
-                || operations.contains("WRITE")
-                || operations.contains("EXECUTE");
-    }
-
-    private void syncPermissionRolesView(BotPermissionEntity permission) {
-        permission.setAllowedRoles(authRoleService.getPermissionRoleNamesCsv(permission.getId(), permission.getAllowedRoles()));
     }
 
     private boolean isTokenBlacklisted(String token) {

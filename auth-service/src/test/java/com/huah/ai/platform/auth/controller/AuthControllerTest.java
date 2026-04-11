@@ -58,9 +58,9 @@ class AuthControllerTest {
                 passwordEncoder,
                 redisTemplate,
                 userMapper,
-                mock(com.huah.ai.platform.auth.mapper.BotPermissionMapper.class),
-                new AuthViewAssembler(),
-                mock(com.huah.ai.platform.auth.service.AuthRoleService.class));
+                mock(com.huah.ai.platform.auth.mapper.AiAgentDefinitionMapper.class),
+                mock(com.huah.ai.platform.auth.mapper.AiAgentRoleMapper.class),
+                new AuthViewAssembler());
         controller = new AuthController(
                 authTokenService,
                 mock(AuthAdminService.class),

@@ -1,5 +1,5 @@
 <template>
-  <div class="modal-mask" @click.self="emit('close')">
+  <div class="modal-mask">
     <div class="modal-shell">
       <div class="modal-header">
         <div>
@@ -143,7 +143,7 @@ async function handleSave() {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.62);
-  z-index: 1000;
+  z-index: 1600;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -152,14 +152,19 @@ async function handleSave() {
 
 .modal-shell {
   width: min(560px, 100%);
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r2);
-  padding: 24px;
 }
 
 .modal-header {
   margin-bottom: 16px;
+  padding: 24px 24px 0;
+  flex-shrink: 0;
 }
 
 .modal-title {
@@ -178,6 +183,9 @@ async function handleSave() {
 .modal-body {
   display: grid;
   gap: 12px;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 0 24px 24px;
 }
 
 .modal-grid {
@@ -210,12 +218,39 @@ async function handleSave() {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
-  margin-top: 18px;
+  margin-top: auto;
+  padding: 16px 24px 24px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(19, 22, 27, 0.72), rgba(19, 22, 27, 0.96));
 }
 
 @media (max-width: 640px) {
+  .modal-mask {
+    padding: 12px;
+  }
+
+  .modal-shell {
+    max-height: calc(100vh - 24px);
+  }
+
   .modal-grid {
     grid-template-columns: 1fr;
+  }
+
+  .modal-header,
+  .modal-body,
+  .modal-actions {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .modal-header {
+    padding-top: 18px;
+  }
+
+  .modal-actions {
+    padding-bottom: 18px;
   }
 }
 </style>

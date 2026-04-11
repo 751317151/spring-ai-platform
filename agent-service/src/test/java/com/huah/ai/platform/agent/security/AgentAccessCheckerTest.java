@@ -25,8 +25,13 @@ import org.springframework.jdbc.core.JdbcTemplate;
 class AgentAccessCheckerTest {
 
     private static final String QUERY_PERMISSION =
-            "SELECT allowed_roles, allowed_departments, allowed_operations, enabled "
-                    + "FROM ai_bot_permissions WHERE bot_type = ?";
+            "SELECT d.enabled, d.daily_token_limit, "
+                    + "COALESCE(STRING_AGG(r.role_name, ',' ORDER BY r.role_name), '') AS allowed_roles "
+                    + "FROM ai_agent_definitions d "
+                    + "LEFT JOIN ai_agent_roles ar ON ar.agent_code = d.agent_code "
+                    + "LEFT JOIN ai_roles r ON r.id = ar.role_id "
+                    + "WHERE d.agent_code = ? "
+                    + "GROUP BY d.agent_code, d.enabled, d.daily_token_limit";
 
     @Mock
     private JdbcTemplate jdbcTemplate;
@@ -48,15 +53,14 @@ class AgentAccessCheckerTest {
     }
 
     @Test
-    void checkPermissionAllowsMatchingRoleAndDepartment() {
+    void checkPermissionAllowsMatchingRole() {
         when(jdbcTemplate.queryForList(QUERY_PERMISSION, "rd")).thenReturn(List.of(Map.of(
                 "allowed_roles", "ROLE_RD,ROLE_ADMIN",
-                "allowed_departments", "研发中心",
-                "allowed_operations", "CHAT,READ",
+                "daily_token_limit", 100000,
                 "enabled", true
         )));
 
-        String result = checker.checkPermission("rd", "ROLE_RD,ROLE_USER", "研发中心", "CHAT");
+        String result = checker.checkPermission("rd", "ROLE_RD,ROLE_USER", "R&D", "CHAT");
 
         assertNull(result);
     }
@@ -65,35 +69,20 @@ class AgentAccessCheckerTest {
     void checkPermissionRejectsRoleMismatch() {
         when(jdbcTemplate.queryForList(QUERY_PERMISSION, "finance")).thenReturn(List.of(Map.of(
                 "allowed_roles", "ROLE_FINANCE,ROLE_ADMIN",
-                "allowed_departments", "财务部",
-                "allowed_operations", "CHAT",
+                "daily_token_limit", 100000,
                 "enabled", true
         )));
 
-        String result = checker.checkPermission("finance", "ROLE_USER", "财务部");
+        String result = checker.checkPermission("finance", "ROLE_USER", "Finance", "CHAT");
 
         assertEquals("您的角色无权使用该 Agent，需要角色: ROLE_FINANCE,ROLE_ADMIN", result);
-    }
-
-    @Test
-    void checkPermissionRejectsOperationMismatch() {
-        when(jdbcTemplate.queryForList(QUERY_PERMISSION, "search")).thenReturn(List.of(Map.of(
-                "allowed_roles", "ROLE_RD,ROLE_ADMIN",
-                "allowed_departments", "研发中心",
-                "allowed_operations", "READ",
-                "enabled", true
-        )));
-
-        String result = checker.checkPermission("search", "ROLE_RD", "研发中心", "WRITE");
-
-        assertEquals("当前权限规则不允许该操作，需要操作权限: WRITE", result);
     }
 
     @Test
     void checkPermissionRejectsMissingPermissionRecord() {
         when(jdbcTemplate.queryForList(QUERY_PERMISSION, "hr")).thenReturn(List.of());
 
-        String result = checker.checkPermission("hr", "ROLE_HR,ROLE_USER", "人力资源部");
+        String result = checker.checkPermission("hr", "ROLE_HR,ROLE_USER", "HR", "CHAT");
 
         assertEquals("未找到该 Agent 的权限配置", result);
     }
@@ -102,7 +91,7 @@ class AgentAccessCheckerTest {
     void checkPermissionRejectsWhenPermissionQueryFails() {
         when(jdbcTemplate.queryForList(QUERY_PERMISSION, "sales")).thenThrow(new RuntimeException("db down"));
 
-        String result = checker.checkPermission("sales", "ROLE_SALES,ROLE_USER", "销售部");
+        String result = checker.checkPermission("sales", "ROLE_SALES,ROLE_USER", "Sales", "CHAT");
 
         assertEquals("权限校验失败，请稍后重试", result);
     }
@@ -138,7 +127,7 @@ class AgentAccessCheckerTest {
                 "user-1"
         )).thenReturn(List.of());
         when(jdbcTemplate.queryForList(
-                "SELECT daily_token_limit FROM ai_bot_permissions WHERE bot_type = ? AND enabled = true",
+                "SELECT daily_token_limit FROM ai_agent_definitions WHERE agent_code = ? AND enabled = true",
                 "rd"
         )).thenReturn(List.of(Map.of("daily_token_limit", 100)));
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);

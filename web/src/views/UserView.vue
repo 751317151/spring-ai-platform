@@ -2,16 +2,13 @@
   <div class="page-shell">
     <section class="hero-card">
       <div>
-        <div class="eyebrow">RBAC 权限管理</div>
-        <h1>用户、角色、助手权限与 Token 配额</h1>
+        <div class="eyebrow">RBAC 管理</div>
+        <h1>用户、角色、助手与 Token 配额</h1>
         <p>
-          这一页集中管理角色目录、用户与角色、助手权限、角色配额、用户配额。
-          配额优先级为：用户助手专属 > 用户总配额 > 角色助手专属 > 角色总配额 > 助手默认配额。
+          这一页统一管理角色目录、用户账号、助手定义、角色配额和用户配额。普通助手直接在助手上配置允许角色和默认 Token 配额，不再单独维护权限规则表。
         </p>
       </div>
-      <div class="hero-actions">
-        <button class="btn btn-primary" @click="openPrimaryAction">{{ activeSection.primaryActionText }}</button>
-      </div>
+      <button class="btn btn-primary" @click="openPrimaryAction">{{ activeSection.primaryActionText }}</button>
     </section>
 
     <section class="card section-card">
@@ -33,12 +30,12 @@
       <div class="section-header">
         <div>
           <div class="section-title">角色目录</div>
-          <div class="section-subtitle">维护角色定义，并查看角色被哪些用户和助手规则引用。</div>
+          <div class="section-subtitle">维护角色定义，并查看角色被哪些用户和助手引用。</div>
         </div>
         <button class="btn btn-primary btn-sm" @click="openRoleModal()">新建角色</button>
       </div>
       <div class="toolbar">
-        <input v-model.trim="roleKeyword" class="form-input toolbar-input" placeholder="搜索角色编码或角色说明">
+        <input v-model.trim="roleKeyword" class="form-input toolbar-input" placeholder="搜索角色名称或描述">
       </div>
       <EmptyState
         v-if="userStore.loadingRoles"
@@ -71,7 +68,7 @@
           </div>
           <div class="role-metrics">
             <span>{{ countUsersByRole(role.roleName) }} 个用户</span>
-            <span>{{ countPermissionsByRole(role.roleName) }} 条助手规则</span>
+            <span>{{ countAssistantsByRole(role.roleName) }} 个助手</span>
             <span>{{ countRoleQuotaByRole(role.id) }} 条角色配额</span>
           </div>
         </article>
@@ -82,12 +79,12 @@
       <div class="section-header">
         <div>
           <div class="section-title">用户与角色</div>
-          <div class="section-subtitle">用户登录后先获得角色，再由角色决定可访问的 AI 助手能力。</div>
+          <div class="section-subtitle">用户登录后先获得角色，再由角色决定可访问的助手。</div>
         </div>
         <button class="btn btn-primary btn-sm" @click="openUserModal()">新建用户</button>
       </div>
       <div class="toolbar">
-        <input v-model.trim="userKeyword" class="form-input toolbar-input" placeholder="搜索用户 ID、用户名、部门或角色">
+        <input v-model.trim="userKeyword" class="form-input toolbar-input" placeholder="搜索用户、部门或角色">
         <select v-model="userStatus" class="form-input toolbar-select">
           <option value="all">全部状态</option>
           <option value="enabled">仅启用</option>
@@ -114,57 +111,87 @@
       <UserTable v-else :users="filteredUsers" @edit="openUserModal" @delete="handleDeleteUser" />
     </section>
 
-    <section v-if="activeSectionKey === 'permissions'" class="card section-card">
+    <section v-if="activeSectionKey === 'agent-definitions'" class="card section-card">
       <div class="section-header">
         <div>
-          <div class="section-title">角色与助手权限</div>
-          <div class="section-subtitle">定义哪些角色可以访问哪些 AI 助手，以及对应的数据范围和操作范围。</div>
+          <div class="section-title">助手</div>
+          <div class="section-subtitle">助手直接维护系统提示词、允许角色和默认 Token 配额。</div>
         </div>
-        <button class="btn btn-primary btn-sm" @click="openPermissionModal()">新建规则</button>
+        <button class="btn btn-primary btn-sm" @click="openAgentDefinitionModal()">新建助手</button>
       </div>
       <div class="toolbar">
-        <input v-model.trim="permissionKeyword" class="form-input toolbar-input" placeholder="搜索助手、角色、部门或操作范围">
-        <select v-model="permissionStatus" class="form-input toolbar-select">
+        <input v-model.trim="agentDefinitionKeyword" class="form-input toolbar-input" placeholder="搜索编码、名称或描述">
+        <select v-model="agentDefinitionStatus" class="form-input toolbar-select">
           <option value="all">全部状态</option>
           <option value="enabled">仅启用</option>
           <option value="disabled">仅停用</option>
         </select>
       </div>
-      <div class="toolbar-meta">共 {{ filteredPermissions.length }} / {{ userStore.permissions.length }} 条规则</div>
+      <div class="toolbar-meta">共 {{ filteredAgentDefinitions.length }} / {{ userStore.agentDefinitions.length }} 个助手</div>
       <EmptyState
-        v-if="userStore.loadingPermissions"
-        icon="P"
-        title="正在加载助手权限规则"
+        v-if="userStore.loadingAgentDefinitions"
+        icon="AI"
+        title="正在加载助手列表"
         description="请稍候。"
         variant="compact"
       />
       <EmptyState
-        v-else-if="userStore.permissionError"
-        icon="P"
-        title="助手权限规则加载失败"
-        :description="userStore.permissionError"
+        v-else-if="userStore.agentDefinitionError"
+        icon="AI"
+        title="助手列表加载失败"
+        :description="userStore.agentDefinitionError"
         action-text="重新加载"
         variant="compact"
-        @action="userStore.loadPermissions()"
+        @action="userStore.loadAgentDefinitions()"
       />
-      <PermissionTable
-        v-else
-        :permissions="filteredPermissions"
-        @edit="openPermissionModal"
-        @delete="handleDeletePermission"
-      />
+      <div v-else class="definition-grid">
+        <article v-for="definition in filteredAgentDefinitions" :key="definition.id || definition.agentCode" class="definition-card">
+          <div class="definition-head">
+            <div class="definition-badge" :style="{ background: definition.color || '#6b7280' }">
+              {{ definition.icon || 'AI' }}
+            </div>
+            <div class="definition-main">
+              <div class="definition-title-row">
+                <div class="role-name">{{ definition.agentName }}</div>
+                <div class="chips">
+                  <span v-if="definition.systemDefined" class="chip chip-special">特殊助手</span>
+                  <span class="chip" :class="{ disabled: !definition.enabled }">
+                    {{ definition.enabled ? '已启用' : '已停用' }}
+                  </span>
+                </div>
+              </div>
+              <div class="definition-code">{{ definition.agentCode }}</div>
+              <div class="role-desc">{{ definition.description || '未填写助手说明' }}</div>
+            </div>
+          </div>
+          <div class="role-metrics">
+            <span>默认模型 {{ definition.defaultModel || 'auto' }}</span>
+            <span>排序 {{ definition.sortOrder ?? 0 }}</span>
+            <span>每日 Token {{ Number(definition.dailyTokenLimit || 0).toLocaleString() }}</span>
+          </div>
+          <div class="tag-list">
+            <span v-for="role in splitCsv(definition.allowedRoles)" :key="role" class="tag">{{ role }}</span>
+          </div>
+          <div class="role-actions">
+            <button class="table-btn" @click="openAgentDefinitionModal(definition)">编辑</button>
+            <button v-if="!definition.systemDefined" class="table-btn danger" @click="handleDeleteAgentDefinition(definition)">
+              删除
+            </button>
+          </div>
+        </article>
+      </div>
     </section>
 
     <section v-if="activeSectionKey === 'role-quotas'" class="card section-card">
       <div class="section-header">
         <div>
           <div class="section-title">角色 Token 配额</div>
-          <div class="section-subtitle">给角色设置总配额或指定助手配额；同一用户拥有多个角色时，系统取最小值。</div>
+          <div class="section-subtitle">给角色配置总配额或指定助手配额。</div>
         </div>
         <button class="btn btn-primary btn-sm" @click="openRoleTokenLimitModal()">新建角色配额</button>
       </div>
       <div class="toolbar">
-        <input v-model.trim="roleTokenLimitKeyword" class="form-input toolbar-input" placeholder="搜索角色名或助手范围">
+        <input v-model.trim="roleTokenLimitKeyword" class="form-input toolbar-input" placeholder="搜索角色名称或助手范围">
         <select v-model="roleTokenLimitStatus" class="form-input toolbar-select">
           <option value="all">全部状态</option>
           <option value="enabled">仅启用</option>
@@ -201,7 +228,7 @@
       <div class="section-header">
         <div>
           <div class="section-title">用户 Token 配额</div>
-          <div class="section-subtitle">给特定用户设置专属配额，用于覆盖角色级或助手默认配额。</div>
+          <div class="section-subtitle">给特定用户配置覆盖角色默认值的专属配额。</div>
         </div>
         <button class="btn btn-primary btn-sm" @click="openUserTokenLimitModal()">新建用户配额</button>
       </div>
@@ -242,11 +269,11 @@
     <RoleModal v-if="roleModalVisible" :role="editingRole" @close="closeRoleModal" @saved="handleRoleSaved" />
     <RoleUsageDrawer v-if="roleUsageVisible && selectedRoleUsage" :usage="selectedRoleUsage" @close="closeRoleUsage" />
     <UserModal v-if="userModalVisible" :user-id="editingUserId" @close="closeUserModal" @saved="handleUserSaved" />
-    <PermissionModal
-      v-if="permissionModalVisible"
-      :permission-id="editingPermissionId"
-      @close="closePermissionModal"
-      @saved="handlePermissionSaved"
+    <AgentDefinitionModal
+      v-if="agentDefinitionModalVisible"
+      :definition="editingAgentDefinition"
+      @close="closeAgentDefinitionModal"
+      @saved="handleAgentDefinitionSaved"
     />
     <TokenLimitModal
       v-if="roleTokenLimitModalVisible"
@@ -268,10 +295,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { getRoleUsage } from '@/api/auth'
-import type { RoleOption, RoleTokenLimit, RoleUsage, UserTokenLimit } from '@/api/types'
+import type { AgentDefinition, RoleOption, RoleTokenLimit, RoleUsage, UserTokenLimit } from '@/api/types'
 import EmptyState from '@/components/common/EmptyState.vue'
-import PermissionModal from '@/components/user/PermissionModal.vue'
-import PermissionTable from '@/components/user/PermissionTable.vue'
+import AgentDefinitionModal from '@/components/user/AgentDefinitionModal.vue'
 import RoleModal from '@/components/user/RoleModal.vue'
 import RoleUsageDrawer from '@/components/user/RoleUsageDrawer.vue'
 import TokenLimitModal from '@/components/user/TokenLimitModal.vue'
@@ -282,19 +308,19 @@ import { useConfirm } from '@/composables/useConfirm'
 import { useToast } from '@/composables/useToast'
 import { useUserStore } from '@/stores/user'
 
-type SectionKey = 'roles' | 'users' | 'permissions' | 'role-quotas' | 'user-quotas'
-
-const userStore = useUserStore()
-const { confirm } = useConfirm()
-const { showToast } = useToast()
+type SectionKey = 'roles' | 'users' | 'agent-definitions' | 'role-quotas' | 'user-quotas'
 
 const sections = [
   { key: 'roles' as SectionKey, title: '角色目录', subtitle: '查看角色定义和引用情况', primaryActionText: '新建角色' },
   { key: 'users' as SectionKey, title: '用户与角色', subtitle: '维护用户账号和角色分配', primaryActionText: '新建用户' },
-  { key: 'permissions' as SectionKey, title: '助手权限', subtitle: '配置角色访问 AI 助手的规则', primaryActionText: '新建规则' },
+  { key: 'agent-definitions' as SectionKey, title: '助手', subtitle: '统一管理助手定义、角色和配额', primaryActionText: '新建助手' },
   { key: 'role-quotas' as SectionKey, title: '角色配额', subtitle: '配置角色级 Token 配额', primaryActionText: '新建角色配额' },
   { key: 'user-quotas' as SectionKey, title: '用户配额', subtitle: '配置用户级 Token 配额', primaryActionText: '新建用户配额' }
 ]
+
+const userStore = useUserStore()
+const { confirm } = useConfirm()
+const { showToast } = useToast()
 
 const activeSectionKey = ref<SectionKey>('roles')
 const roleModalVisible = ref(false)
@@ -303,8 +329,8 @@ const roleUsageVisible = ref(false)
 const selectedRoleUsage = ref<RoleUsage | null>(null)
 const userModalVisible = ref(false)
 const editingUserId = ref<string | null>(null)
-const permissionModalVisible = ref(false)
-const editingPermissionId = ref<string | null>(null)
+const agentDefinitionModalVisible = ref(false)
+const editingAgentDefinition = ref<AgentDefinition | null>(null)
 const roleTokenLimitModalVisible = ref(false)
 const editingRoleTokenLimit = ref<RoleTokenLimit | null>(null)
 const userTokenLimitModalVisible = ref(false)
@@ -313,8 +339,8 @@ const editingUserTokenLimit = ref<UserTokenLimit | null>(null)
 const roleKeyword = ref('')
 const userKeyword = ref('')
 const userStatus = ref<'all' | 'enabled' | 'disabled'>('all')
-const permissionKeyword = ref('')
-const permissionStatus = ref<'all' | 'enabled' | 'disabled'>('all')
+const agentDefinitionKeyword = ref('')
+const agentDefinitionStatus = ref<'all' | 'enabled' | 'disabled'>('all')
 const roleTokenLimitKeyword = ref('')
 const roleTokenLimitStatus = ref<'all' | 'enabled' | 'disabled'>('all')
 const userTokenLimitKeyword = ref('')
@@ -325,88 +351,84 @@ const activeSection = computed(() => sections.find((section) => section.key === 
 const filteredRoles = computed(() => {
   const keyword = roleKeyword.value.toLowerCase()
   return userStore.roles.filter((role) =>
-    !keyword ||
-    [role.roleName, role.description].filter(Boolean).some((value) => String(value).toLowerCase().includes(keyword))
+    !keyword || [role.roleName, role.description].filter(Boolean).some((value) => String(value).toLowerCase().includes(keyword))
   )
 })
 
 const filteredUsers = computed(() => {
   const keyword = userKeyword.value.toLowerCase()
   return userStore.users.filter((user) => {
-    const matchesKeyword =
-      !keyword ||
-      [user.userId, user.username, user.department, user.roles]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(keyword))
-
-    const enabled = user.enabled !== false
-    const matchesStatus =
+    const enabled = Boolean(user.enabled)
+    const statusMatched =
       userStatus.value === 'all' ||
       (userStatus.value === 'enabled' && enabled) ||
       (userStatus.value === 'disabled' && !enabled)
-
-    return matchesKeyword && matchesStatus
+    const keywordMatched =
+      !keyword ||
+      [user.userId, user.username, user.department, user.roles].filter(Boolean).some((value) => String(value).toLowerCase().includes(keyword))
+    return statusMatched && keywordMatched
   })
 })
 
-const filteredPermissions = computed(() => {
-  const keyword = permissionKeyword.value.toLowerCase()
-  return userStore.permissions.filter((permission) => {
-    const matchesKeyword =
+const filteredAgentDefinitions = computed(() => {
+  const keyword = agentDefinitionKeyword.value.toLowerCase()
+  return userStore.agentDefinitions.filter((definition) => {
+    const enabled = Boolean(definition.enabled)
+    const statusMatched =
+      agentDefinitionStatus.value === 'all' ||
+      (agentDefinitionStatus.value === 'enabled' && enabled) ||
+      (agentDefinitionStatus.value === 'disabled' && !enabled)
+    const keywordMatched =
       !keyword ||
-      [permission.botType, permission.allowedRoles, permission.allowedDepartments, permission.allowedOperations]
+      [definition.agentCode, definition.agentName, definition.description, definition.allowedRoles]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(keyword))
-
-    const matchesStatus =
-      permissionStatus.value === 'all' ||
-      (permissionStatus.value === 'enabled' && permission.enabled) ||
-      (permissionStatus.value === 'disabled' && !permission.enabled)
-
-    return matchesKeyword && matchesStatus
+    return statusMatched && keywordMatched
   })
 })
 
-const filteredRoleTokenLimits = computed(() => {
-  const keyword = roleTokenLimitKeyword.value.toLowerCase()
-  return userStore.roleTokenLimits.filter((item) => {
-    const matchesKeyword =
-      !keyword ||
-      [item.roleName, item.roleDescription, item.botType]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(keyword))
-    const matchesStatus =
-      roleTokenLimitStatus.value === 'all' ||
-      (roleTokenLimitStatus.value === 'enabled' && item.enabled) ||
-      (roleTokenLimitStatus.value === 'disabled' && !item.enabled)
-    return matchesKeyword && matchesStatus
-  })
-})
+const filteredRoleTokenLimits = computed(() => filterTokenLimits(userStore.roleTokenLimits, roleTokenLimitKeyword.value, roleTokenLimitStatus.value))
+const filteredUserTokenLimits = computed(() => filterTokenLimits(userStore.userTokenLimits, userTokenLimitKeyword.value, userTokenLimitStatus.value))
 
-const filteredUserTokenLimits = computed(() => {
-  const keyword = userTokenLimitKeyword.value.toLowerCase()
-  return userStore.userTokenLimits.filter((item) => {
-    const matchesKeyword =
-      !keyword ||
-      [item.userId, item.username, item.department, item.botType]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(keyword))
-    const matchesStatus =
-      userTokenLimitStatus.value === 'all' ||
-      (userTokenLimitStatus.value === 'enabled' && item.enabled) ||
-      (userTokenLimitStatus.value === 'disabled' && !item.enabled)
-    return matchesKeyword && matchesStatus
+function filterTokenLimits<T extends { roleName?: string; username?: string; department?: string; botType?: string; enabled: boolean }>(
+  items: T[],
+  keywordValue: string,
+  statusValue: 'all' | 'enabled' | 'disabled'
+) {
+  const keyword = keywordValue.toLowerCase()
+  return items.filter((item) => {
+    const enabled = Boolean(item.enabled)
+    const statusMatched =
+      statusValue === 'all' ||
+      (statusValue === 'enabled' && enabled) ||
+      (statusValue === 'disabled' && !enabled)
+    const keywordMatched =
+      !keyword || [item.roleName, item.username, item.department, item.botType].filter(Boolean).some((value) => String(value).toLowerCase().includes(keyword))
+    return statusMatched && keywordMatched
   })
-})
+}
 
-onMounted(() => {
-  userStore.loadAll()
-})
+function splitCsv(value?: string): string[] {
+  if (!value) return []
+  return value.split(',').map((item) => item.trim()).filter(Boolean)
+}
+
+function countUsersByRole(roleName: string) {
+  return userStore.users.filter((user) => splitCsv(user.roles).includes(roleName)).length
+}
+
+function countAssistantsByRole(roleName: string) {
+  return userStore.agentDefinitions.filter((definition) => splitCsv(definition.allowedRoles).includes(roleName)).length
+}
+
+function countRoleQuotaByRole(roleId: string) {
+  return userStore.roleTokenLimits.filter((item) => item.roleId === roleId).length
+}
 
 function openPrimaryAction() {
   if (activeSectionKey.value === 'roles') return openRoleModal()
   if (activeSectionKey.value === 'users') return openUserModal()
-  if (activeSectionKey.value === 'permissions') return openPermissionModal()
+  if (activeSectionKey.value === 'agent-definitions') return openAgentDefinitionModal()
   if (activeSectionKey.value === 'role-quotas') return openRoleTokenLimitModal()
   openUserTokenLimitModal()
 }
@@ -422,12 +444,8 @@ function closeRoleModal() {
 }
 
 async function openRoleUsage(role: RoleOption) {
-  try {
-    selectedRoleUsage.value = await getRoleUsage(role.id)
-    roleUsageVisible.value = true
-  } catch (error) {
-    showToast(error instanceof Error ? error.message : '角色引用详情加载失败')
-  }
+  selectedRoleUsage.value = await getRoleUsage(role.id)
+  roleUsageVisible.value = true
 }
 
 function closeRoleUsage() {
@@ -445,14 +463,14 @@ function closeUserModal() {
   editingUserId.value = null
 }
 
-function openPermissionModal(permissionId?: string) {
-  editingPermissionId.value = permissionId || null
-  permissionModalVisible.value = true
+function openAgentDefinitionModal(definition?: AgentDefinition) {
+  editingAgentDefinition.value = definition || null
+  agentDefinitionModalVisible.value = true
 }
 
-function closePermissionModal() {
-  permissionModalVisible.value = false
-  editingPermissionId.value = null
+function closeAgentDefinitionModal() {
+  agentDefinitionModalVisible.value = false
+  editingAgentDefinition.value = null
 }
 
 function openRoleTokenLimitModal() {
@@ -487,175 +505,133 @@ function closeUserTokenLimitModal() {
 
 function handleRoleSaved() {
   closeRoleModal()
-  showToast('角色保存成功')
+  void userStore.loadRoles()
 }
 
-function handleUserSaved(userId: string) {
+function handleUserSaved() {
   closeUserModal()
-  showToast(`用户 ${userId} 保存成功`)
+  void userStore.loadUsers()
 }
 
-function handlePermissionSaved() {
-  closePermissionModal()
-  showToast('助手权限规则保存成功')
+function handleAgentDefinitionSaved() {
+  closeAgentDefinitionModal()
+  void userStore.loadAgentDefinitions()
 }
 
 function handleRoleTokenLimitSaved() {
   closeRoleTokenLimitModal()
-  showToast('角色配额规则保存成功')
+  void userStore.loadRoleTokenLimits()
 }
 
 function handleUserTokenLimitSaved() {
   closeUserTokenLimitModal()
-  showToast('用户配额规则保存成功')
+  void userStore.loadUserTokenLimits()
 }
 
 async function handleDeleteRole(role: RoleOption) {
-  try {
-    const usage = await getRoleUsage(role.id)
-    if (usage.userCount > 0 || usage.permissionCount > 0 || countRoleQuotaByRole(role.id) > 0) {
-      selectedRoleUsage.value = usage
-      roleUsageVisible.value = true
-      showToast(`角色 ${role.roleName} 仍被引用，请先解除关联后再删除`)
-      return
-    }
-  } catch (error) {
-    showToast(error instanceof Error ? error.message : '角色引用信息加载失败')
+  const usage = await getRoleUsage(role.id)
+  if (usage.userCount > 0 || usage.permissionCount > 0) {
+    showToast(`角色 ${role.roleName} 仍被引用，请先解除关联后再删除`)
     return
   }
-
-  const accepted = await confirm({
-    title: '删除角色',
-    description: `确认删除角色“${role.roleName}”吗？`,
-    confirmText: '删除',
-    intent: 'danger'
-  })
-  if (!accepted) return
-
+  if (!(await confirm(`确认删除角色 ${role.roleName} 吗？`))) {
+    return
+  }
   const success = await userStore.deleteRole(role.id)
-  showToast(success ? `角色 ${role.roleName} 已删除` : userStore.roleError || '删除角色失败')
+  if (!success) {
+    showToast(userStore.roleError || '删除角色失败')
+  }
 }
 
-async function handleDeleteUser(userId: string, username: string) {
-  const accepted = await confirm({
-    title: '删除用户',
-    description: `确认删除用户“${username || userId}”吗？`,
-    confirmText: '删除',
-    intent: 'danger'
-  })
-  if (!accepted) return
-
+async function handleDeleteUser(userId: string) {
+  if (!(await confirm(`确认删除用户 ${userId} 吗？`))) {
+    return
+  }
   const success = await userStore.deleteUser(userId)
-  showToast(success ? `用户 ${username || userId} 已删除` : userStore.userError || '删除用户失败')
+  if (!success) {
+    showToast(userStore.userError || '删除用户失败')
+  }
 }
 
-async function handleDeletePermission(id: string, botType: string) {
-  const accepted = await confirm({
-    title: '删除助手权限规则',
-    description: `确认删除助手“${botType}”的权限规则吗？`,
-    confirmText: '删除',
-    intent: 'danger'
-  })
-  if (!accepted) return
-
-  const success = await userStore.deletePermission(id)
-  showToast(success ? `助手 ${botType} 的权限规则已删除` : userStore.permissionError || '删除助手权限规则失败')
+async function handleDeleteAgentDefinition(definition: AgentDefinition) {
+  if (definition.systemDefined) {
+    showToast(`特殊助手 ${definition.agentCode} 不允许删除`)
+    return
+  }
+  if (!(await confirm(`确认删除助手 ${definition.agentCode} 吗？`))) {
+    return
+  }
+  const success = await userStore.deleteAgentDefinition(definition.agentCode)
+  if (!success) {
+    showToast(userStore.agentDefinitionError || '删除助手失败')
+  }
 }
 
-async function handleDeleteRoleTokenLimit(id: string, label: string) {
-  const accepted = await confirm({
-    title: '删除角色配额规则',
-    description: `确认删除“${label}”的角色配额规则吗？`,
-    confirmText: '删除',
-    intent: 'danger'
-  })
-  if (!accepted) return
-
+async function handleDeleteRoleTokenLimit(id: string) {
+  if (!(await confirm('确认删除这条角色配额规则吗？'))) {
+    return
+  }
   const success = await userStore.deleteRoleTokenLimit(id)
-  showToast(success ? `角色 ${label} 的配额规则已删除` : userStore.roleTokenLimitError || '删除角色配额规则失败')
+  if (!success) {
+    showToast(userStore.roleTokenLimitError || '删除角色配额规则失败')
+  }
 }
 
-async function handleDeleteUserTokenLimit(id: string, label: string) {
-  const accepted = await confirm({
-    title: '删除用户配额规则',
-    description: `确认删除“${label}”的用户配额规则吗？`,
-    confirmText: '删除',
-    intent: 'danger'
-  })
-  if (!accepted) return
-
+async function handleDeleteUserTokenLimit(id: string) {
+  if (!(await confirm('确认删除这条用户配额规则吗？'))) {
+    return
+  }
   const success = await userStore.deleteUserTokenLimit(id)
-  showToast(success ? `用户 ${label} 的配额规则已删除` : userStore.userTokenLimitError || '删除用户配额规则失败')
+  if (!success) {
+    showToast(userStore.userTokenLimitError || '删除用户配额规则失败')
+  }
 }
 
-function countUsersByRole(roleName: string): number {
-  return userStore.users.filter((user) => splitCsv(user.roles).includes(roleName)).length
-}
-
-function countPermissionsByRole(roleName: string): number {
-  return userStore.permissions.filter((permission) => splitCsv(permission.allowedRoles).includes(roleName)).length
-}
-
-function countRoleQuotaByRole(roleId: string): number {
-  return userStore.roleTokenLimits.filter((item) => item.roleId === roleId).length
-}
-
-function splitCsv(value?: string): string[] {
-  if (!value) return []
-  return value.split(',').map((item) => item.trim()).filter(Boolean)
-}
+onMounted(() => {
+  void userStore.loadAll()
+})
 </script>
 
 <style scoped>
 .page-shell { display: grid; gap: 20px; }
-.hero-card {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 24px 26px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 28px;
-  background:
-    radial-gradient(circle at top right, rgba(56, 189, 248, 0.16), transparent 32%),
-    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.84));
-}
-.hero-card h1 { margin: 6px 0 10px; color: var(--text); font-size: 28px; }
-.hero-card p { max-width: 760px; color: var(--text3); line-height: 1.8; }
-.eyebrow { color: #38bdf8; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; }
-.hero-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.section-card { padding: 20px; }
-.section-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
-.section-tab {
-  display: grid; gap: 4px; text-align: left; padding: 16px; border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 18px; background: rgba(15, 23, 42, 0.36); cursor: pointer;
-}
-.section-tab.active { border-color: rgba(56, 189, 248, 0.34); background: rgba(8, 47, 73, 0.6); transform: translateY(-1px); }
-.tab-title { color: var(--text); font-size: 14px; font-weight: 700; }
-.tab-subtitle { color: var(--text3); font-size: 12px; line-height: 1.6; }
-.section-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
-.section-title { color: var(--text); font-size: 18px; font-weight: 700; }
-.section-subtitle { margin-top: 6px; color: var(--text3); font-size: 13px; line-height: 1.7; }
-.role-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
-.role-card { display: grid; gap: 12px; padding: 18px; border: 1px solid rgba(148, 163, 184, 0.16); border-radius: 20px; background: rgba(15, 23, 42, 0.42); }
-.role-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.role-name { color: var(--text); font-size: 16px; font-weight: 700; }
-.role-desc { margin-top: 6px; color: var(--text3); font-size: 13px; line-height: 1.7; }
-.role-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-.role-metrics { display: flex; gap: 10px; flex-wrap: wrap; color: var(--text2); font-size: 12px; }
-.role-metrics span { padding: 6px 10px; border-radius: 999px; background: rgba(148, 163, 184, 0.12); }
-.toolbar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
-.toolbar-input { flex: 1; min-width: 240px; }
-.toolbar-select { min-width: 136px; }
-.toolbar-meta { margin-bottom: 12px; color: var(--text3); font-size: 12px; }
-.table-btn {
-  border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 10px; background: rgba(15, 23, 42, 0.46);
-  color: var(--text2); padding: 7px 12px; font-size: 12px; cursor: pointer;
-}
-.table-btn.danger { color: #fda4af; }
-@media (max-width: 1280px) { .section-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.hero-card, .section-card { padding: 24px; border-radius: 24px; }
+.hero-card { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; background: linear-gradient(135deg, rgba(14, 116, 144, 0.16), rgba(15, 23, 42, 0.94)); border: 1px solid rgba(125, 211, 252, 0.18); }
+.eyebrow { color: #67e8f9; font-size: 12px; text-transform: uppercase; letter-spacing: 0.14em; }
+.hero-card h1 { margin: 6px 0 10px; font-size: 28px; }
+.hero-card p { max-width: 820px; color: var(--text3); line-height: 1.7; }
+.section-card { background: rgba(15, 23, 42, 0.82); border: 1px solid rgba(148, 163, 184, 0.16); }
+.section-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.section-tab { display: grid; gap: 6px; padding: 16px; border-radius: 18px; border: 1px solid rgba(148, 163, 184, 0.16); background: rgba(30, 41, 59, 0.46); text-align: left; }
+.section-tab.active { border-color: rgba(56, 189, 248, 0.42); background: rgba(8, 47, 73, 0.76); }
+.tab-title { color: var(--text); font-weight: 600; }
+.tab-subtitle { color: var(--text3); font-size: 12px; }
+.section-header, .role-top, .definition-head { display: flex; justify-content: space-between; gap: 16px; }
+.section-header { align-items: flex-start; margin-bottom: 16px; }
+.section-title { font-size: 18px; font-weight: 700; }
+.section-subtitle { margin-top: 6px; color: var(--text3); line-height: 1.6; }
+.toolbar { display: flex; gap: 12px; margin-bottom: 12px; }
+.toolbar-input { flex: 1; }
+.toolbar-select { width: 180px; }
+.toolbar-meta { margin-bottom: 16px; color: var(--text3); font-size: 13px; }
+.role-grid, .definition-grid { display: grid; gap: 14px; }
+.role-card, .definition-card { padding: 18px; border-radius: 20px; background: rgba(30, 41, 59, 0.48); border: 1px solid rgba(148, 163, 184, 0.14); }
+.role-name { font-size: 16px; font-weight: 700; }
+.role-desc { margin-top: 6px; color: var(--text3); line-height: 1.6; }
+.role-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.role-metrics { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 14px; color: var(--text3); font-size: 13px; }
+.definition-badge { width: 52px; height: 52px; border-radius: 16px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; flex: 0 0 52px; }
+.definition-main { flex: 1; }
+.definition-title-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.definition-code { margin-top: 6px; color: #7dd3fc; font-size: 13px; }
+.chips, .tag-list { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { padding: 4px 10px; border-radius: 999px; background: rgba(34, 197, 94, 0.14); color: #bbf7d0; font-size: 12px; }
+.chip.disabled { background: rgba(239, 68, 68, 0.14); color: #fecaca; }
+.chip-special { background: rgba(249, 115, 22, 0.14); color: #fdba74; }
+.tag { display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 999px; background: rgba(148, 163, 184, 0.12); color: var(--text2); font-size: 12px; }
+@media (max-width: 960px) { .section-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 720px) {
-  .hero-card, .section-header, .role-top { flex-direction: column; align-items: stretch; }
+  .hero-card, .section-header, .role-top, .definition-head, .definition-title-row, .toolbar { flex-direction: column; }
   .section-tabs { grid-template-columns: 1fr; }
+  .toolbar-select { width: 100%; }
 }
 </style>

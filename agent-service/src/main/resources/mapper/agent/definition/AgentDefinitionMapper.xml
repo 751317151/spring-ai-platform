@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.huah.ai.platform.agent.mapper.AgentDefinitionMapper">
+    <select id="selectAllDefinitions" resultType="com.huah.ai.platform.agent.entity.AgentDefinitionEntity">
+        SELECT *
+        FROM ai_agent_definitions
+        ORDER BY system_defined DESC, sort_order ASC, created_at DESC
+    </select>
+
+    <select id="selectEnabledDefinitions" resultType="com.huah.ai.platform.agent.entity.AgentDefinitionEntity">
+        SELECT *
+        FROM ai_agent_definitions
+        WHERE enabled = TRUE
+        ORDER BY system_defined DESC, sort_order ASC, created_at DESC
+    </select>
+
+    <select id="selectByAgentCode" resultType="com.huah.ai.platform.agent.entity.AgentDefinitionEntity">
+        SELECT *
+        FROM ai_agent_definitions
+        WHERE agent_code = #{agentCode}
+        LIMIT 1
+    </select>
+
+    <delete id="deleteByAgentCode">
+        DELETE FROM ai_agent_definitions
+        WHERE agent_code = #{agentCode}
+    </delete>
+</mapper>

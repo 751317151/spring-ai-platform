@@ -26,10 +26,15 @@ public class AgentAccessChecker {
     private static final String TOKEN_DAILY_TOTAL_KEY = "ai:token:daily:total:%s:%s";
     private static final String TOKEN_DAILY_AGENT_KEY = "ai:token:daily:agent:%s:%s:%s";
     private static final String QUERY_PERMISSION =
-            "SELECT allowed_roles, allowed_departments, allowed_operations, enabled "
-                    + "FROM ai_bot_permissions WHERE bot_type = ?";
+            "SELECT d.enabled, d.daily_token_limit, "
+                    + "COALESCE(STRING_AGG(r.role_name, ',' ORDER BY r.role_name), '') AS allowed_roles "
+                    + "FROM ai_agent_definitions d "
+                    + "LEFT JOIN ai_agent_roles ar ON ar.agent_code = d.agent_code "
+                    + "LEFT JOIN ai_roles r ON r.id = ar.role_id "
+                    + "WHERE d.agent_code = ? "
+                    + "GROUP BY d.agent_code, d.enabled, d.daily_token_limit";
     private static final String QUERY_BOT_DAILY_LIMIT =
-            "SELECT daily_token_limit FROM ai_bot_permissions WHERE bot_type = ? AND enabled = true";
+            "SELECT daily_token_limit FROM ai_agent_definitions WHERE agent_code = ? AND enabled = true";
     private static final String QUERY_USER_AGENT_DAILY_LIMIT =
             "SELECT daily_token_limit FROM ai_user_token_limits "
                     + "WHERE user_id = ? AND bot_type = ? AND enabled = true LIMIT 1";
@@ -87,25 +92,6 @@ public class AgentAccessChecker {
                 if (!hasRole) {
                     return "您的角色无权使用该 Agent，需要角色: " + allowedRolesStr;
                 }
-            }
-
-            String allowedDepartments = (String) permission.get("allowed_departments");
-            if (allowedDepartments != null && !allowedDepartments.isBlank()) {
-                if (department == null || department.isBlank()) {
-                    return "当前用户缺少部门信息，无法访问该 Agent";
-                }
-
-                Set<String> departmentSet = parseValues(allowedDepartments);
-                if (!departmentSet.contains(department.trim())) {
-                    return "您所在部门无权使用该 Agent，需要部门: " + allowedDepartments;
-                }
-            }
-
-            String allowedOperations = (String) permission.get("allowed_operations");
-            if (requiredOperation != null
-                    && !requiredOperation.isBlank()
-                    && !isOperationAllowed(allowedOperations, requiredOperation)) {
-                return "当前权限规则不允许该操作，需要操作权限: " + requiredOperation.toUpperCase();
             }
 
             return null;
@@ -266,28 +252,7 @@ public class AgentAccessChecker {
     }
 
     private boolean isOperationAllowed(String allowedOperations, String requiredOperation) {
-        if (allowedOperations == null || allowedOperations.isBlank()) {
-            return true;
-        }
-        Set<String> operations = Arrays.stream(allowedOperations.split(","))
-                .map(String::trim)
-                .filter(item -> !item.isEmpty())
-                .map(String::toUpperCase)
-                .collect(Collectors.toSet());
-        String normalizedRequired = requiredOperation.trim().toUpperCase();
-        if (operations.contains("ALL") || operations.contains(normalizedRequired)) {
-            return true;
-        }
-        if ("CHAT".equals(normalizedRequired)) {
-            return operations.contains("WRITE") || operations.contains("EXECUTE");
-        }
-        if ("READ".equals(normalizedRequired)) {
-            return operations.contains("CHAT") || operations.contains("QUERY") || operations.contains("SEARCH");
-        }
-        if ("WRITE".equals(normalizedRequired)) {
-            return operations.contains("CHAT") || operations.contains("EXECUTE");
-        }
-        return false;
+        return true;
     }
 
     private long valueOrZero(Long value) {

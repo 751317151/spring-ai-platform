@@ -43,6 +43,8 @@ public class ConversationMemoryService {
     private static final String SYSTEM_PROMPT_TEMPLATE_KEY = "systemPromptTemplate";
     private static final String DEFAULT_SESSION_TITLE = "新对话";
     private static final String CONVERSATION_SUMMARY_PREFIX = "[会话摘要]\n";
+    private static final String USER_QUESTION_MARKER = "\n\n[user-question]\n";
+    private static final String USER_QUESTION_MARKER_ZH = "\n\n[用户问题]\n";
     private static final int MAX_MESSAGES_BEFORE_COMPRESSION = 24;
     private static final int RECENT_MESSAGES_TO_KEEP = 12;
     private static final int MAX_SUMMARY_ENTRY_LENGTH = 120;
@@ -73,7 +75,7 @@ public class ConversationMemoryService {
                 .filter(m -> m.getMessageType() == MessageType.USER || m.getMessageType() == MessageType.ASSISTANT)
                 .map(m -> Map.of(
                         "role", m.getMessageType() == MessageType.USER ? "user" : "assistant",
-                        "content", m.getText()
+                        "content", sanitizeMessageText(m)
                 ))
                 .toList();
     }
@@ -265,7 +267,7 @@ public class ConversationMemoryService {
             builder.append("- ")
                     .append(role)
                     .append(": ")
-                    .append(truncate(normalizeSummary(message.getText()), MAX_SUMMARY_ENTRY_LENGTH))
+                    .append(truncate(normalizeSummary(sanitizeMessageText(message)), MAX_SUMMARY_ENTRY_LENGTH))
                     .append("\n");
 
             if (builder.length() >= MAX_SUMMARY_LENGTH) {
@@ -355,14 +357,37 @@ public class ConversationMemoryService {
         return chatMemoryRepository.findByConversationId(sessionId).stream()
                 .filter(m -> m.getMessageType() == MessageType.USER)
                 .map(Message::getText)
+                .map(this::stripRuntimeInstruction)
                 .findFirst()
                 .map(this::buildSummary)
                 .orElse(DEFAULT_SESSION_TITLE);
     }
 
     private String buildSummary(String text) {
-        String normalized = normalizeSummary(text);
+        String normalized = normalizeSummary(stripRuntimeInstruction(text));
         return normalized.length() > 30 ? normalized.substring(0, 30) + "..." : normalized;
+    }
+
+    private String sanitizeMessageText(Message message) {
+        if (message.getMessageType() == MessageType.USER) {
+            return stripRuntimeInstruction(message.getText());
+        }
+        return message.getText();
+    }
+
+    private String stripRuntimeInstruction(String text) {
+        if (text == null || text.isBlank()) {
+            return text;
+        }
+        int markerIndex = text.indexOf(USER_QUESTION_MARKER);
+        if (markerIndex >= 0) {
+            return text.substring(markerIndex + USER_QUESTION_MARKER.length()).trim();
+        }
+        markerIndex = text.indexOf(USER_QUESTION_MARKER_ZH);
+        if (markerIndex >= 0) {
+            return text.substring(markerIndex + USER_QUESTION_MARKER_ZH.length()).trim();
+        }
+        return text;
     }
 
     private String normalizeSummary(String text) {

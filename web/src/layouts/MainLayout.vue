@@ -31,7 +31,6 @@
       </main>
     </div>
   </div>
-  <ToastNotification />
 </template>
 
 <script setup lang="ts">
@@ -40,8 +39,6 @@ import { useRoute, useRouter } from 'vue-router'
 import AppSidebar from '@/components/common/AppSidebar.vue'
 import AppHeader from '@/components/common/AppHeader.vue'
 import SkeletonBlock from '@/components/common/SkeletonBlock.vue'
-import ToastNotification from '@/components/common/ToastNotification.vue'
-
 const route = useRoute()
 const router = useRouter()
 const sidebarCollapsed = ref(localStorage.getItem('layout_sidebar_collapsed') === '1')

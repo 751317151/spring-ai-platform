@@ -726,7 +726,10 @@ td .mono { font-family: var(--mono); font-size: 11px; }
     position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
     background: var(--surface2); border: 1px solid var(--border2);
     border-radius: var(--r2); padding: 10px 16px;
-    font-size: 13px; color: var(--text); z-index: 999;
+    max-width: min(560px, calc(100vw - 32px));
+    font-size: 13px; color: var(--text); z-index: 2400;
+    text-align: center;
+    box-shadow: 0 18px 48px rgba(15, 23, 42, 0.26);
     opacity: 0; pointer-events: none; transition: all 0.3s;
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }

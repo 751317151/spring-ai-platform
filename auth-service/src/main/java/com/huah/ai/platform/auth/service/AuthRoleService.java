@@ -1,10 +1,8 @@
 package com.huah.ai.platform.auth.service;
 
 import com.huah.ai.platform.auth.mapper.AiRoleMapper;
-import com.huah.ai.platform.auth.mapper.AiBotPermissionRoleMapper;
 import com.huah.ai.platform.auth.mapper.AiUserRoleMapper;
 import com.huah.ai.platform.auth.model.AiRoleEntity;
-import com.huah.ai.platform.auth.model.AiBotPermissionRoleEntity;
 import com.huah.ai.platform.auth.model.AiUserRoleEntity;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -22,17 +20,9 @@ public class AuthRoleService {
 
     private final AiRoleMapper roleMapper;
     private final AiUserRoleMapper userRoleMapper;
-    private final AiBotPermissionRoleMapper botPermissionRoleMapper;
 
     public void validateRolesOrThrow(String roles) {
         resolveRoles(roles, true);
-    }
-
-    public void validatePermissionRolesOrThrow(String roles) {
-        List<AiRoleEntity> roleEntities = resolveRoles(roles, false);
-        if (roleEntities.isEmpty()) {
-            throw new IllegalArgumentException("助手权限至少需要配置一个角色");
-        }
     }
 
     public void replaceUserRoles(String userId, String roles) {
@@ -44,27 +34,6 @@ public class AuthRoleService {
                     .roleId(roleEntity.getId())
                     .build());
         }
-    }
-
-    public void replacePermissionRoles(Long permissionId, String roles) {
-        List<AiRoleEntity> roleEntities = resolveRoles(roles, false);
-        botPermissionRoleMapper.deleteByPermissionId(permissionId);
-        for (AiRoleEntity roleEntity : roleEntities) {
-            botPermissionRoleMapper.insert(AiBotPermissionRoleEntity.builder()
-                    .permissionId(permissionId)
-                    .roleId(roleEntity.getId())
-                    .build());
-        }
-    }
-
-    public String getPermissionRoleNamesCsv(Long permissionId, String fallbackRoles) {
-        List<String> roleNames = permissionId != null
-                ? botPermissionRoleMapper.selectRoleNamesByPermissionId(permissionId)
-                : List.of();
-        if (!roleNames.isEmpty()) {
-            return String.join(",", roleNames);
-        }
-        return String.join(",", parseRolesForDisplay(fallbackRoles));
     }
 
     private List<String> parseRoles(String roles, boolean applyDefaultRole) {
@@ -81,10 +50,6 @@ public class AuthRoleService {
             normalized.add(DEFAULT_ROLE);
         }
         return List.copyOf(normalized);
-    }
-
-    private List<String> parseRolesForDisplay(String roles) {
-        return parseRoles(roles, false);
     }
 
     private List<AiRoleEntity> resolveRoles(String roles, boolean applyDefaultRole) {

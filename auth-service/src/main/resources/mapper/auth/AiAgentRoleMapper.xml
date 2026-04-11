@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.huah.ai.platform.auth.mapper.AiAgentRoleMapper">
+    <select id="selectRoleNamesByAgentCode" resultType="java.lang.String">
+        SELECT r.role_name
+        FROM ai_agent_roles ar
+        INNER JOIN ai_roles r ON r.id = ar.role_id
+        WHERE ar.agent_code = #{agentCode}
+        ORDER BY r.role_name ASC
+    </select>
+
+    <select id="countAgentsByRoleId" resultType="int">
+        SELECT COUNT(DISTINCT agent_code)
+        FROM ai_agent_roles
+        WHERE role_id = #{roleId}
+    </select>
+
+    <select id="selectAgentReferencesByRoleId" resultType="java.lang.String">
+        SELECT CONCAT(d.agent_name, ' (', d.agent_code, ')')
+        FROM ai_agent_roles ar
+        INNER JOIN ai_agent_definitions d ON d.agent_code = ar.agent_code
+        WHERE ar.role_id = #{roleId}
+        ORDER BY d.sort_order ASC, d.agent_code ASC
+        LIMIT 10
+    </select>
+</mapper>

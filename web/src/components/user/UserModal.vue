@@ -1,5 +1,5 @@
 <template>
-  <div class="modal-mask" @click.self="emit('close')">
+  <div class="modal-mask">
     <div class="modal-shell">
       <div class="modal-header">
         <div>
@@ -174,12 +174,12 @@ function splitCsv(value?: string): string[] {
 </script>
 
 <style scoped>
-.modal-mask { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(15, 23, 42, 0.56); backdrop-filter: blur(8px); }
-.modal-shell { width: min(720px, 100%); border: 1px solid rgba(148, 163, 184, 0.24); border-radius: 24px; background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.92)); box-shadow: 0 24px 80px rgba(15, 23, 42, 0.36); padding: 24px; }
-.modal-header { margin-bottom: 18px; }
+.modal-mask { position: fixed; inset: 0; z-index: 1600; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(15, 23, 42, 0.56); backdrop-filter: blur(8px); }
+.modal-shell { width: min(720px, 100%); max-height: calc(100vh - 40px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(148, 163, 184, 0.24); border-radius: 24px; background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.92)); box-shadow: 0 24px 80px rgba(15, 23, 42, 0.36); }
+.modal-header { margin-bottom: 18px; padding: 24px 24px 0; flex-shrink: 0; }
 .modal-title { color: var(--text); font-size: 20px; font-weight: 700; }
 .modal-subtitle { margin-top: 6px; color: var(--text3); font-size: 13px; }
-.modal-body { display: grid; gap: 14px; }
+.modal-body { display: grid; gap: 14px; overflow-y: auto; min-height: 0; padding: 0 24px 24px; }
 .modal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .modal-field { display: grid; gap: 8px; }
 .modal-label { color: var(--text3); font-size: 12px; }
@@ -191,6 +191,6 @@ function splitCsv(value?: string): string[] {
 .role-card span { color: var(--text3); font-size: 12px; line-height: 1.6; }
 .role-card.active { border-color: rgba(56, 189, 248, 0.48); background: rgba(8, 47, 73, 0.72); transform: translateY(-1px); }
 .switch-row { display: inline-flex; align-items: center; gap: 10px; color: var(--text2); font-size: 13px; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
-@media (max-width: 720px) { .modal-grid, .role-grid { grid-template-columns: 1fr; } }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: auto; padding: 16px 24px 24px; flex-shrink: 0; border-top: 1px solid rgba(148, 163, 184, 0.12); background: linear-gradient(180deg, rgba(15, 23, 42, 0.72), rgba(15, 23, 42, 0.96)); }
+@media (max-width: 720px) { .modal-mask { padding: 12px; } .modal-shell { max-height: calc(100vh - 24px); } .modal-grid, .role-grid { grid-template-columns: 1fr; } .modal-header, .modal-body, .modal-actions { padding-left: 16px; padding-right: 16px; } .modal-header { padding-top: 18px; } .modal-actions { padding-bottom: 18px; } }
 </style>
