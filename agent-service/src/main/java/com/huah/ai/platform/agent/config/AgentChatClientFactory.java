@@ -1,5 +1,6 @@
 package com.huah.ai.platform.agent.config;
 
+import com.huah.ai.platform.agent.advisor.ToolExecutionStreamAdvisor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
@@ -7,6 +8,7 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Component
 public class AgentChatClientFactory {
@@ -32,6 +34,26 @@ public class AgentChatClientFactory {
                         MessageChatMemoryAdvisor.builder(chatMemory).build()
                 )
                 .build();
+    }
+
+    public ChatClient buildChatClientWithToolStatus(ChatModel model,
+                                                     ChatMemory chatMemory,
+                                                     String systemPrompt,
+                                                     SseEmitter emitter,
+                                                     Object... tools) {
+        ChatClient.Builder builder = ChatClient.builder(model);
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            builder.defaultSystem(systemPrompt);
+        }
+        builder.defaultAdvisors(
+                new SimpleLoggerAdvisor(),
+                MessageChatMemoryAdvisor.builder(chatMemory).build(),
+                new ToolExecutionStreamAdvisor(emitter)
+        );
+        if (tools != null && tools.length > 0) {
+            builder.defaultTools(tools);
+        }
+        return builder.build();
     }
 
     public ChatClient buildDynamicChatClient(ChatModel model,

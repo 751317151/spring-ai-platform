@@ -36,6 +36,8 @@ class AgentDefinitionServiceTest {
     private SnowflakeIdGenerator snowflakeIdGenerator;
     @Mock
     private AssistantCapabilityResolverService assistantCapabilityResolverService;
+    @Mock
+    private DynamicAgentCapabilityCacheService dynamicAgentCapabilityCacheService;
 
     private AgentModelSupportService agentModelSupportService;
     private AgentDefinitionService service;
@@ -50,7 +52,8 @@ class AgentDefinitionServiceTest {
                 agentModelSupportService,
                 assistantCapabilityResolverService,
                 jdbcTemplate,
-                snowflakeIdGenerator);
+                snowflakeIdGenerator,
+                dynamicAgentCapabilityCacheService);
         lenient().when(assistantCapabilityResolverService.normalizeSelectedToolCodes(any()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         lenient().when(assistantCapabilityResolverService.normalizeSelectedMcpServerCodes(any()))
@@ -105,6 +108,7 @@ class AgentDefinitionServiceTest {
         assertEquals("gpt-4o-mini", response.getDefaultModel());
         assertEquals(200000, response.getDailyTokenLimit());
         verify(agentDefinitionMapper).insert(any(AgentDefinitionEntity.class));
+        verify(dynamicAgentCapabilityCacheService).evict("legal-agent");
     }
 
     @Test
@@ -125,6 +129,35 @@ class AgentDefinitionServiceTest {
     }
 
     @Test
+    void updateEvictsCapabilityCache() {
+        AgentDefinitionEntity existing = AgentDefinitionEntity.builder()
+                .id(9001L)
+                .agentCode("legal-agent")
+                .agentName("Legal Assistant")
+                .systemPrompt("old prompt")
+                .assistantProfile("generic")
+                .systemDefined(false)
+                .enabled(true)
+                .sortOrder(1)
+                .dailyTokenLimit(1000)
+                .createdBy("seed")
+                .build();
+        AgentDefinitionUpsertRequest request = AgentDefinitionUpsertRequest.builder()
+                .agentName("Legal Assistant V2")
+                .allowedRoles("ROLE_ADMIN")
+                .systemPrompt("new prompt")
+                .build();
+        when(agentDefinitionMapper.selectByAgentCode("legal-agent")).thenReturn(existing);
+        when(jdbcTemplate.queryForList(anyString(), any(Object[].class)))
+                .thenReturn(List.of(Map.of("id", 1L, "role_name", "ROLE_ADMIN")));
+
+        service.update("legal-agent", "admin", request);
+
+        verify(agentDefinitionMapper).updateById(any(AgentDefinitionEntity.class));
+        verify(dynamicAgentCapabilityCacheService).evict("legal-agent");
+    }
+
+    @Test
     void deleteRejectsSpecialDefinition() {
         when(agentDefinitionMapper.selectByAgentCode("mcp")).thenReturn(AgentDefinitionEntity.builder()
                 .id(2011L)
@@ -135,5 +168,20 @@ class AgentDefinitionServiceTest {
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> service.delete("mcp"));
 
         assertEquals("System-defined assistant cannot be deleted: mcp", exception.getMessage());
+    }
+
+    @Test
+    void deleteEvictsCapabilityCache() {
+        when(agentDefinitionMapper.selectByAgentCode("legal-agent")).thenReturn(AgentDefinitionEntity.builder()
+                .id(2011L)
+                .agentCode("legal-agent")
+                .systemDefined(false)
+                .build());
+        when(agentDefinitionMapper.deleteByAgentCode("legal-agent")).thenReturn(1);
+
+        service.delete("legal-agent");
+
+        verify(agentRoleMapper).deleteByAgentCode("legal-agent");
+        verify(dynamicAgentCapabilityCacheService).evict("legal-agent");
     }
 }

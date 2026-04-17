@@ -12,6 +12,8 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -70,6 +72,10 @@ public class ConversationMemoryService {
     }
 
     public List<Map<String, String>> getHistory(String sessionId) {
+        return getHistory(sessionId, 0, Integer.MAX_VALUE);
+    }
+
+    public List<Map<String, String>> getHistory(String sessionId, int offset, int limit) {
         List<Message> messages = chatMemoryRepository.findByConversationId(sessionId);
         return messages.stream()
                 .filter(m -> m.getMessageType() == MessageType.USER || m.getMessageType() == MessageType.ASSISTANT)
@@ -77,7 +83,15 @@ public class ConversationMemoryService {
                         "role", m.getMessageType() == MessageType.USER ? "user" : "assistant",
                         "content", sanitizeMessageText(m)
                 ))
+                .skip(offset)
+                .limit(limit)
                 .toList();
+    }
+
+    public int getHistoryCount(String sessionId) {
+        return (int) chatMemoryRepository.findByConversationId(sessionId).stream()
+                .filter(m -> m.getMessageType() == MessageType.USER || m.getMessageType() == MessageType.ASSISTANT)
+                .count();
     }
 
     public void rollbackLastUserMessage(String sessionId) {
@@ -187,6 +201,7 @@ public class ConversationMemoryService {
                 .toList();
     }
 
+    @CacheEvict(value = "sessionConfig", key = "#sessionId")
     public void saveSessionConfig(String sessionId, SessionConfigRequest request) {
         if (request == null) {
             return;
@@ -212,6 +227,7 @@ public class ConversationMemoryService {
         }
     }
 
+    @Cacheable(value = "sessionConfig", key = "#sessionId", unless = "#result == null")
     public SessionConfigResponse getSessionConfig(String sessionId) {
         Map<Object, Object> metadata = loadSessionMetadata(sessionId);
         return SessionConfigResponse.builder()

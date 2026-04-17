@@ -8,6 +8,8 @@ import com.huah.ai.platform.agent.dto.SessionTitleRequest;
 import com.huah.ai.platform.agent.dto.SessionToggleRequest;
 import com.huah.ai.platform.agent.memory.ConversationMemoryService;
 import com.huah.ai.platform.common.dto.Result;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +30,7 @@ import java.util.Map;
 @RestController
 @RequestMapping(AgentApiConstants.BASE_PATH)
 @RequiredArgsConstructor
+@Tag(name = "Agent Session", description = "会话管理 - 记忆、历史、配置、置顶、归档")
 public class AgentSessionController {
 
     private final ConversationMemoryService memoryService;
@@ -35,6 +38,7 @@ public class AgentSessionController {
     private final com.huah.ai.platform.agent.security.AgentAccessChecker accessChecker;
     private final AgentControllerSupport controllerSupport;
 
+    @Operation(summary = "清除会话记忆")
     @DeleteMapping("/{agentType}/memory")
     public Result<String> clearMemory(
             @PathVariable(name = "agentType") String agentType,
@@ -54,11 +58,14 @@ public class AgentSessionController {
         return Result.ok(AgentApiConstants.MESSAGE_MEMORY_CLEARED);
     }
 
+    @Operation(summary = "获取对话历史（支持分页）")
     @GetMapping("/{agentType}/memory")
-    public Result<List<Map<String, String>>> getHistory(
+    public Result<Map<String, Object>> getHistory(
             @PathVariable(name = "agentType") String agentType,
             @RequestHeader(value = AgentApiConstants.HEADER_SESSION_ID,
                     defaultValue = AgentApiConstants.DEFAULT_SESSION_ID) String sessionId,
+            @RequestParam(name = "offset", defaultValue = "0") int offset,
+            @RequestParam(name = "limit", defaultValue = "50") int limit,
             HttpServletRequest request) {
         String userId = controllerSupport.currentUserId(request);
         String deny = controllerSupport.checkAgentAccess(agentType, request, accessChecker, "READ");
@@ -68,10 +75,21 @@ public class AgentSessionController {
         if (!controllerSupport.ownsSession(userId, agentType, sessionId)) {
             return Result.fail(AgentApiConstants.HTTP_FORBIDDEN, AgentApiConstants.MESSAGE_SESSION_ACCESS_DENIED);
         }
-        log.info("[Memory] history agent={}, userId={}, sessionId={}", agentType, userId, sessionId);
-        return Result.ok(memoryService.getHistory(sessionId));
+        int safeOffset = Math.max(0, offset);
+        int safeLimit = controllerSupport.safeLimit(limit, 50, 1, 200);
+        log.info("[Memory] history agent={}, userId={}, sessionId={}, offset={}, limit={}",
+                agentType, userId, sessionId, safeOffset, safeLimit);
+        List<Map<String, String>> messages = memoryService.getHistory(sessionId, safeOffset, safeLimit);
+        int total = memoryService.getHistoryCount(sessionId);
+        return Result.ok(Map.of(
+                "messages", messages,
+                "total", total,
+                "offset", safeOffset,
+                "limit", safeLimit
+        ));
     }
 
+    @Operation(summary = "获取会话列表")
     @GetMapping("/{agentType}/sessions")
     public Result<List<Map<String, String>>> listSessions(
             @PathVariable(name = "agentType") String agentType,

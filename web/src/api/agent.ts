@@ -33,23 +33,38 @@ export function chatStream(
   sessionConfig?: SessionConfig | null
 ): { response: Promise<Response>; abort: () => void } {
   const controller = new AbortController()
+  const requestId = `${sessionId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   const headers = buildHeaders({
-    'X-Session-Id': sessionId
+    'X-Session-Id': sessionId,
+    'X-Request-Id': requestId
   })
 
   const response = fetch(`${BASE}/${agentType}/chat/stream`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ message, sessionConfig }),
+    body: JSON.stringify({ message, requestId, sessionConfig }),
     signal: controller.signal
   })
 
   return { response, abort: () => controller.abort() }
 }
 
-export function getHistory(agentType: AgentType, sessionId: string): Promise<ChatMessage[]> {
+export interface PaginatedHistory {
+  messages: ChatMessage[]
+  total: number
+  offset: number
+  limit: number
+}
+
+export function getHistory(
+  agentType: AgentType,
+  sessionId: string,
+  offset = 0,
+  limit = 50
+): Promise<PaginatedHistory> {
   return client.get(`${BASE}/${agentType}/memory`, {
-    headers: { 'X-Session-Id': sessionId }
+    headers: { 'X-Session-Id': sessionId },
+    params: { offset, limit }
   })
 }
 

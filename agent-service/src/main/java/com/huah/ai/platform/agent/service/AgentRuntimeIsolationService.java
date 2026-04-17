@@ -1,21 +1,67 @@
 package com.huah.ai.platform.agent.service;
 
 import com.huah.ai.platform.agent.config.ToolsProperties;
-import lombok.RequiredArgsConstructor;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+@Slf4j
 @Service
-@RequiredArgsConstructor
 public class AgentRuntimeIsolationService {
 
     private static final String WILDCARD = "*";
     private static final long WAIT_SLICE_MS = 250L;
+    private static final String SEMAPHORE_KEY_PREFIX = "ai:semaphore:agent:";
+    private static final int SEMAPHORE_TTL_SECONDS = 300;
 
     private final ToolsProperties toolsProperties;
+    private final StringRedisTemplate redisTemplate;
+    private final boolean distributedMode;
+
     private final Map<String, RuntimeState> stateByAgent = new ConcurrentHashMap<>();
+
+    private DefaultRedisScript<Long> acquireScript;
+    private DefaultRedisScript<Long> releaseScript;
+
+    public AgentRuntimeIsolationService(ToolsProperties toolsProperties) {
+        this(toolsProperties, null, false);
+    }
+
+    public AgentRuntimeIsolationService(ToolsProperties toolsProperties,
+                                        StringRedisTemplate redisTemplate,
+                                        @Value("${agent.isolation.distributed:false}") boolean distributedMode) {
+        this.toolsProperties = toolsProperties;
+        this.redisTemplate = redisTemplate;
+        this.distributedMode = distributedMode;
+    }
+
+    @PostConstruct
+    public void initScripts() {
+        if (!distributedMode || redisTemplate == null) {
+            log.info("AgentRuntimeIsolation initialized: distributedMode={}", distributedMode);
+            return;
+        }
+        acquireScript = new DefaultRedisScript<>();
+        acquireScript.setScriptSource(new ResourceScriptSource(
+                new ClassPathResource("lua/distributed_semaphore_acquire.lua")));
+        acquireScript.setResultType(Long.class);
+
+        releaseScript = new DefaultRedisScript<>();
+        releaseScript.setScriptSource(new ResourceScriptSource(
+                new ClassPathResource("lua/distributed_semaphore_release.lua")));
+        releaseScript.setResultType(Long.class);
+
+        log.info("AgentRuntimeIsolation initialized: distributedMode={}", distributedMode);
+    }
 
     public RuntimeIsolationDecision acquire(String agentType) {
         String normalizedAgent = normalizeAgent(agentType);
@@ -25,6 +71,75 @@ public class AgentRuntimeIsolationService {
         if (maxConcurrency <= 0) {
             return RuntimeIsolationDecision.allowed(-1, 0, currentActive(agentType), currentWaiting(agentType), false, 0L);
         }
+
+        if (distributedMode) {
+            return acquireDistributed(normalizedAgent, maxConcurrency, maxQueueDepth);
+        }
+
+        return acquireLocal(normalizedAgent, maxConcurrency, maxQueueDepth, queueWaitTimeoutMs);
+    }
+
+    public void release(String agentType) {
+        String normalizedAgent = normalizeAgent(agentType);
+        if (distributedMode) {
+            releaseDistributed(normalizedAgent);
+            return;
+        }
+        releaseLocal(normalizedAgent);
+    }
+
+    // --- Distributed mode (Redis Lua) ---
+
+    private RuntimeIsolationDecision acquireDistributed(String normalizedAgent, int maxConcurrency, int maxQueueDepth) {
+        try {
+            String key = SEMAPHORE_KEY_PREFIX + normalizedAgent;
+            Long result = redisTemplate.execute(
+                    acquireScript,
+                    Collections.singletonList(key),
+                    String.valueOf(maxConcurrency),
+                    String.valueOf(SEMAPHORE_TTL_SECONDS));
+
+            if (result != null && result == 1L) {
+                int active = getDistributedActive(normalizedAgent);
+                return RuntimeIsolationDecision.allowed(maxConcurrency, maxQueueDepth, active, 0, false, 0L);
+            }
+
+            int active = getDistributedActive(normalizedAgent);
+            return RuntimeIsolationDecision.denied(
+                    "AGENT_RUNTIME_CONCURRENCY_DENIED",
+                    "The current agent has reached its runtime concurrency limit (distributed)",
+                    "agent:" + normalizedAgent,
+                    "active=" + active + ", maxConcurrency=" + maxConcurrency);
+        } catch (Exception e) {
+            log.warn("[Isolation] Redis semaphore acquire failed, falling back to local: agent={}, error={}",
+                    normalizedAgent, e.getMessage());
+            return acquireLocal(normalizedAgent, maxConcurrency, 0, 0L);
+        }
+    }
+
+    private void releaseDistributed(String normalizedAgent) {
+        try {
+            String key = SEMAPHORE_KEY_PREFIX + normalizedAgent;
+            redisTemplate.execute(releaseScript, Collections.singletonList(key));
+        } catch (Exception e) {
+            log.warn("[Isolation] Redis semaphore release failed: agent={}, error={}",
+                    normalizedAgent, e.getMessage());
+            releaseLocal(normalizedAgent);
+        }
+    }
+
+    private int getDistributedActive(String normalizedAgent) {
+        try {
+            String val = redisTemplate.opsForValue().get(SEMAPHORE_KEY_PREFIX + normalizedAgent);
+            return val != null ? Integer.parseInt(val) : 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    // --- Local mode (original in-memory) ---
+
+    private RuntimeIsolationDecision acquireLocal(String normalizedAgent, int maxConcurrency, int maxQueueDepth, long queueWaitTimeoutMs) {
         RuntimeState state = stateByAgent.computeIfAbsent(normalizedAgent, ignored -> new RuntimeState());
         long startedAt = System.currentTimeMillis();
         synchronized (state) {
@@ -40,8 +155,8 @@ public class AgentRuntimeIsolationService {
         }
     }
 
-    public void release(String agentType) {
-        RuntimeState state = stateByAgent.get(normalizeAgent(agentType));
+    private void releaseLocal(String normalizedAgent) {
+        RuntimeState state = stateByAgent.get(normalizedAgent);
         if (state == null) {
             return;
         }
@@ -52,7 +167,11 @@ public class AgentRuntimeIsolationService {
     }
 
     public int currentActive(String agentType) {
-        RuntimeState state = stateByAgent.get(normalizeAgent(agentType));
+        String normalizedAgent = normalizeAgent(agentType);
+        if (distributedMode) {
+            return getDistributedActive(normalizedAgent);
+        }
+        RuntimeState state = stateByAgent.get(normalizedAgent);
         if (state == null) {
             return 0;
         }

@@ -7,7 +7,11 @@ import com.huah.ai.platform.agent.security.AgentAccessChecker;
 import com.huah.ai.platform.agent.service.AgentConversationOrchestrator;
 import com.huah.ai.platform.agent.service.AgentRuntimeIsolationService;
 import com.huah.ai.platform.common.dto.Result;
+import com.huah.ai.platform.common.idempotent.Idempotent;
 import com.huah.ai.platform.common.web.RequestOrigin;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +31,7 @@ import java.util.Map;
 @RestController
 @RequestMapping(AgentApiConstants.BASE_PATH)
 @RequiredArgsConstructor
+@Tag(name = "Agent Conversation", description = "AI Agent 对话接口")
 public class AgentConversationController {
 
     private final ConversationMemoryService memoryService;
@@ -35,9 +40,11 @@ public class AgentConversationController {
     private final AgentRuntimeIsolationService agentRuntimeIsolationService;
     private final AgentConversationOrchestrator conversationOrchestrator;
 
+    @Operation(summary = "流式对话", description = "通过 SSE 流式返回 AI Agent 的回答")
+    @Idempotent(ttlSeconds = 10)
     @PostMapping(value = "/{agentType}/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chatStream(
-            @PathVariable(name = "agentType") String agentType,
+            @Parameter(description = "Agent 类型") @PathVariable(name = "agentType") String agentType,
             @RequestBody AgentChatRequest body,
             @RequestHeader(value = AgentApiConstants.HEADER_SESSION_ID,
                     defaultValue = AgentApiConstants.DEFAULT_SESSION_ID) String sessionId,
@@ -87,6 +94,7 @@ public class AgentConversationController {
         return emitter;
     }
 
+    @Operation(summary = "Multi-Agent 任务执行", description = "提交任务由多 Agent 协作完成")
     @PostMapping("/multi/execute")
     public Result<String> multiAgentExecute(
             @RequestBody MultiAgentTaskRequest body,

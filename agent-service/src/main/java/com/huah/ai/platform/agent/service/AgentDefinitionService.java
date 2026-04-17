@@ -38,6 +38,7 @@ public class AgentDefinitionService {
     private final AssistantCapabilityResolverService assistantCapabilityResolverService;
     private final JdbcTemplate jdbcTemplate;
     private final SnowflakeIdGenerator snowflakeIdGenerator;
+    private final DynamicAgentCapabilityCacheService dynamicAgentCapabilityCacheService;
 
     public AgentDefinitionService(
             AgentDefinitionMapper agentDefinitionMapper,
@@ -46,7 +47,8 @@ public class AgentDefinitionService {
             AgentModelSupportService agentModelSupportService,
             AssistantCapabilityResolverService assistantCapabilityResolverService,
             JdbcTemplate jdbcTemplate,
-            SnowflakeIdGenerator snowflakeIdGenerator) {
+            SnowflakeIdGenerator snowflakeIdGenerator,
+            DynamicAgentCapabilityCacheService dynamicAgentCapabilityCacheService) {
         this.agentDefinitionMapper = agentDefinitionMapper;
         this.agentRoleMapper = agentRoleMapper;
         this.assistantProfileCatalog = assistantProfileCatalog;
@@ -54,6 +56,7 @@ public class AgentDefinitionService {
         this.assistantCapabilityResolverService = assistantCapabilityResolverService;
         this.jdbcTemplate = jdbcTemplate;
         this.snowflakeIdGenerator = snowflakeIdGenerator;
+        this.dynamicAgentCapabilityCacheService = dynamicAgentCapabilityCacheService;
     }
 
     public List<AgentDefinitionResponse> listAll() {
@@ -105,6 +108,7 @@ public class AgentDefinitionService {
         }
         agentDefinitionMapper.insert(entity);
         replaceAgentRoles(entity.getAgentCode(), request.getAllowedRoles());
+        dynamicAgentCapabilityCacheService.evict(entity.getAgentCode());
         return toResponse(entity);
     }
 
@@ -117,6 +121,7 @@ public class AgentDefinitionService {
         AgentDefinitionEntity entity = buildEntityForUpdate(existing, operator, request);
         agentDefinitionMapper.updateById(entity);
         replaceAgentRoles(entity.getAgentCode(), request.getAllowedRoles());
+        dynamicAgentCapabilityCacheService.evict(entity.getAgentCode());
         return toResponse(entity);
     }
 
@@ -131,6 +136,7 @@ public class AgentDefinitionService {
         if (affected != 1) {
             throw new IllegalStateException("Unexpected delete result for agent definition: " + agentCode);
         }
+        dynamicAgentCapabilityCacheService.evict(agentCode);
     }
 
     private AgentDefinitionEntity buildEntityForCreate(String operator, AgentDefinitionUpsertRequest request) {

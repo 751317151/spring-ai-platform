@@ -9,7 +9,8 @@ import type {
   SendMessageOptions,
   SessionConfig,
   SessionInfo,
-  SSEChunk
+  SSEChunk,
+  ToolStatusEvent
 } from '@/api/types'
 import { AGENT_CONFIG, MOCK_RESPONSES } from '@/utils/constants'
 import type { AgentConfig } from '@/utils/constants'
@@ -35,6 +36,7 @@ export const useChatStore = defineStore('chat', () => {
   const sessionDrafts = ref<Record<string, string>>({})
   const sessionConfig = ref<SessionConfig>({ ...DEFAULT_SESSION_CONFIG })
   const isThinking = ref(false)
+  const toolStatus = ref<ToolStatusEvent | null>(null)
   const availableBots = ref<BotPermission[]>([])
   const showArchivedSessions = ref(false)
   const activeStreamAbort = ref<(() => void) | null>(null)
@@ -316,8 +318,10 @@ function normalizeSessionConfig(config?: SessionConfig | null): SessionConfig {
 
     try {
       const data = await agentApi.getHistory(currentAgent.value, sessionId)
-      if (Array.isArray(data)) {
-        chatHistory.value = data.map((item) => normalizeChatMessage(item))
+      if (data && Array.isArray(data.messages)) {
+        chatHistory.value = data.messages.map((item) => normalizeChatMessage(item))
+      } else if (Array.isArray(data)) {
+        chatHistory.value = (data as unknown as ChatMessage[]).map((item) => normalizeChatMessage(item))
       }
       await loadSessionConfig(sessionId)
       runtimeStore.markServiceAvailable('chat')
@@ -510,6 +514,7 @@ function normalizeSessionConfig(config?: SessionConfig | null): SessionConfig {
     })
     sessionHistories.value[sessionId] = [...chatHistory.value]
     isThinking.value = true
+    toolStatus.value = null
     clearDraft(sessionId)
 
     const session = sessionList.value.find((item) => item.sessionId === sessionId)
@@ -574,6 +579,7 @@ function normalizeSessionConfig(config?: SessionConfig | null): SessionConfig {
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      let currentEventType = ''
 
       while (true) {
         const { done, value } = await reader.read()
@@ -587,12 +593,32 @@ function normalizeSessionConfig(config?: SessionConfig | null): SessionConfig {
 
         for (const line of lines) {
           const trimmed = line.trim()
-          if (!trimmed || !trimmed.startsWith('data:')) {
+
+          if (!trimmed) {
+            currentEventType = ''
+            continue
+          }
+
+          if (trimmed.startsWith('event:')) {
+            currentEventType = trimmed.slice(6).trim()
+            continue
+          }
+
+          if (!trimmed.startsWith('data:')) {
             continue
           }
 
           const jsonStr = trimmed.slice(5).trim()
           if (!jsonStr || jsonStr === '[DONE]') {
+            continue
+          }
+
+          if (currentEventType === 'tool_status') {
+            try {
+              toolStatus.value = JSON.parse(jsonStr) as ToolStatusEvent
+            } catch {
+              // ignore malformed tool status
+            }
             continue
           }
 
@@ -654,6 +680,7 @@ function normalizeSessionConfig(config?: SessionConfig | null): SessionConfig {
       sessionHistories.value[sessionId] = [...chatHistory.value]
       activeStreamAbort.value = null
       isThinking.value = false
+      toolStatus.value = null
     }
 
     return fullResponse
@@ -750,6 +777,7 @@ function normalizeSessionConfig(config?: SessionConfig | null): SessionConfig {
     showArchivedSessions,
     chatHistory,
     isThinking,
+    toolStatus,
     availableBots,
     activeStreamAbort,
     agentList,

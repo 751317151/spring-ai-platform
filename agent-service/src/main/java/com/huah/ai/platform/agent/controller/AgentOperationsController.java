@@ -30,6 +30,8 @@ import com.huah.ai.platform.agent.service.AgentRuntimeIsolationService;
 import com.huah.ai.platform.agent.service.AgentWorkbenchService;
 import com.huah.ai.platform.agent.service.McpServerCatalogService;
 import com.huah.ai.platform.common.dto.Result;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,6 +47,7 @@ import java.util.List;
 @RestController
 @RequestMapping(AgentApiConstants.BASE_PATH)
 @RequiredArgsConstructor
+@Tag(name = "Agent Operations", description = "Agent 运维 - MCP 服务器、诊断、工作台、日志生命周期、Multi-Agent 追踪")
 public class AgentOperationsController {
 
     private final MultiAgentTraceService multiAgentTraceService;

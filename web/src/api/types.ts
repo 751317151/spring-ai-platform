@@ -222,6 +222,13 @@ export interface SSEChunk {
   retrievalDebug?: RetrievalDebugInfo
 }
 
+export interface ToolStatusEvent {
+  type: 'tool_call'
+  toolName: string
+  status: 'executing' | 'completed' | 'failed'
+  label: string
+}
+
 export interface KnowledgeBase {
   id: string
   name: string

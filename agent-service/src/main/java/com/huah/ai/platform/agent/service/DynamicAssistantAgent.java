@@ -13,7 +13,6 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
-import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -28,7 +27,7 @@ public class DynamicAssistantAgent {
     private final ConversationMemoryService conversationMemoryService;
     private final SessionRuntimeInstructionBuilder sessionRuntimeInstructionBuilder;
     private final AgentModelSupportService agentModelSupportService;
-    private final AssistantCapabilityResolverService assistantCapabilityResolverService;
+    private final DynamicAgentCapabilityCacheService dynamicAgentCapabilityCacheService;
 
     public DynamicAssistantAgent(AgentDefinitionService agentDefinitionService,
                                  AgentChatClientFactory chatClientFactory,
@@ -37,7 +36,7 @@ public class DynamicAssistantAgent {
                                  ConversationMemoryService conversationMemoryService,
                                  SessionRuntimeInstructionBuilder sessionRuntimeInstructionBuilder,
                                  AgentModelSupportService agentModelSupportService,
-                                 AssistantCapabilityResolverService assistantCapabilityResolverService) {
+                                 DynamicAgentCapabilityCacheService dynamicAgentCapabilityCacheService) {
         this.agentDefinitionService = agentDefinitionService;
         this.chatClientFactory = chatClientFactory;
         this.chatModel = chatModel;
@@ -45,7 +44,7 @@ public class DynamicAssistantAgent {
         this.conversationMemoryService = conversationMemoryService;
         this.sessionRuntimeInstructionBuilder = sessionRuntimeInstructionBuilder;
         this.agentModelSupportService = agentModelSupportService;
-        this.assistantCapabilityResolverService = assistantCapabilityResolverService;
+        this.dynamicAgentCapabilityCacheService = dynamicAgentCapabilityCacheService;
     }
 
     public Flux<ChatResponse> chatStream(String agentType, String userId, String sessionId, String message) {
@@ -71,11 +70,15 @@ public class DynamicAssistantAgent {
                 .doFinally(signalType -> ToolExecutionContext.clear());
     }
 
-    private ChatClient buildChatClient(AgentDefinitionEntity definition) {
-        Object[] tools = assistantCapabilityResolverService.resolveToolBeans(definition);
-        ToolCallbackProvider toolCallbackProvider =
-                assistantCapabilityResolverService.resolveMcpToolCallbackProvider(definition);
-        return chatClientFactory.buildDynamicChatClient(chatModel, chatMemory, "", toolCallbackProvider, tools);
+    ChatClient buildChatClient(AgentDefinitionEntity definition) {
+        DynamicAgentCapabilityCacheService.DynamicAgentCapabilities capabilities =
+                dynamicAgentCapabilityCacheService.getCapabilities(definition.getAgentCode());
+        return chatClientFactory.buildDynamicChatClient(
+                chatModel,
+                chatMemory,
+                "",
+                capabilities.toolCallbackProvider(),
+                capabilities.toolArray());
     }
 
     ChatOptions buildChatOptions(SessionConfigResponse config, AgentDefinitionEntity definition) {
